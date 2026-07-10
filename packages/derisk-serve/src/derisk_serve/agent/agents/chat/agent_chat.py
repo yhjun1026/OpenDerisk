@@ -569,27 +569,19 @@ class AgentChat(BaseComponent, ABC):
         self.system_app = system_app
         self.agent_manage = get_agent_manager(system_app)
 
-        # Register GptsMemory to system_app for file_dispatch.py to access
+        # Register GptsMemory to system_app for file_dispatch.py to access (全局单例，只注册一次)
         try:
             from derisk.component import ComponentType
 
-            self.system_app.register_instance(self.memory)
-            logger.info("[AgentChat] Registered GptsMemory to system_app")
+            # 检查是否已经注册，避免重复注册
+            existing_memory = self.system_app.get_component(ComponentType.GPTS_MEMORY, default=None)
+            if existing_memory is None:
+                self.system_app.register_instance(self.memory)
+                logger.info("[AgentChat] Registered GptsMemory to system_app")
+            else:
+                logger.debug("[AgentChat] GptsMemory already registered, skipping")
         except Exception as e:
             logger.warning(f"[AgentChat] Failed to register GptsMemory: {e}")
-
-        # 注册全局 SubagentCoordinator 单例，供 SubAgent 工具 async 模式访问
-        try:
-            from derisk_serve.agent.subagent_coordinator import (
-                SubagentCoordinator,
-                set_subagent_coordinator,
-            )
-            set_subagent_coordinator(SubagentCoordinator(agent_chat=self))
-            logger.info("[AgentChat] global SubagentCoordinator registered")
-        except Exception as coord_err:
-            logger.warning(
-                f"[AgentChat] failed to register SubagentCoordinator: {coord_err}"
-            )
 
         # 注册全局 SubagentCoordinator 单例，供 SubAgent 工具 async 模式访问
         try:
