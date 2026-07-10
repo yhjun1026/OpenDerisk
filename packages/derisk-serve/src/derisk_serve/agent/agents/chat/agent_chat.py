@@ -560,6 +560,15 @@ class AgentChat(BaseComponent, ABC):
             todo_db_storage=todo_db_storage,
         )
 
+        self.llm_provider = llm_provider
+        self.agent_memory_map = {}
+        self._running_tasks: Dict[str, asyncio.Task] = {}
+
+        # 设置 system_app 属性
+        super().__init__(system_app)
+        self.system_app = system_app
+        self.agent_manage = get_agent_manager(system_app)
+
         # Register GptsMemory to system_app for file_dispatch.py to access
         try:
             from derisk.component import ComponentType
@@ -569,13 +578,18 @@ class AgentChat(BaseComponent, ABC):
         except Exception as e:
             logger.warning(f"[AgentChat] Failed to register GptsMemory: {e}")
 
-        self.llm_provider = llm_provider
-        self.agent_memory_map = {}
-        self._running_tasks: Dict[str, asyncio.Task] = {}
-
-        super().__init__(system_app)
-        self.system_app = system_app
-        self.agent_manage = get_agent_manager(system_app)
+        # 注册全局 SubagentCoordinator 单例，供 SubAgent 工具 async 模式访问
+        try:
+            from derisk_serve.agent.subagent_coordinator import (
+                SubagentCoordinator,
+                set_subagent_coordinator,
+            )
+            set_subagent_coordinator(SubagentCoordinator(agent_chat=self))
+            logger.info("[AgentChat] global SubagentCoordinator registered")
+        except Exception as coord_err:
+            logger.warning(
+                f"[AgentChat] failed to register SubagentCoordinator: {coord_err}"
+            )
 
         # 注册全局 SubagentCoordinator 单例，供 SubAgent 工具 async 模式访问
         try:
