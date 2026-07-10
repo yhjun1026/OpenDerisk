@@ -570,13 +570,16 @@ class AgentChat(BaseComponent, ABC):
         self.agent_manage = get_agent_manager(system_app)
 
         # Register GptsMemory to system_app for file_dispatch.py to access (全局单例，只注册一次)
+        # Note: GptsMemory is not a BaseComponent, so we manually add it to components dict
+        # without calling lifecycle methods
         try:
             from derisk.component import ComponentType
 
             # 检查是否已经注册，避免重复注册
-            existing_memory = self.system_app.get_component(ComponentType.GPTS_MEMORY, default=None)
-            if existing_memory is None:
-                self.system_app.register_instance(self.memory)
+            name = ComponentType.GPTS_MEMORY.value if isinstance(ComponentType.GPTS_MEMORY, ComponentType) else ComponentType.GPTS_MEMORY
+            if name not in self.system_app.components:
+                # Manually add to components dict without calling init_app or lifecycle methods
+                self.system_app.components[name] = self.memory
                 logger.info("[AgentChat] Registered GptsMemory to system_app")
             else:
                 logger.debug("[AgentChat] GptsMemory already registered, skipping")
