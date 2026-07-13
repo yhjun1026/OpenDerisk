@@ -202,3 +202,8 @@ configs/local
 /openspec/
 /configs/derisk-local.toml
 /CLAUDE.md
+/node_modules/
+/packages/derisk-app/src/derisk_app/static/web/_next/
+/.superpowers/
+/pilot/meta_data/*.corrupted-*
+/pilot/meta_data/*.corrupted.bak
