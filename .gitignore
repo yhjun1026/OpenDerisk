@@ -207,3 +207,5 @@ configs/local
 /.superpowers/
 /pilot/meta_data/*.corrupted-*
 /pilot/meta_data/*.corrupted.bak
+/Walmart_Sales.db
+/data/memory/*.db

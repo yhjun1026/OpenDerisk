@@ -1,0 +1,28 @@
+[
+  {
+    "app_code": "canvas-agent",
+    "app_name": "Canvas Agent",
+    "app_describe": "面向交付的Agent，左面板展示执行步骤和思考过程，右面板作为画布展示数据分析、任务报告、HTML预览等可视化产出物。适用于数据分析、报告生成等需要直接交付成果的场景。",
+    "language": "zh",
+    "icon": "/agents/agent5.jpg",
+    "team_mode": "auto_plan",
+    "agent": "BAIZE",
+    "team_context": {
+      "teamleader": "BAIZE",
+      "can_ask_user": true,
+      "use_sandbox": true
+    },
+    "llm_config": {
+      "llm_strategy": "priority",
+      "llm_strategy_value": []
+    },
+    "layout": {
+      "chat_layout": {
+        "name": "vis_manus",
+        "incremental": true,
+        "reuse_name": "vis_manus"
+      }
+    },
+    "published": true
+  }
+]
