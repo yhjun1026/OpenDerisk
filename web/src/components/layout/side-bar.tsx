@@ -3,11 +3,14 @@ import { apiInterceptors, delDialogue, getAppList, getDialogueListBByFilter, new
 import { ChatContext } from '@/contexts';
 import { IApp } from '@/types/app';
 import { STORAGE_LANG_KEY, STORAGE_THEME_KEY } from '@/utils/constants/index';
+import { getUserId } from '@/utils/storage';
 import Icon, {
   ApiOutlined,
+  BookOutlined,
   ClockCircleOutlined,
   ConsoleSqlOutlined,
   DashboardOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   GlobalOutlined,
   MenuFoldOutlined,
@@ -22,6 +25,7 @@ import Icon, {
   ExperimentOutlined,
   SafetyOutlined,
   TeamOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { authService } from '@/services/auth';
@@ -38,6 +42,7 @@ import ModelSvg from '../icons/model-svg';
 import ChatIcon from '../icons/chat-icon';
 import MenuList from './menlist';
 import UserBar from './user-bar';
+import { WorkspaceSwitcher } from './workspace-switcher';
 import copy from 'copy-to-clipboard';
 import { useUserPermissions } from '@/hooks/use-user-permissions';
 
@@ -67,6 +72,7 @@ export type RouteItem = {
 interface Dialogue {
   chat_mode: string;
   conv_uid: string;
+  conv_session_id?: string; // 会话ID，用于获取整个会话的消息
   user_input?: string;
   select_param?: string;
   app_code?: string;
@@ -137,66 +143,88 @@ const MenuItem: React.FC<{
   }
   const isActive = chatId === item.conv_uid && appCode === item.app_code;
 
+  // 构建Tooltip内容：显示用户和创建时间
+  const tooltipContent = (
+    <div className='flex flex-col gap-1'>
+      {item.user_name && (
+        <div className='flex items-center gap-2'>
+          <span className='text-gray-400'>{t('user')}:</span>
+          <span>{item.user_name}</span>
+        </div>
+      )}
+      {item.gmt_created && (
+        <div className='flex items-center gap-2'>
+          <span className='text-gray-400'>{t('created_time')}:</span>
+          <span>{moment(item.gmt_created).format('YYYY-MM-DD HH:mm')}</span>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <Flex
-      align='center'
-      className={cls(`group/item w-full cursor-pointer relative max-w-full my-0.5`)}
-      onClick={() => {
-        if (historyLoading) {
-          return;
-        }
-        router.push(`/chat/?conv_uid=${item.conv_uid}&app_code=${item.app_code}`);
-      }}
-    >
-      <div className={cls('flex-1 flex flex-row min-w-0 overflow-hidden hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors duration-200', {
-        'bg-gray-100 dark:bg-gray-800': isActive,
-      })}>
-        <div className='mr-3 flex-shrink-0'>
-          <ChatIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-        </div>
-        <div className='flex-1 min-w-0 overflow-hidden'>
-          <Typography.Text
-            ellipsis={{
-              tooltip: true,
-            }}
-            className={cls('block text-sm font-normal', isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400')}
-          >
-            {item.label}
-          </Typography.Text>
-        </div>
-        <div className='flex gap-1 ml-1 flex-shrink-0 items-center'>
-          <div
-            className='group-hover/item:opacity-100 cursor-pointer opacity-0 transition-opacity'
-            onClick={e => {
-              e.stopPropagation();
-            }}
-          >
-            <ShareAltOutlined
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              style={{ fontSize: 14 }}
-              onClick={() => {
-                const success = copy(`${location.origin}/chat?scene=${item.chat_mode}&id=${item.conv_uid}`);
-                message[success ? 'success' : 'error'](success ? t('copy_success') : t('copy_failed'));
+    <Tooltip title={tooltipContent} placement='right'>
+      <Flex
+        align='center'
+        className={cls(`group/item w-full cursor-pointer relative max-w-full my-0.5`)}
+        onClick={() => {
+          if (historyLoading) {
+            return;
+          }
+          // 使用 conv_session_id（如果有）作为 URL 参数，否则使用 conv_uid
+        const sessionParam = item.conv_session_id || item.conv_uid;
+        router.push(`/chat/?conv_uid=${sessionParam}&app_code=${item.app_code}`);
+        }}
+      >
+        <div className={cls('flex-1 flex flex-row min-w-0 overflow-hidden hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors duration-200', {
+          'bg-gray-100 dark:bg-gray-800': isActive,
+        })}>
+          <div className='mr-3 flex-shrink-0'>
+            <ChatIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          </div>
+          <div className='flex-1 min-w-0 overflow-hidden'>
+            <Typography.Text
+              ellipsis={{
+                tooltip: false, // 禁用Typography自己的tooltip，使用外层Tooltip
               }}
-            />
+              className={cls('block text-sm font-normal', isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400')}
+            >
+              {item.label}
+            </Typography.Text>
           </div>
-          <div
-            className='group-hover/item:opacity-100 cursor-pointer opacity-0 transition-opacity'
-            onClick={e => {
-              e.stopPropagation();
-              handleDelChat();
-            }}
-          >
-            <DeleteOutlined className="text-gray-400 hover:text-red-500" style={{ fontSize: 14 }} />
+          <div className='flex gap-1 ml-1 flex-shrink-0 items-center'>
+            <div
+              className='group-hover/item:opacity-100 cursor-pointer opacity-0 transition-opacity'
+              onClick={e => {
+                e.stopPropagation();
+              }}
+            >
+              <ShareAltOutlined
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                style={{ fontSize: 14 }}
+                onClick={() => {
+                  const success = copy(`${location.origin}/chat?scene=${item.chat_mode}&id=${item.conv_uid}`);
+                  message[success ? 'success' : 'error'](success ? t('copy_success') : t('copy_failed'));
+                }}
+              />
+            </div>
+            <div
+              className='group-hover/item:opacity-100 cursor-pointer opacity-0 transition-opacity'
+              onClick={e => {
+                e.stopPropagation();
+                handleDelChat();
+              }}
+            >
+              <DeleteOutlined className="text-gray-400 hover:text-red-500" style={{ fontSize: 14 }} />
+            </div>
           </div>
         </div>
-      </div>
-    </Flex>
+      </Flex>
+    </Tooltip>
   );
 };
 
 function SideBar() {
-  const { isMenuExpand, setIsMenuExpand, mode, setMode, dialogueList } = useContext(ChatContext);
+  const { isMenuExpand, setIsMenuExpand, mode, setMode, dialogueList, refreshDialogList } = useContext(ChatContext);
   const pathname = usePathname();
   const { t, i18n } = useTranslation();
   const [logo, setLogo] = useState<string>('/logo_zh_latest.png');
@@ -204,7 +232,7 @@ function SideBar() {
   const [dialogueLists, setDialogueLists] = useState<DialogueListItem[]>([]);
   const [searchValue, setSearchValue] = useState<string>('');
   const [oauthEnabled, setOauthEnabled] = useState(false);
-  const { hasResourceRead } = useUserPermissions();
+  const { hasResourceRead, hasPermission } = useUserPermissions();
 
   useEffect(() => {
     authService.getOAuthStatus().then((s) => setOauthEnabled(s.enabled));
@@ -224,7 +252,8 @@ function SideBar() {
     run: fetchDialogueList,
     loading: listLoading,
   } = useRequest(async (name: string) => {
-    return await apiInterceptors(getDialogueListBByFilter(name));
+    const userId = getUserId();
+    return await apiInterceptors(getDialogueListBByFilter(name, userId));
   },
    {
       manual: true,
@@ -346,8 +375,10 @@ function SideBar() {
   }, [t, mode, handleToggleTheme, i18n, handleChangeLang, isMenuExpand, handleToggleMenu, setMode]);
 
   const handleChat = async (app: IApp) => {
+    // Refresh dialogue list after creating new dialogue
     const [, res] = await apiInterceptors(newDialogue({ app_code: app.app_code }));
     if (res) {
+      if (refreshDialogList) { await refreshDialogList(); }
       window.open(`/chat/?app_code=${app.app_code}&conv_uid=${res.conv_uid}&isNew=true`, '_blank');
     }
   };
@@ -375,12 +406,42 @@ function SideBar() {
     }));
   }, [appList, pathname, searchParams]);
 
+  /**
+   * Extract readable user text from user_input.
+   * user_input may be a plain string or a JSON stringified object
+   * like {"type":"human","data":{"content":"...",...}} from V2 conversations.
+   */
+  const extractUserText = (raw: string | undefined): string => {
+    if (!raw) return '';
+    // If it starts with '{', try to parse as JSON and extract the text content
+    if (raw.startsWith('{')) {
+      try {
+        const obj = JSON.parse(raw);
+        // Extract content, ensuring it's a string (not an object)
+        const content = obj.data?.content || obj.content;
+        if (content) {
+          // Handle case where content might be an object or array
+          if (typeof content === 'string') return content;
+          if (typeof content === 'object') {
+            // For objects like {object, type}, stringify them
+            return JSON.stringify(content);
+          }
+          return String(content);
+        }
+        return raw;
+      } catch {
+        return raw;
+      }
+    }
+    return raw;
+  };
+
   useEffect(() => {
      if (dialogueList && dialogueList[1]) {
       const di =  (dialogueList[1] as unknown as Dialogue[]).map(
         (dialogue: Dialogue): DialogueListItem => ({
           key: dialogue?.conv_uid,
-          name: dialogue.user_input || dialogue.select_param,
+          name: extractUserText(dialogue.user_input) || dialogue.select_param,
           path: '/',
           dialogue: dialogue,
         }),
@@ -411,6 +472,14 @@ function SideBar() {
         icon: <RobotOutlined className='w-5 h-5 text-gray-500' />,
         path: '/application/app',
       }] : []),
+      // knowledge requires knowledge:read
+      ...(hasResourceRead('knowledge') ? [{
+        key: 'knowledge',
+        name: t('knowledge_base'),
+        isActive: pathname.startsWith('/knowledge-vault'),
+        icon: <BookOutlined className='w-5 h-5 text-gray-500' />,
+        path: '/knowledge-vault',
+      }] : []),
       // agent_skills requires tool:read
       ...(hasResourceRead('tool') ? [{
         key: 'agent_skills',
@@ -427,6 +496,14 @@ function SideBar() {
         icon: <ConsoleSqlOutlined className='w-5 h-5 text-gray-500' />,
         path: '/mcp',
       }] : []),
+      // database requires database:read or tool:read
+      ...(hasResourceRead('database') || hasResourceRead('tool') ? [{
+        key: 'database',
+        name: t('Database'),
+        isActive: pathname.startsWith('/database'),
+        icon: <DatabaseOutlined className='w-5 h-5 text-gray-500' />,
+        path: '/database',
+      }] : []),
     ];
 
     // Filter configuration management children based on permissions
@@ -441,38 +518,38 @@ function SideBar() {
         ),
         path: '/models',
       }] : []),
-      // cron - no specific permission required yet
-      {
+      // cron requires cron:read (developer+)
+      ...(hasResourceRead('cron') || hasPermission('system', 'admin') ? [{
         key: 'cron',
         name: t('cron_page_title'),
         isActive: pathname.startsWith('/cron'),
         icon: <ClockCircleOutlined className='w-5 h-5 text-gray-500' />,
         path: '/cron',
-      },
-      // channel - no specific permission required yet
-      {
+      }] : []),
+      // channel requires channel:read (developer+)
+      ...(hasResourceRead('channel') || hasPermission('system', 'admin') ? [{
         key: 'channel',
         name: t('channel_page_title'),
         isActive: pathname.startsWith('/channel'),
         icon: <ApiOutlined className='w-5 h-5 text-gray-500' />,
         path: '/channel',
-      },
-      // vis_merge_test - no specific permission required yet
-      {
+      }] : []),
+      // vis_merge_test - admin only
+      ...(hasPermission('system', 'admin') ? [{
         key: 'vis_merge_test',
         name: 'GUI',
         isActive: pathname.startsWith('/vis-merge-test'),
         icon: <ExperimentOutlined className='w-5 h-5 text-gray-500' />,
         path: '/vis-merge-test',
-      },
-      // system_config requires admin/system permissions
-      {
+      }] : []),
+      // system_config - admin only
+      ...(hasPermission('system', 'admin') ? [{
         key: 'system_config',
         name: t('system_config'),
         isActive: pathname.startsWith('/settings/config'),
         icon: <SettingOutlined className='w-5 h-5 text-gray-500' />,
         path: '/settings/config',
-      },
+      }] : []),
       // plugin_market requires tool:read (plugins are tools)
       ...(hasResourceRead('tool') ? [{
         key: 'plugin_market',
@@ -482,29 +559,29 @@ function SideBar() {
         path: '/settings/plugin-market',
       }] : []),
       // audit_logs - admin only
-      {
+      ...(hasPermission('system', 'admin') ? [{
         key: 'audit_logs',
         name: t('audit_logs_title'),
         isActive: pathname.startsWith('/audit-logs'),
         icon: <SafetyOutlined className='w-5 h-5 text-gray-500' />,
         path: '/audit-logs',
-      },
+      }] : []),
       // permissions - admin only (includes user management and custom permissions)
-      {
+      ...(hasPermission('system', 'admin') ? [{
         key: 'permissions',
         name: t('permissions_title'),
         isActive: pathname.startsWith('/settings/permissions'),
         icon: <SafetyOutlined className='w-5 h-5 text-gray-500' />,
         path: '/settings/permissions',
-      },
-      // monitoring - no specific permission required yet
-      {
+      }] : []),
+      // monitoring - admin only
+      ...(hasPermission('system', 'admin') ? [{
         key: 'monitoring',
         name: t('monitoring_page_title'),
         isActive: pathname.startsWith('/monitoring'),
         icon: <DashboardOutlined className='w-5 h-5 text-gray-500' />,
         path: '/monitoring',
-      },
+      }] : []),
     ];
 
     const items: RouteItem[] = [
@@ -515,20 +592,35 @@ function SideBar() {
         icon: <AppstoreOutlined className='w-5 h-5 text-gray-500' />,
         path: '/',
         children: applicationChildren,
-        isActive: pathname.startsWith('/application') || pathname.startsWith('/agent-skills') || pathname.startsWith('/mcp'),
+        isActive: pathname.startsWith('/application') || pathname.startsWith('/agent-skills') || pathname.startsWith('/mcp') || pathname.startsWith('/database') || pathname.startsWith('/knowledge-vault'),
       }] : []),
-      // Always show configuration management (some items are always visible)
-      {
+      // Only show configuration management if there are visible children
+      ...(configChildren.length > 0 ? [{
         key: 'configuration_management',
         name: t('configuration_management'),
         icon: <SettingOutlined />,
         path: '/',
         children: configChildren,
         isActive: pathname.startsWith('/models') || pathname.startsWith('/vis-merge-test') || pathname.startsWith('/cron') || pathname.startsWith('/channel') || pathname.startsWith('/settings/config') || pathname.startsWith('/settings/plugin-market') || pathname.startsWith('/settings/permissions') || pathname.startsWith('/audit-logs') || pathname.startsWith('/monitoring'),
+      }] : []),
+      // Scenario Workspace entry
+      {
+        key: 'workspaces',
+        name: t('workspaces') || 'Workspaces',
+        icon: <TeamOutlined className='w-5 h-5 text-gray-500' />,
+        path: '/workspaces',
+        isActive: pathname.startsWith('/workspaces') || pathname.startsWith('/me'),
+      },
+      {
+        key: 'me',
+        name: t('me') || 'My View',
+        icon: <UserOutlined className='w-5 h-5 text-gray-500' />,
+        path: '/me',
+        isActive: pathname === '/me',
       },
     ];
     return items;
-  }, [t, pathname, appLists, oauthEnabled, hasResourceRead]);
+  }, [t, pathname, appLists, oauthEnabled, hasResourceRead, hasPermission]);
 
   useEffect(() => {
     const language = i18n.language;
@@ -549,7 +641,7 @@ function SideBar() {
         const di = (dialogueList[1] as unknown as Dialogue[]).map(
           (dialogue: Dialogue): DialogueListItem => ({
             key: dialogue?.conv_uid,
-            name: dialogue.user_input || dialogue.select_param,
+            name: extractUserText(dialogue.user_input) || dialogue.select_param,
             path: '/',
             dialogue: dialogue,
           }),
@@ -595,13 +687,46 @@ function SideBar() {
     }, {} as GroupedDialogues);
   };
 
+  // Sort items within each group by created time descending
+  const sortGroupedDialogues = (grouped: GroupedDialogues): GroupedDialogues => {
+    const sorted: GroupedDialogues = {};
+    for (const [key, items] of Object.entries(grouped)) {
+      sorted[key] = [...items].sort((a, b) => {
+        const aTime = a.dialogue.gmt_created || a.dialogue.gmt_modified || '';
+        const bTime = b.dialogue.gmt_created || b.dialogue.gmt_modified || '';
+        return bTime.localeCompare(aTime);
+      });
+    }
+    return sorted;
+  };
+
   const renderGroupedDialogues = (dialogues: DialogueListItem[]) => {
     const grouped = groupDialoguesByWeek(dialogues);
-    const sortedGroups = Object.entries(grouped).sort((a, b) => {
-      const order = [t('this_week'), t('last_week'), t('weeks_ago'), t('unknown')];
-      const aIndex = order.findIndex(k => a[0].startsWith(k));
-      const bIndex = order.findIndex(k => b[0].startsWith(k));
-      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+    const sorted = sortGroupedDialogues(grouped);
+
+    // 按时间顺序排列分组：本周 > 上周 > X周前 > 未知
+    const sortedGroups = Object.entries(sorted).sort((a, b) => {
+      const thisWeekKey = t('this_week');
+      const lastWeekKey = t('last_week');
+      const weeksAgoKey = t('weeks_ago');
+      const unknownKey = t('unknown');
+
+      // 获取分组的排序权重
+      const getGroupOrder = (groupName: string): number => {
+        if (groupName === thisWeekKey) return 1;
+        if (groupName === lastWeekKey) return 2;
+        // 处理 "X 周前" 或 "X weeks ago" 格式
+        if (groupName.includes(weeksAgoKey)) {
+          // 提取数字，数字越大（周数越早），排序越靠后
+          const match = groupName.match(/\d+/);
+          const weeksNum = match ? parseInt(match[0], 10) : 999;
+          return 3 + weeksNum;
+        }
+        if (groupName === unknownKey) return 9999;
+        return 9998; // 其他未知分组
+      };
+
+      return getGroupOrder(a[0]) - getGroupOrder(b[0]);
     });
 
     return sortedGroups.map(([week, items], index) => (
@@ -688,7 +813,12 @@ function SideBar() {
         <Link href='/' className='flex flex-row justify-between items-center mb-2 pl-1'>
           <Image src={isMenuExpand ? logo : '/LOGO_SMALL.png'} alt='DB-GPT' width={120} height={30} className="object-contain" />
         </Link>
-        
+
+        {/* Workspace Switcher */}
+        <div className="side-bar-workspace-switcher w-full mb-3 px-1">
+          <WorkspaceSwitcher />
+        </div>
+
         {/* New Chat Button */}
         <Link 
           href="/chat" 
@@ -706,7 +836,7 @@ function SideBar() {
         <div className='flex flex-col w-full space-y-1 mb-6'>
           {functions.map(item => {
             if (item?.children) {
-              return <MenuList value={item} isStow={false} key={item.key} defaultOpen={item.key === 'configuration_management'} />;
+              return <MenuList value={item} isStow={false} key={item.key} defaultOpen={item.key === 'application'} />;
             }
 
             // 应用列表项单独处理点击事件
