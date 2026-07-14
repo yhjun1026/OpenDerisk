@@ -5,37 +5,18 @@ import { Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import type { TreeNode } from '@/types/knowledge-vault';
 
-function collectDirSet(nodes: TreeNode[]): Set<string> {
-  const set = new Set<string>();
-  for (const n of nodes) {
-    if (n.is_dir) {
-      set.add(n.path);
-      if (n.children) {
-        for (const p of collectDirSet(n.children)) {
-          set.add(p);
-        }
-      }
-    }
-  }
-  return set;
-}
-
-function toDataNodes(nodes: TreeNode[], onClick: (path: string) => void): DataNode[] {
+function toDataNodes(nodes: TreeNode[] | null | undefined, onClick: (path: string) => void): DataNode[] {
+  if (!nodes || !nodes.length) return [];
   return nodes.map((n) => ({
     key: n.path,
-    title: n.is_dir ? (
-      <span className="truncate whitespace-nowrap text-gray-600 text-xs">{n.name}</span>
-    ) : (
-      <span
-        onClick={() => onClick(n.path)}
-        className="truncate whitespace-nowrap cursor-pointer text-xs"
-      >
+    title: (
+      <span onClick={() => onClick(n.path)} className="cursor-pointer">
         {n.name}
       </span>
     ),
-    icon: n.is_dir ? <FolderOutlined className="text-gray-400" /> : <FileOutlined className="text-gray-400" />,
+    icon: n.is_dir ? <FolderOutlined /> : <FileOutlined />,
     isLeaf: !n.is_dir,
-    children: n.is_dir ? toDataNodes(n.children || [], onClick) : undefined,
+    children: n.is_dir ? toDataNodes(n.children, onClick) : undefined,
   }));
 }
 
@@ -52,15 +33,6 @@ export default function TreeView({
   height?: number | string;
   className?: string;
 }) {
-  const dirSet = collectDirSet(nodes);
-
-  const handleSelect = (keys: React.Key[]) => {
-    if (keys.length === 0) return;
-    const key = String(keys[0]);
-    if (dirSet.has(key)) return;
-    onSelect(key);
-  };
-
   const style: React.CSSProperties = { overflow: 'auto' };
   if (height !== 'auto') {
     style.maxHeight = height;
@@ -71,7 +43,9 @@ export default function TreeView({
         showIcon
         treeData={toDataNodes(nodes, onSelect)}
         selectedKeys={selectedKey ? [selectedKey] : []}
-        onSelect={handleSelect}
+        onSelect={(keys) => {
+          if (keys.length > 0) onSelect(String(keys[0]));
+        }}
       />
     </div>
   );

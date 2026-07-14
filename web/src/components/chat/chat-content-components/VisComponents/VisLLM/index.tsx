@@ -22,7 +22,7 @@ const VisLLM = ({ data }: IProps) => {
       <Descriptions
         title={
           <Flex flex={0} align="center" gap={10}>
-            <Avatar onClick={() => setShowModelInput(!showModelInput)} src={llm_avatar || undefined}>
+            <Avatar onClick={() => setShowModelInput(!showModelInput)} src={llm_avatar}>
               <RobotOutlined />
             </Avatar>
             <div>{data?.llm_model || '模型输出'}</div>

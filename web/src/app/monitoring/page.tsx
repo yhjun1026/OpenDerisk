@@ -1,18 +1,17 @@
 'use client';
 
 import {
-  // API functions disabled - backend not implemented
-  // getDashboardData,
-  // getMonitoringStats,
-  // resolveAlert,
-  // createMonitoringWebSocket,
+  getDashboardData,
+  getMonitoringStats,
+  resolveAlert,
+  createMonitoringWebSocket,
   DashboardEvent,
   MonitoringStats,
   TaskProgress,
   WorkerProgress,
   HealthAlert,
 } from '@/client/api/monitoring';
-// import { apiInterceptors } from '@/client/api'; // Not needed - API disabled
+import { apiInterceptors } from '@/client/api';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -27,7 +26,7 @@ import {
   AlertOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-// import { useRequest } from 'ahooks'; // Not needed - API disabled
+import { useRequest } from 'ahooks';
 import { App, Badge, Button, Card, Col, Progress, Row, Spin, Statistic, Table, Tag, Typography, Empty, List, Tooltip, Space } from 'antd';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -73,28 +72,77 @@ export default function MonitoringPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const eventsListRef = useRef<HTMLDivElement>(null);
 
-  // Fetch dashboard data - disabled since backend API is not implemented
-  // Enable this when backend implements /api/v1/monitoring/* endpoints
-  const dashboardLoading = false;
-  const dashboardData = null;
-  const refreshDashboard = async () => {
-    // Disabled - monitoring API is not implemented on backend
-    message.warning(t('monitoring_api_not_implemented', 'Monitoring API is not implemented on backend'));
-  };
+  // Fetch dashboard data
+  const {
+    data: dashboardData,
+    loading: dashboardLoading,
+    refresh: refreshDashboard,
+  } = useRequest(
+    async () => {
+      const [err, res] = await apiInterceptors(getDashboardData());
+      if (err) {
+        throw err;
+      }
+      return res;
+    },
+    {
+      pollingInterval: 5000, // Auto refresh every 5 seconds
+    }
+  );
 
-  // Resolve alert - disabled since backend API is not implemented
-  const resolveLoading = false;
-  const runResolveAlert = async (alertId: string) => {
-    // Disabled - monitoring API is not implemented on backend
-    message.warning(t('monitoring_api_not_implemented', 'Monitoring API is not implemented on backend'));
-  };
+  // Resolve alert
+  const { run: runResolveAlert, loading: resolveLoading } = useRequest(
+    async (alertId: string) => {
+      const [err] = await apiInterceptors(resolveAlert(alertId));
+      if (err) {
+        throw err;
+      }
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        message.success(t('monitoring_alert_resolved', 'Alert resolved'));
+        refreshDashboard();
+      },
+      onError: () => {
+        message.error(t('Error_Message'));
+      },
+    }
+  );
 
-  // WebSocket connection - temporarily disabled
-  // The monitoring WebSocket service is currently disabled on the backend
+  // WebSocket connection
   useEffect(() => {
-    setWsConnected(false);
-    // No WebSocket connection
-    return () => {};
+    const connectWebSocket = () => {
+      const ws = createMonitoringWebSocket(
+        (event) => {
+          setEvents((prev) => [event, ...prev].slice(0, 100)); // Keep last 100 events
+          refreshDashboard();
+        },
+        () => {
+          setWsConnected(false);
+          // Reconnect after 3 seconds
+          setTimeout(() => {
+            wsRef.current = connectWebSocket();
+          }, 3000);
+        }
+      );
+
+      ws.onopen = () => {
+        setWsConnected(true);
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+      };
+
+      return ws;
+    };
+
+    wsRef.current = connectWebSocket();
+
+    return () => {
+      wsRef.current?.close();
+    };
   }, []);
 
   // Auto scroll to bottom of events list

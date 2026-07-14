@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Input, Modal, Space, Switch, Table, Tag, message, Typography } from 'antd';
-import { DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
-import UserAvatar from '@/components/common/user-avatar';
+import { Avatar, Button, Input, Modal, Space, Switch, Table, Tag, message, Typography } from 'antd';
+import { DeleteOutlined, SearchOutlined, UserOutlined, ReloadOutlined } from '@ant-design/icons';
 import { usersService, User } from '@/services/users';
 import { authService } from '@/services/auth';
 
@@ -100,10 +99,11 @@ export default function OAuthUserManagement() {
       key: 'avatar',
       width: 64,
       render: (_: any, record: User) => (
-        <UserAvatar
-          avatarUrl={record.avatar}
-          name={record.name || record.fullname}
+        <Avatar
+          src={record.avatar || undefined}
+          icon={!record.avatar ? <UserOutlined /> : undefined}
           size={36}
+          className="bg-gradient-to-tr from-[#31afff] to-[#1677ff]"
         />
       ),
     },

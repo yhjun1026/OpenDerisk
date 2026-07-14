@@ -1,5 +1,5 @@
-
-import { find } from 'lodash';
+ 
+import { find, keyBy } from 'lodash';
 // @ts-ignore
 import { Root } from 'mdast';
 import remarkParse from 'remark-parse';
@@ -25,7 +25,7 @@ import { VFile } from 'vfile';
 // ============== 类型定义 ==============
 
 interface VisItem {
-  type: 'incr' | 'all' | 'delete';
+  type: 'incr' | 'all';
   uid: string;
   dynamic?: boolean;
   markdown?: string;
@@ -56,12 +56,6 @@ interface QueryResult {
 // ============== 工具函数 ==============
 
 /**
- * Maximum size for JSON string parsing (10MB)
- * Prevents browser crash from parsing extremely large VIS data
- */
-const MAX_JSON_PARSE_SIZE = 10_000_000;
-
-/**
  * 安全解析 JSON，处理非法转义字符（如 \$）
  * 关键修复：后端可能生成包含非法转义字符的 JSON
  */
@@ -69,13 +63,7 @@ function safeJsonParse<T>(jsonString: string | null | undefined): T {
   if (!jsonString) {
     throw new Error('Empty or null JSON string');
   }
-
-  // Size check: prevent parsing extremely large JSON that could cause browser crash
-  if (jsonString.length > MAX_JSON_PARSE_SIZE) {
-    console.warn(`[safeJsonParse] JSON string too large (${jsonString.length} chars), skipping parse`);
-    throw new Error(`JSON too large: ${jsonString.length} characters exceeds limit of ${MAX_JSON_PARSE_SIZE}`);
-  }
-
+  
   try {
     // 首先尝试直接解析
     return JSON.parse(jsonString);
@@ -255,25 +243,14 @@ export class VisBaseParser {
 
   /**
    * 执行增量合并
-   * 优化：追踪是否有非 DELETE 变更，纯 DELETE 操作跳过全量 rebuildIndex
    */
   private mergeIncrementalChunk(incrAST: Root): void {
     if (!this.astRoot) return;
-
-    let hasNonDeleteChanges = false;
 
     // 遍历增量AST中的所有节点
     this.traverseASTNodes(incrAST, (incrNode, incrJson) => {
       const uid = incrJson.uid;
       if (!uid) return;
-
-      // DELETE 类型：从组件树中移除该节点（已自行维护索引）
-      if (incrJson.type === 'delete') {
-        this.removeNodeByUid(uid);
-        return;
-      }
-
-      hasNonDeleteChanges = true;
 
       // 通过索引快速查找目标节点
       const existingEntry = this.uidIndex.get(uid);
@@ -287,49 +264,8 @@ export class VisBaseParser {
       }
     });
 
-    // Only rebuild full index when non-DELETE changes occurred
-    // DELETE operations already maintain the index via removeNodeByUid
-    if (hasNonDeleteChanges) {
-      this.rebuildIndex();
-    }
-  }
-
-  /**
-   * 根据 UID 从 AST 树中移除节点
-   * 支持 VIS DELETE 协议 - 删除已渲染的组件
-   */
-  private removeNodeByUid(uid: string): void {
-    const entry = this.uidIndex.get(uid);
-    if (!entry) return;
-
-    try {
-      if (entry.nodeType === 'ast') {
-        // 顶层 AST 节点：从 astRoot.children 中移除
-        if (this.astRoot) {
-          const idx = this.astRoot.children.indexOf(entry.node);
-          if (idx !== -1) {
-            this.astRoot.children.splice(idx, 1);
-          }
-        }
-      } else if (entry.nodeType === 'item') {
-        // items 数组中的元素：从宿主的 items 中移除
-        if (entry.itemsHostNode && entry.itemIndex !== undefined) {
-          const hostJson = safeJsonParse(entry.itemsHostNode.value) as VisItem;
-          if (hostJson.items) {
-            hostJson.items = hostJson.items.filter((item: any) => item.uid !== uid);
-            entry.itemsHostNode.value = JSON.stringify(hostJson);
-          }
-        } else if (entry.itemsHost && entry.itemIndex !== undefined) {
-          if (entry.itemsHost.items) {
-            entry.itemsHost.items = entry.itemsHost.items.filter((item: any) => item.uid !== uid);
-          }
-        }
-      }
-      // 从索引中移除
-      this.uidIndex.delete(uid);
-    } catch (e) {
-      console.error(`[removeNodeByUid] Error removing uid=${uid}:`, e);
-    }
+    // 重建索引
+    this.rebuildIndex();
   }
 
   /**
@@ -593,42 +529,28 @@ export class VisBaseParser {
 
   /**
    * 合并items数组
-   * 优化：使用原生 Map 替代 lodash keyBy，大数组场景下性能更好
+   * 关键修复：递归合并每个item的markdown字段
    */
   private combineItems(baseItems: VisItem[], incrItems: VisItem[]): VisItem[] {
     if (!incrItems || incrItems.length === 0) {
       return baseItems || [];
     }
 
-    // Build incr lookup using native Map (faster than lodash keyBy for large arrays)
-    const incrMap = new Map<string, VisItem>();
-    const deleteUids = new Set<string>();
-    for (const item of incrItems) {
-      if (item.uid) {
-        if (item.type === 'delete') {
-          deleteUids.add(item.uid);
-        } else {
-          incrMap.set(item.uid, item);
-        }
+    const incrMap = keyBy(incrItems, 'uid');
+
+    // 合并已存在的items
+    const merged = (baseItems || []).map(baseItem => {
+      const incrItem = incrMap[baseItem.uid];
+      if (incrItem) {
+        // 递归合并item
+        return this.combineVisItem(baseItem, incrItem);
       }
-    }
+      return baseItem;
+    });
 
-    // 合并已存在的items, 过滤掉被删除的
-    const existingUids = new Set<string>();
-    const merged = (baseItems || [])
-      .filter(baseItem => !deleteUids.has(baseItem.uid))
-      .map(baseItem => {
-        existingUids.add(baseItem.uid);
-        const incrItem = incrMap.get(baseItem.uid);
-        if (incrItem) {
-          // 递归合并item
-          return this.combineVisItem(baseItem, incrItem);
-        }
-        return baseItem;
-      });
-
-    // 添加新items (only those not already in base and not deleted)
-    const newItems = incrItems.filter(i => !existingUids.has(i.uid) && !deleteUids.has(i.uid));
+    // 添加新items
+    const existingUids = new Set((baseItems || []).map(i => i.uid));
+    const newItems = incrItems.filter(i => !existingUids.has(i.uid));
 
     return [...merged, ...newItems];
   }
@@ -1149,7 +1071,6 @@ export class VisParser {
   /**
    * 更新VIS内容
    * 关键修复：当某个窗口的内容为null时，保留该窗口之前的数据
-   * 优化：meta_window 作为纯 JSON 数据直接传递（不需要 VIS 解析）
    */
   update(vis: string): string {
     try {
@@ -1173,16 +1094,6 @@ export class VisParser {
 
       allKeys.forEach((key) => {
         const windowContent = json[key];
-
-        // meta_window is pure JSON data, pass through directly without VIS parsing
-        if (key === 'meta_window') {
-          if (windowContent !== undefined && windowContent !== null) {
-            result[key] = windowContent;
-          } else if (currentState[key]) {
-            result[key] = currentState[key];
-          }
-          return;
-        }
 
         // 获取或创建该窗口的解析器
         let windowParser = this.windowParsers.get(key);

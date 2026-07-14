@@ -3,7 +3,9 @@
 import ChatContent from "./chat-content";
 import { ChatContentContext } from "@/contexts";
 import { IChatDialogueMessageSchema } from "@/types/chat";
+import { cloneDeep } from "lodash";
 import React, { memo, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { v4 as uuid } from "uuid";
 import { useDetailPanel } from "./chat-detail-content";
 import ChatDetailContent from "./chat-detail-content";
 import ChatHeader from "../header/chat-header";
@@ -17,13 +19,6 @@ interface TaskChatContentProps {
   ctrl: AbortController;
 }
 
-const MAX_RENDER_COUNT = 200;
-const MAX_CONTEXT_SIZE = 10_000_000;
-
-const isMessageTooLarge = (msg: IChatDialogueMessageSchema): boolean => {
-  return !!(msg.context && typeof msg.context === 'string' && msg.context.length > MAX_CONTEXT_SIZE);
-};
-
 const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { history, replyLoading } = useContext(ChatContentContext);
@@ -33,15 +28,13 @@ const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
   const [userClosedPanel, setUserClosedPanel] = useState(false);
 
   const showMessages = useMemo(() => {
-    const filtered = history
-      .filter((item) => ["view", "human"].includes(item.role) && !isMessageTooLarge(item));
-    const windowed = filtered.length > MAX_RENDER_COUNT
-      ? filtered.slice(-MAX_RENDER_COUNT)
-      : filtered;
-    return windowed.map((item, index) => ({
-      ...item,
-      key: `${item.role}_${item.order ?? index}`,
-    }));
+    const tempMessage: IChatDialogueMessageSchema[] = cloneDeep(history);
+    return tempMessage
+      .filter((item) => ["view", "human"].includes(item.role))
+      .map((item) => ({
+        ...item,
+        key: uuid(),
+      }));
   }, [history]);
 
   const hasRunningWindowData = useMemo(() => {
@@ -77,7 +70,8 @@ const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
   // 当数据变化时重置 userClosedPanel
   const prevDataRef = useRef(runningWindowData);
   useEffect(() => {
-    if (prevDataRef.current !== runningWindowData) {
+    // 检查数据是否真正变化了
+    if (JSON.stringify(prevDataRef.current) !== JSON.stringify(runningWindowData)) {
       prevDataRef.current = runningWindowData;
       if (hasRunningWindowData) {
         setUserClosedPanel(false);
@@ -96,10 +90,10 @@ const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
   const isProcessing = replyLoading || (history.length > 0 && history[history.length - 1]?.thinking);
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-white">
+    <div className="flex h-full w-full overflow-hidden bg-gradient-to-br from-slate-100 to-slate-50">
       {/* Planning Window */}
       <div className={classNames(
-        "flex flex-col h-full transition-all duration-300 ease-out bg-white",
+        "flex flex-col h-full transition-all duration-300 ease-out",
         isRunningWindowVisible && hasRunningWindowData ? "w-[38%] min-w-[340px]" : "flex-1"
       )}>
         <ChatHeader isProcessing={isProcessing} />
@@ -108,8 +102,8 @@ const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
           {hasMessages ? (
             <div className="w-full px-3 py-3">
               <div className="w-full space-y-2">
-                {showMessages.map((content) => (
-                  <div key={content.key}>
+                {showMessages.map((content, index) => (
+                  <div key={index}>
                     <ChatContent content={content} messages={showMessages} />
                   </div>
                 ))}
@@ -161,9 +155,9 @@ const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
 
       {/* Running Window 面板 */}
       {isRunningWindowVisible && hasRunningWindowData && (
-        <div
+        <div 
           className={classNames(
-            "flex flex-col transition-all duration-300 ease-out border-l border-gray-100/80",
+            "flex flex-col bg-white border-l border-slate-200 transition-all duration-300 ease-out",
             "w-[62%] min-w-[480px] h-full"
           )}
         >

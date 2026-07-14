@@ -40,8 +40,7 @@ import {
   FolderOutlined,
   KeyOutlined,
   LockOutlined,
-  DatabaseOutlined,
-  BulbOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
@@ -52,7 +51,6 @@ import {
   ToolInfo,
   FileServiceConfig,
   FileBackendConfig,
-  MemoryStorageConfig,
 } from '@/services/config';
 import AgentAuthorizationConfig from '@/components/config/AgentAuthorizationConfig';
 import ToolManagementPanel from '@/components/config/ToolManagementPanel';
@@ -364,6 +362,11 @@ export default function ConfigPage() {
             label: <span><LoginOutlined /> OAuth2 登录</span>,
             children: <OAuth2ConfigSection onChange={loadConfig} />,
           },
+          {
+            key: 'llm-keys',
+            label: <span><RobotOutlined /> LLM Key 配置</span>,
+            children: <LLMKeyConfigSection onGoToSystem={() => setActiveTab('system')} />,
+          },
         ]}
       />
     </div>
@@ -382,7 +385,7 @@ function VisualConfig({
   return (
     <div className="space-y-4">
       <Collapse
-        defaultActiveKey={['system', 'web', 'model', 'agents', 'file-service', 'sandbox', 'memory-storage']}
+        defaultActiveKey={['system', 'web', 'model', 'agents', 'file-service', 'sandbox']}
         ghost
         items={[
           {
@@ -412,19 +415,9 @@ function VisualConfig({
             children: <FileServiceConfigSection config={config} onChange={onConfigChange} />,
           },
           {
-            key: 'datasource',
-            label: <span className="font-semibold"><DatabaseOutlined /> 数据源配置</span>,
-            children: <DatasourceConfigSection config={config} onChange={onConfigChange} />,
-          },
-          {
             key: 'sandbox',
             label: <span className="font-semibold"><SafetyOutlined /> 沙箱配置</span>,
             children: <SandboxConfigSection config={config} onChange={onConfigChange} />,
-          },
-          {
-            key: 'memory-storage',
-            label: <span className="font-semibold"><BulbOutlined /> 记忆存储配置</span>,
-            children: <MemoryStorageConfigSection onChange={onConfigChange} />,
           },
         ]}
       />
@@ -477,83 +470,6 @@ function SystemConfigSection({
       </div>
       <Form.Item>
         <Button type="primary" htmlType="submit">保存</Button>
-      </Form.Item>
-    </Form>
-  );
-}
-
-function DatasourceConfigSection({
-  config,
-  onChange,
-}: {
-  config: AppConfig;
-  onChange: () => void;
-}) {
-  const [form] = Form.useForm();
-
-  useEffect(() => {
-    if (config.datasource) {
-      form.setFieldsValue(config.datasource);
-    }
-  }, [config.datasource]);
-
-  const handleSave = async (values: any) => {
-    try {
-      await configService.updateDatasourceConfig(values);
-      message.success('数据源配置已保存');
-      onChange();
-    } catch (error: any) {
-      message.error('保存失败: ' + error.message);
-    }
-  };
-
-  return (
-    <Form form={form} layout="vertical" onFinish={handleSave}>
-      <div className="grid grid-cols-2 gap-4">
-        <Form.Item
-          name="learning_worker_concurrency"
-          label="Schema Learning 并发度"
-          tooltip="单节点 schema learning 的并发 worker 线程数，越大学习速度越快，但占用更多数据库连接"
-        >
-          <InputNumber min={1} max={20} style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item
-          name="learning_subtask_timeout"
-          label="子任务超时时间（秒）"
-          tooltip="worker 领取子任务后如果超过此时间未完成，会被回收重新分配"
-        >
-          <InputNumber min={60} max={3600} step={60} style={{ width: '100%' }} />
-        </Form.Item>
-      </div>
-
-      {/* Oracle Thick Mode Configuration */}
-      <div className="mt-6 mb-2 border-b pb-2">
-        <span className="font-semibold text-gray-600">Oracle Thick Mode 配置（用于 Oracle 11g）</span>
-      </div>
-      <div className="mb-4 text-gray-500 text-sm">
-        Oracle 11g 及更早版本需要启用 thick mode。启用后需安装 Oracle Instant Client 并重启服务。
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <Form.Item
-          name="oracle_enable_thick_mode"
-          label="启用 Oracle Thick Mode"
-          tooltip="启用后所有 Oracle 连接将使用 thick mode。需要安装 Oracle Instant Client。修改后需重启服务生效。"
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-        <Form.Item
-          name="oracle_instant_client_path"
-          label="Instant Client 路径"
-          tooltip="Oracle Instant Client 安装路径。不设置则自动检测（ORACLE_INSTANT_CLIENT_HOME 环境变量或常见路径）"
-        >
-          <Input placeholder="/opt/oracle/instantclient_11_2" />
-        </Form.Item>
-      </div>
-
-      <Form.Item>
-        <Button type="primary" htmlType="submit">保存</Button>
-        <span className="ml-4 text-gray-500 text-sm">* Oracle 配置修改后需要重启服务生效</span>
       </Form.Item>
     </Form>
   );
@@ -1048,8 +964,8 @@ function SandboxConfigSection({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Form.Item name="work_dir" label="工作目录" extra="为空时使用系统默认路径 (pilot/data/workspace)">
-          <Input placeholder="pilot/data/workspace" />
+        <Form.Item name="work_dir" label="工作目录" extra="为空时使用系统默认路径">
+          <Input placeholder="" />
         </Form.Item>
         <Form.Item name="memory_limit" label="内存限制">
           <Input placeholder="512m" />
@@ -1074,112 +990,6 @@ function SandboxConfigSection({
       <Form.Item>
         <Button type="primary" htmlType="submit">保存</Button>
       </Form.Item>
-    </Form>
-  );
-}
-
-function MemoryStorageConfigSection({
-  onChange,
-}: {
-  onChange: () => void;
-}) {
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    loadConfig();
-  }, []);
-
-  const loadConfig = async () => {
-    setLoading(true);
-    try {
-      const data = await configService.getMemoryStorageConfig();
-      form.setFieldsValue(data);
-    } catch (error: any) {
-      message.error('加载记忆存储配置失败: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSave = async (values: any) => {
-    try {
-      await configService.updateMemoryStorageConfig(values);
-      message.success('记忆存储配置已保存');
-      onChange();
-    } catch (error: any) {
-      message.error('保存失败: ' + error.message);
-    }
-  };
-
-  return (
-    <Form form={form} layout="vertical" onFinish={handleSave}>
-      <Spin spinning={loading}>
-        <Divider orientation="left" plain>基础设置</Divider>
-        <div className="grid grid-cols-2 gap-4">
-          <Form.Item name="type" label="存储类型" tooltip="记忆存储后端类型">
-            <Select>
-              <Select.Option value="mempalace">MemPalace</Select.Option>
-              <Select.Option value="custom">自定义</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="palace_path" label="数据路径" tooltip="记忆数据存储目录路径">
-            <Input placeholder="~/.mempalace/palace" />
-          </Form.Item>
-        </div>
-
-        <Divider orientation="left" plain>知识图谱</Divider>
-        <div className="grid grid-cols-2 gap-4">
-          <Form.Item name="enable_kg" label="启用知识图谱" valuePropName="checked" tooltip="启用知识图谱进行实体追踪">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="default_wing" label="默认分区" tooltip="记忆组织的默认分区名称">
-            <Input placeholder="default" />
-          </Form.Item>
-        </div>
-
-        <Divider orientation="left" plain>嵌入模型</Divider>
-        <Form.Item 
-          name="use_builtin_embedding" 
-          label="使用内置嵌入模型" 
-          valuePropName="checked"
-          tooltip="使用记忆提供方的内置嵌入模型，而非系统配置的嵌入模型"
-        >
-          <Switch />
-        </Form.Item>
-
-        <Divider orientation="left" plain>自动记忆</Divider>
-        <div className="grid grid-cols-2 gap-4">
-          <Form.Item 
-            name="auto_memory" 
-            label="启用自动记忆" 
-            valuePropName="checked"
-            tooltip="自动从对话中提取并存储记忆"
-          >
-            <Switch />
-          </Form.Item>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Form.Item 
-            name="auto_memory_top_k" 
-            label="召回数量"
-            tooltip="每次对话前召回的记忆数量"
-          >
-            <InputNumber min={1} max={20} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item 
-            name="auto_memory_max_distance" 
-            label="最大向量距离"
-            tooltip="记忆召回的最大向量距离阈值"
-          >
-            <InputNumber min={0} max={1} step={0.1} style={{ width: '100%' }} />
-          </Form.Item>
-        </div>
-
-        <Form.Item>
-          <Button type="primary" htmlType="submit">保存</Button>
-        </Form.Item>
-      </Spin>
     </Form>
   );
 }
@@ -1323,3 +1133,28 @@ function SecretsConfigSection({
   );
 }
 
+function LLMKeyConfigSection({
+  onGoToSystem,
+}: {
+  onGoToSystem: () => void;
+}) {
+  return (
+    <Card>
+      <Alert
+        type="info"
+        showIcon
+        message="LLM 配置已整合到系统配置"
+        description={
+          <div>
+            <p>默认模型、多 Provider、模型列表和 API Key 现已统一整合到「系统配置」中的 LLM 配置区域。</p>
+            <p>这里保留为兼容入口，方便你从旧入口跳转过去，不再维护第二套独立配置表单。</p>
+          </div>
+        }
+        className="mb-4"
+      />
+      <Button type="primary" icon={<ApiOutlined />} onClick={onGoToSystem}>
+        前往系统配置中的 LLM 配置
+      </Button>
+    </Card>
+  );
+}

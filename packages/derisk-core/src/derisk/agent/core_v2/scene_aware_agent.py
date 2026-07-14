@@ -96,16 +96,29 @@ class SceneAwareAgent(ReActReasoningAgent):
         self._current_scene_id: Optional[str] = None
         self._scene_history: List[SceneSwitchRecord] = []
 
-        # 加载角色和场景定义
+        # 加载角色和场景定义(异步 I/O 延迟到 async initialize() 调;
+        # __init__ 保持同步,避免 await-in-__init__ 语法错误)
+        self._pending_agent_role_md = agent_role_md
+        self._pending_scene_md_dir = scene_md_dir
         if agent_role:
             self._agent_role = agent_role
-        elif agent_role_md:
-            await self._load_agent_role(agent_role_md)
-
+        else:
+            self._agent_role = None
         if scene_definitions:
             self._scene_definitions = scene_definitions
-        elif scene_md_dir:
-            await self._load_scene_definitions(scene_md_dir)
+        else:
+            self._scene_definitions = {}
+
+    async def initialize(self) -> None:
+        """异步初始化:加载 agent_role_md / scene_md_dir(__init__ 无法 await,挪此)。
+
+        构造后若传了 agent_role_md/scene_md_dir,需 await 本方法完成场景定义加载,
+        再初始化 scene_manager/detector。
+        """
+        if self._agent_role is None and self._pending_agent_role_md:
+            await self._load_agent_role(self._pending_agent_role_md)
+        if not self._scene_definitions and self._pending_scene_md_dir:
+            await self._load_scene_definitions(self._pending_scene_md_dir)
 
         # 初始化场景管理器
         if self._agent_role:
@@ -118,7 +131,7 @@ class SceneAwareAgent(ReActReasoningAgent):
             self._scene_detector = SceneSwitchDetector(
                 available_scenes=list(self._scene_definitions.values()),
                 llm_client=self.llm_client,
-                confidence_threshold=scene_confidence_threshold,
+                confidence_threshold=self.scene_confidence_threshold,
             )
 
         logger.info(

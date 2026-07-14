@@ -114,8 +114,6 @@ const MenuItem: React.FC<{
         if (historyLoading) {
           return;
         }
-        // 使用 conv_session_id（如果有）作为 URL 参数，否则使用 conv_uid
-        const sessionParam = item.conv_session_id || item.conv_uid;
         !item.default &&
           setCurrentDialogInfo?.({
             chat_scene: item.chat_mode,
@@ -127,7 +125,7 @@ const MenuItem: React.FC<{
             app_code: item.app_code,
           }),
         );
-        router.push(item.default ? '/chat' : `?conv_uid=${sessionParam}&app_code=${item.app_code}`);
+        router.push(item.default ? '/chat' : `?conv_uid=${item.conv_uid}&app_code=${item.app_code}`);
       }}
     >
       <Tooltip title={item.chat_mode}>
@@ -213,33 +211,13 @@ const ChatSider: React.FC<{
     };
   }, [collapsed]);
 
-  /**
-   * Extract readable user text from user_input.
-   * user_input may be a plain string or a JSON stringified object
-   * like {"type":"human","data":{"content":"...",...}} from V2 conversations.
-   */
-  const extractUserText = (raw: string | undefined): string => {
-    if (!raw) return '';
-    if (raw.startsWith('{')) {
-      try {
-        const obj = JSON.parse(raw);
-        if (obj.data?.content) return obj.data.content;
-        if (obj.content) return obj.content;
-        return raw;
-      } catch {
-        return raw;
-      }
-    }
-    return raw;
-  };
-
   // 会话列表配置项
   const items: MenuProps['items'] = useMemo(() => {
     const list = dialogueList[1] || [];
     if (list?.length > 0) {
       return list.map((item: IChatDialogueSchema) => ({
         ...item,
-        label: extractUserText(item.user_input) || item.select_param,
+        label: item.user_input || item.select_param,
         key: item.conv_uid,
         icon: item.icon ? item.icon : <AppDefaultIcon scene={item.chat_mode} />,
         default: false,

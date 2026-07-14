@@ -2,8 +2,6 @@ import { ChartData, ChatHistoryResponse, IChatDialogueSchema, UserChatContent } 
 import { IApp } from '@/types/app';
 import { createContext } from 'react';
 
-export const CompactChatContext = createContext<boolean>(false);
-
 export interface SelectedSkill {
   skill_code: string;
   name: string;
@@ -57,7 +55,6 @@ interface ChatContentProps {
   isShowDetail?: boolean;
   setIsShowDetail?: React.Dispatch<React.SetStateAction<boolean>>;
   isDebug?: boolean;
-  isPollingMode?: boolean;
 }
 
 export const ChatContentContext = createContext<ChatContentProps>({
@@ -95,5 +92,4 @@ export const ChatContentContext = createContext<ChatContentProps>({
   isShowDetail: true,
   setIsShowDetail: () => {},
   isDebug: false,
-  isPollingMode: false,
 });

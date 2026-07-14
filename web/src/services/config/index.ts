@@ -9,11 +9,6 @@ export interface DistributedConfig {
   heartbeat_interval: number;
 }
 
-export interface DatasourceConfig {
-  learning_worker_concurrency: number;
-  learning_subtask_timeout: number;
-}
-
 export interface SystemConfig {
   language: string;
   log_level: string;
@@ -53,18 +48,12 @@ export interface LLMModelConfig {
   name: string;
   temperature: number;
   max_new_tokens: number;
-  // 新增模型类型与能力标签
-  model_type?: string;
-  capabilities?: string[];
-  // 兼容旧配置
   is_multimodal?: boolean;
   is_default?: boolean;
 }
 
 export interface LLMProviderConfig {
   provider: string;
-  // 新增：接入协议，与 provider 来源解耦
-  protocol: string;
   api_base: string;
   api_key_ref: string;
   models: LLMModelConfig[];
@@ -73,15 +62,6 @@ export interface LLMProviderConfig {
 export interface AgentLLMConfig {
   temperature: number;
   providers: LLMProviderConfig[];
-}
-
-export interface EmbeddingModelConfig {
-  name: string;
-  provider: string;
-  api_key?: string;
-  api_url?: string;
-  backend?: string;
-  extra?: Record<string, unknown>;
 }
 
 export interface SSEConfig {
@@ -172,17 +152,6 @@ export interface SecretsConfig {
   secrets: Record<string, SecretConfig>;
 }
 
-export interface MemoryStorageConfig {
-  type: string;
-  palace_path?: string;
-  enable_kg?: boolean;
-  default_wing?: string;
-  use_builtin_embedding?: boolean;
-  auto_memory?: boolean;
-  auto_memory_top_k?: number;
-  auto_memory_max_distance?: number;
-}
-
 export interface FeaturePluginEntry {
   enabled: boolean;
   settings: Record<string, unknown>;
@@ -207,12 +176,9 @@ export interface AppConfig {
   web: WebServiceConfig;
   default_model: ModelConfig;
   agent_llm: AgentLLMConfig;
-  embeddings?: EmbeddingModelConfig[];
-  default_embedding?: string | null;
   sse: SSEConfig;
   agents: Record<string, AgentConfig>;
   sandbox: SandboxConfig;
-  datasource: DatasourceConfig;
   file_service: FileServiceConfig;
   oauth2: OAuth2Config;
   feature_plugins?: Record<string, FeaturePluginEntry>;
@@ -255,21 +221,6 @@ class ConfigService {
     return response.data.data;
   }
 
-  async updateDatasourceConfig(config: Partial<DatasourceConfig>): Promise<DatasourceConfig> {
-    const response = await axios.post(`${API_BASE}/config/datasource`, config);
-    return response.data.data;
-  }
-
-  async getMemoryStorageConfig(): Promise<MemoryStorageConfig> {
-    const response = await axios.get(`${API_BASE}/config/rag/storage/memory`);
-    return response.data.data;
-  }
-
-  async updateMemoryStorageConfig(config: Partial<MemoryStorageConfig>): Promise<MemoryStorageConfig> {
-    const response = await axios.post(`${API_BASE}/config/rag/storage/memory`, config);
-    return response.data.data;
-  }
-
   async updateFileServiceConfig(config: Partial<FileServiceConfig>): Promise<FileServiceConfig> {
     const response = await axios.post(`${API_BASE}/config/file-service`, config);
     return response.data.data;
@@ -308,16 +259,6 @@ class ConfigService {
   async getCachedModels(): Promise<{ models: string[]; model_keys: string[]; total: number }> {
     const response = await axios.get(`${API_BASE}/config/model-cache/models`);
     return response.data.data;
-  }
-
-  async listEmbeddings(): Promise<{ models: string[]; default: string | null }> {
-    const response = await axios.get(`${API_BASE}/config/embeddings`);
-    return response.data.data;
-  }
-
-  async setDefaultEmbedding(name: string): Promise<{ success: boolean; default: string }> {
-    const response = await axios.post(`${API_BASE}/config/embeddings/default`, { name });
-    return response.data;
   }
 
   async getOAuth2Config(): Promise<OAuth2Config> {

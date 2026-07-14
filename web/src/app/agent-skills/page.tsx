@@ -28,7 +28,6 @@ const SkillPage: React.FC = () => {
   });
 
   const [skillList, setSkillList] = useState<any>([]);
-  const [totalCount, setTotalCount] = useState<number>(0);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
   const [isSyncProgressDrawerVisible, setIsSyncProgressDrawerVisible] = useState(false);
@@ -52,7 +51,6 @@ const SkillPage: React.FC = () => {
       onSuccess: data => {
         const [, res] = data;
         setSkillList(res?.items || []);
-        setTotalCount(res?.total_count || 0);
       },
       debounceWait: 300,
     },
@@ -155,12 +153,12 @@ const SkillPage: React.FC = () => {
   };
 
   const uploadProps = {
-    accept: '.zip,.skill',
+    accept: '.zip',
     showUploadList: false,
     beforeUpload: (file: File) => {
-      const isValid = file.name.endsWith('.zip') || file.name.endsWith('.skill');
-      if (!isValid) {
-        message.error('Only .zip and .skill files are supported');
+      const isZip = file.name.endsWith('.zip');
+      if (!isZip) {
+        message.error('Only ZIP files are supported');
         return false;
       }
       handleUpload(file);
@@ -327,7 +325,7 @@ const SkillPage: React.FC = () => {
                   icon={<UploadOutlined />}
                   loading={uploading}
                 >
-                  Upload Skill
+                  Upload ZIP
                 </Button>
               </Upload>
               <Button
@@ -451,7 +449,7 @@ const SkillPage: React.FC = () => {
               current={paginationParams.page}
               pageSize={paginationParams.page_size}
               showSizeChanger
-              total={totalCount}
+              total={skillList.length}
               onChange={onShowSizeChange}
             />
           </div>

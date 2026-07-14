@@ -19,22 +19,11 @@ import {
   UserParamResponse,
 } from '@/types/chat';
 import {
-  BatchMaskingConfigRequest,
-  BatchMaskingConfigResponse,
   ChatFeedBackSchema,
   DbListResponse,
-  DbSpecResponse,
   DbSupportTypeResponse,
-  LearningTaskRequest,
-  LearningTaskResponse,
-  MaskingPreviewRequest,
-  MaskingPreviewResponse,
   PostDbParams,
   PostDbRefreshParams,
-  SensitiveColumnConfig,
-  TableDataPreview,
-  TableSpecDetail,
-  TableSpecSummary,
 } from '@/types/db';
 import {
   GetEditorSQLRoundRequest,
@@ -44,10 +33,24 @@ import {
   PostEditorSQLRunParams,
   PostSQLEditorSubmitParams,
 } from '@/types/editor';
+import {
+  AddKnowledgeParams,
+  ArgumentsParams,
+  ChunkListParams,
+  DocumentParams,
+  GraphVisResult,
+  IArguments,
+  IChunkList,
+  IChunkStrategyResponse,
+  IDocumentResponse,
+  ISpace,
+  ISyncBatchParameter,
+  ISyncBatchResponse,
+  SpaceConfig,
+} from '@/types/knowledge';
 import { BaseModelParams, IModelData, StartModelParams, SupportModel } from '@/types/model';
 import { AxiosRequestConfig } from 'axios';
 import { DELETE, GET, POST, PUT } from '.';
-import { getUserId } from '@/utils/storage';
 
 /** App */
 export const postScenes = () => {
@@ -61,10 +64,9 @@ export const postScenes = () => {
 // };
 
 export const newDialogue = (data: NewDialogueParam) => {
-  const workspaceSuffix = data.workspace_id ? `&workspace_id=${data.workspace_id}` : '';
   return POST<NewDialogueParam, IChatDialogueSchema>(
-    `/api/v1/chat/dialogue/new?app_code=${data.app_code}${workspaceSuffix}`,
-    { ...data, user_code: data.user_code || getUserId() },
+    `/api/v1/chat/dialogue/new?app_code=${data.app_code}`,
+    data,
   );
 };
 
@@ -94,14 +96,6 @@ export const postDbDelete = (id: string) => {
 export const postDbEdit = (data: PostDbParams) => {
   return PUT<PostDbParams, null>('/api/v2/serve/datasources', data);
 };
-export const uploadDbFile = (file: File) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  return POST<FormData, { file_path: string; file_name: string }>(
-    '/api/v2/serve/datasources/upload-db',
-    formData,
-  );
-};
 export const postDbAdd = (data: PostDbParams) => {
   return POST<PostDbParams, null>('/api/v2/serve/datasources', data);
 };
@@ -112,149 +106,13 @@ export const postDbRefresh = (data: PostDbRefreshParams) => {
   return POST<PostDbRefreshParams, boolean>(`/api/v2/serve/datasources/${data.id}/refresh`);
 };
 
-/** Database Spec & Learning APIs */
-export const postDbLearn = (id: string | number, data?: LearningTaskRequest) => {
-  return POST<LearningTaskRequest | undefined, LearningTaskResponse>(
-    `/api/v2/serve/datasources/${id}/learn`,
-    data,
-  );
-};
-export const cancelDbLearn = (id: string | number) => {
-  return POST<undefined, { cancelled: boolean; task_id?: number; reason?: string }>(
-    `/api/v2/serve/datasources/${id}/learn/cancel`,
-  );
-};
-export const pauseDbLearn = (id: string | number) => {
-  return POST<undefined, { paused: boolean; task_id?: number; reason?: string }>(
-    `/api/v2/serve/datasources/${id}/learn/pause`,
-  );
-};
-export const resumeDbLearn = (id: string | number) => {
-  return POST<undefined, { resumed: boolean; task_id?: number; reason?: string }>(
-    `/api/v2/serve/datasources/${id}/learn/resume`,
-  );
-};
-export const getDbLearnStatus = (id: string | number) => {
-  return GET<null, LearningTaskResponse | null>(
-    `/api/v2/serve/datasources/${id}/learn/status`,
-  );
-};
-export const getDbSpec = (id: string | number) => {
-  return GET<null, DbSpecResponse | null>(`/api/v2/serve/datasources/${id}/spec`);
-};
-export const getDbTables = (id: string | number) => {
-  return GET<null, TableSpecSummary[]>(`/api/v2/serve/datasources/${id}/tables`);
-};
-export const getDbTableDetail = (id: string | number, tableName: string) => {
-  return GET<null, TableSpecDetail | null>(
-    `/api/v2/serve/datasources/${id}/tables/${tableName}`,
-  );
-};
-export const postDbTablesBatch = (id: string | number, tableNames: string[]) => {
-  return POST<{ table_names: string[] }, TableSpecDetail[]>(
-    `/api/v2/serve/datasources/${id}/tables/batch`,
-    { table_names: tableNames },
-  );
-};
-export const getDbTableData = (
-  id: string | number,
-  tableName: string,
-) => {
-  return GET<null, TableDataPreview>(
-    `/api/v2/serve/datasources/${id}/tables/${tableName}/data`,
-  );
-};
-export const refreshTableSampleData = (
-  id: string | number,
-  tableName: string,
-) => {
-  return POST<null, TableSpecDetail>(
-    `/api/v2/serve/datasources/${id}/tables/${tableName}/refresh-sample`,
-  );
-};
-
-/** Sensitive Column Masking APIs */
-export const getSensitiveColumns = (datasourceId: string | number) => {
-  return GET<null, SensitiveColumnConfig[]>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/columns`,
-  );
-};
-export const addSensitiveColumn = (
-  datasourceId: string | number,
-  data: { table_name: string; column_name: string; sensitive_type: string; masking_mode: string },
-) => {
-  return POST<typeof data, SensitiveColumnConfig>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/columns`,
-    data,
-  );
-};
-export const updateSensitiveColumn = (
-  datasourceId: string | number,
-  tableName: string,
-  columnName: string,
-  data: { sensitive_type?: string; masking_mode?: string; enabled?: boolean },
-) => {
-  return PUT<typeof data, SensitiveColumnConfig>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/columns/${tableName}/${columnName}`,
-    data,
-  );
-};
-export const toggleSensitiveColumn = (
-  datasourceId: string | number,
-  tableName: string,
-  columnName: string,
-  enabled: boolean,
-) => {
-  return PUT<null, string>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/columns/${tableName}/${columnName}/toggle?enabled=${enabled}`,
-  );
-};
-export const detectSensitiveColumns = (
-  datasourceId: string | number,
-  tableNames?: string[],
-) => {
-  return POST<{ table_names?: string[] } | undefined, SensitiveColumnConfig[]>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/detect`,
-    tableNames ? { table_names: tableNames } : undefined,
-  );
-};
-export const batchAddMaskingConfig = (
-  datasourceId: string | number,
-  data: BatchMaskingConfigRequest,
-) => {
-  return POST<BatchMaskingConfigRequest, BatchMaskingConfigResponse>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/batch`,
-    data,
-  );
-};
-/** Enable/disable masking for ALL sensitive columns of a table. */
-export const toggleTableMasking = (
-  datasourceId: string | number,
-  tableName: string,
-  enabled: boolean,
-) => {
-  return PUT<null, string>(
-    `/api/v2/serve/sql-guard/masking/${datasourceId}/tables/${tableName}/toggle?enabled=${enabled}`,
-  );
-};
-/** Preview (try-run) the masking effect for a sample value. */
-export const previewMasking = (data: MaskingPreviewRequest) => {
-  return POST<MaskingPreviewRequest, MaskingPreviewResponse>(
-    `/api/v2/serve/sql-guard/masking/preview`,
-    data,
-  );
-};
-
 /** Chat Page */
-export const getDialogueList = (userId?: string) => {
-  const params = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
-  return GET<null, DialogueListResponse>(`/api/v1/chat/dialogue/list${params}`);
+export const getDialogueList = () => {
+  return GET<null, DialogueListResponse>('/api/v1/chat/dialogue/list');
 };
 
-export const getDialogueListBByFilter = (name: string, userId?: string) => {
-  const query = new URLSearchParams({ filter: name });
-  if (userId) query.set('user_id', userId);
-  return GET<null, DialogueListResponse>(`/api/v1/chat/dialogue/list?${query.toString()}`);
+export const getDialogueListBByFilter = (name:string) => {
+  return GET<null, DialogueListResponse>(`/api/v1/chat/dialogue/list?filter=${name}`);
 };
 export const getUsableModels = () => {
   return GET<null, Array<string>>('/api/v1/model/types');
@@ -339,25 +197,57 @@ export const getEditorSql = (id: string, round: string | number) => {
 };
 
 /** knowledge */
-// TODO: rewire to new knowledge-vault page — old knowledge API functions removed.
-// Memory APIs
-export const getMemoryStatus = (spaceId: string) => {
-  return GET<null, Record<string, any>>(`/memory/${spaceId}/status`);
+export const getArguments = (knowledgeName: string) => {
+  return POST<any, IArguments>(`/knowledge/${knowledgeName}/arguments`, {});
 };
-export const getMemoryWings = (spaceId: string) => {
-  return GET<null, Record<string, number>>(`/memory/${spaceId}/wings`);
+export const saveArguments = (knowledgeName: string, data: ArgumentsParams) => {
+  return POST<ArgumentsParams, IArguments>(`/knowledge/${knowledgeName}/argument/save`, data);
 };
-export const searchMemory = (spaceId: string, data: { query: string; wing?: string; room?: string; top_k?: number; max_distance?: number }) => {
-  return POST<typeof data, Array<{ id: string; content: string; wing: string; room: string; score: number; created_at: string }>>(`/memory/${spaceId}/search`, data);
+
+export const getSpaceList = (data?: any) => {
+  return POST<any, Array<ISpace>>('/knowledge/space/list', data);
 };
-export const queryKG = (spaceId: string, data: { entity: string; as_of?: string }) => {
-  return POST<typeof data, Array<{ subject: string; predicate: string; object: string; confidence?: number }>>(`/memory/${spaceId}/kg/query`, data);
+export const getDocumentList = (spaceName: string, data: Record<string, number | Array<number>>) => {
+  return POST<Record<string, number | Array<number>>, IDocumentResponse>(`/knowledge/${spaceName}/document/list`, data);
 };
-export const getMemoryRooms = (spaceId: string, wing: string) => {
-  return GET<null, string[]>(`/memory/${spaceId}/rooms?wing=${wing}`);
+export const getGraphVis = (spaceName: string, data: { limit: number }) => {
+  return POST<Record<string, number>, GraphVisResult>(`/knowledge/${spaceName}/graphvis`, data);
 };
-export const addMemory = (spaceId: string, data: { content: string; wing: string; room: string }) => {
-  return POST<typeof data, { id: string; wing: string; room: string; created_at: string }>(`/memory/${spaceId}/write`, data);
+
+export const addDocument = (knowledgeName: string, data: DocumentParams) => {
+  return POST<DocumentParams, number>(`/knowledge/${knowledgeName}/document/add`, data);
+};
+
+export const addSpace = (data: AddKnowledgeParams) => {
+  return POST<AddKnowledgeParams, number>(`/knowledge/space/add`, data);
+};
+
+export const getChunkStrategies = () => {
+  return GET<null, Array<IChunkStrategyResponse>>('/knowledge/document/chunkstrategies');
+};
+
+export const syncDocument = (spaceName: string, data: Record<string, Array<number>>) => {
+  return POST<Record<string, Array<number>>, string | null>(`/knowledge/${spaceName}/document/sync`, data);
+};
+
+export const syncBatchDocument = (spaceName: string, data: Array<ISyncBatchParameter>) => {
+  return POST<Array<ISyncBatchParameter>, ISyncBatchResponse>(`/knowledge/${spaceName}/document/sync_batch`, data);
+};
+
+export const uploadDocument = (knowLedgeName: string, data: FormData) => {
+  return POST<FormData, number>(`/knowledge/${knowLedgeName}/document/upload`, data);
+};
+
+export const getChunkList = (spaceName: string, data: ChunkListParams) => {
+  return POST<ChunkListParams, IChunkList>(`/knowledge/${spaceName}/chunk/list`, data);
+};
+
+export const delDocument = (spaceName: string, data: Record<string, number>) => {
+  return POST<Record<string, number>, null>(`/knowledge/${spaceName}/document/delete`, data);
+};
+
+export const delSpace = (data: Record<string, string>) => {
+  return POST<Record<string, string>, null>(`/knowledge/space/delete`, data);
 };
 
 /** models */
@@ -523,14 +413,22 @@ export const modelSearch = (data: Record<string, string>) => {
   return POST<Record<string, string>, []>('/api/controller/models', data);
 };
 
-// TODO: rewire to new knowledge-vault page — getKnowledgeAdmins / updateKnowledgeAdmins removed (hit /knowledge/users/...).
-// TODO: rewire to new knowledge-vault page — getSpaceConfig removed (hit /knowledge/space/config).
+export const getKnowledgeAdmins = (spaceId: string) => {
+  return GET<string, Record<string, any>>(`/knowledge/users/list?space_id=${spaceId}`);
+};
+export const updateKnowledgeAdmins = (data: Record<string, string>) => {
+  return POST<Record<string, any>, any[]>(`/knowledge/users/update`, data);
+};
 
 /** AWEL Flow */
 
 /** app */
 export const delApp = (data: Record<string, string>) => {
   return POST<Record<string, string>, []>('/api/v1/app/remove', data);
+};
+
+export const getSpaceConfig = () => {
+  return GET<string, SpaceConfig>(`/knowledge/space/config`);
 };
 
 /** MCP */

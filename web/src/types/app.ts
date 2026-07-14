@@ -79,20 +79,6 @@ export interface SubagentConfig {
 }
 
 /**
- * 首页场景入驻配置
- */
-export interface HomeSceneConfig {
-  /** 是否入驻首页 */
-  featured: boolean;
-  /** 排序位置（越小越靠前） */
-  position?: number;
-  /** antd 图标名称，如 "HeartOutlined" */
-  icon_type?: string;
-  /** 渐变背景色，如 "from-blue-400 to-blue-500" */
-  bg_color?: string;
-}
-
-/**
  * 扩展配置 - 分布式执行设置
  */
 export interface ExtConfig {
@@ -100,8 +86,6 @@ export interface ExtConfig {
   worker_pool?: WorkerPoolConfig;
   monitoring?: MonitoringConfig;
   subagents?: SubagentConfig[];
-  /** 首页场景入驻配置 */
-  home_scene?: HomeSceneConfig;
 }
 
 // =============================================================================
@@ -402,26 +386,6 @@ export type IApp = {
    */
   resource_agent?: ResourceAgent[];
   /**
-   * 记忆资源绑定
-   *
-   * value JSON 结构：
-   *   {
-   *     memories: Array<{ memory_id: string; memory_name: string }>,
-   *     auto_memory: boolean,            // 默认 true
-   *     enable_kg: boolean,              // 默认 false
-   *     top_k: number,                   // 默认 5
-   *     reflection_interval: number,     // 默认 10（每 N 轮触发 tier 2 反思）
-   *     max_distance?: number,           // 默认 0.4
-   *     min_content_length?: number,     // 默认 50
-   *     wing?: string                    // 默认 "default"
-   *   }
-   */
-  resource_memory?: Array<{
-    type: string;
-    name: string;
-    value: string;
-  }>;
-  /**
    * Agent 运行时配置
    */
   runtime_config?: AgentRuntimeConfig;
@@ -542,75 +506,3 @@ export interface NativeAppScenesResponse {
   scene_name: string;
   param_need: ParamNeed[];
 }
-
-// --------------------------------------------------------------------------
-// Unified Hook System types
-// --------------------------------------------------------------------------
-
-export type HookKind = 'agent' | 'api' | 'cli' | 'function';
-
-export type BlockingPolicy = 'continue' | 'deny' | 'abort' | 'modify';
-
-export type HookTriggerType =
-  | 'pre_tool_use'
-  | 'post_tool_use'
-  | 'conversation_start'
-  | 'conversation_complete'
-  | 'turn_complete'
-  | 'state_change'
-  | 'user_prompt_submit'
-  | 'error_occurred';
-
-export interface HookEndpointConfig {
-  kind: HookKind;
-  // agent
-  agent_name?: string;
-  agent_app_code?: string;
-  // api
-  api_url?: string;
-  api_headers?: Record<string, string>;
-  api_auth_token?: string;
-  // cli
-  cli_command?: string;
-  cli_allowlist?: string[];
-  cli_in_sandbox?: boolean;
-  cli_cwd?: string;
-  // function (in-process callable registered via FunctionRegistry)
-  function_name?: string;
-  // generic
-  timeout?: number;
-  blocking?: boolean;
-  default_on_error?: BlockingPolicy;
-}
-
-export interface HookTriggerConfig {
-  trigger_type: HookTriggerType;
-  tool_name_globs?: string[];
-  state_from?: string;
-  state_to?: string;
-  /** Only fire every N turns. Used with turn_complete.
-   * null/1 = every turn. N>1 fires when round % N == 0. */
-  every_n_turns?: number | null;
-  extra?: Record<string, any>;
-}
-
-export interface HookConfigItem {
-  name: string;
-  enabled: boolean;
-  trigger: HookTriggerConfig;
-  endpoint: HookEndpointConfig;
-  description?: string;
-  priority?: number;
-}
-
-export interface TeamHookConfig {
-  enabled: boolean;
-  hooks: HookConfigItem[];
-  plugin_paths: string[];
-}
-
-export const DEFAULT_TEAM_HOOK_CONFIG: TeamHookConfig = {
-  enabled: false,
-  hooks: [],
-  plugin_paths: [],
-};

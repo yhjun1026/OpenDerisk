@@ -35,38 +35,6 @@ export const updateApp = (data: CreateAppParams) => {
     },
   });
 };
-
-/**
- *  一键开启 Agent 记忆系统
- *  后端自动创建 per-agent 默认 Memory 空间并写入 resource_memory
- */
-export const enableAppMemory = (appCode: string) => {
-  return POST<null, {
-    memory_id: string;
-    memory_name: string;
-    config: Record<string, any>;
-  }>(`/api/v1/app/building/memory/${appCode}/enable`, null);
-};
-
-/**
- *  关闭 Agent 记忆系统（清空 resource_memory，不删空间）
- */
-export const disableAppMemory = (appCode: string) => {
-  return POST<null, { disabled: boolean }>(
-    `/api/v1/app/building/memory/${appCode}/disable`,
-    null,
-  );
-};
-
-/**
- *  列出 FunctionRegistry 中注册的内置 function hook 落点
- *  Hooks tab 里 kind=function 的下拉选项
- */
-export const getHookFunctions = () => {
-  return GET<null, { functions: { name: string }[] }>(
-    `/api/v1/app/building/hooks/functions`,
-  );
-};
 /**
  *  应用列表
  */
@@ -184,18 +152,19 @@ export const getAgentDefaultPrompt = (agentName: string, language: string = 'en'
 };
 
 /**
- * 获取 Agent 列表
+ * 获取 Agent 列表（支持按版本过滤）
+ * @param version Agent版本: v1 或 v2
  */
-export const getAgentList = () => {
-  return GET<null, { version: string; agents: AgentTemplate[] }>(
-    `/api/agent/list?version=v1`,
+export const getAgentList = (version: 'v1' | 'v2' = 'v1') => {
+  return GET<null, { version: string; agents: V2AgentTemplate[] }>(
+    `/api/agent/list?version=${version}`,
   );
 };
 
 /**
- * Agent 模板类型
+ * V2 Agent 模板类型
  */
-export interface AgentTemplate {
+export interface V2AgentTemplate {
   name: string;
   display_name: string;
   description: string;

@@ -1,58 +1,53 @@
 'use client';
-import { apiInterceptors } from '@/client/api';
-import { listSpaces } from '@/client/api/knowledge-vault';
+import { getResourceV2 } from '@/client/api';
 import { AppContext } from '@/contexts';
 import { CheckCircleFilled, SearchOutlined, DatabaseOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { Input, Spin, Tooltip } from 'antd';
 import { useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { SpaceInfo } from '@/types/knowledge-vault';
 
 export default function TabKnowledge() {
   const { t } = useTranslation();
   const { appInfo, fetchUpdateApp } = useContext(AppContext);
   const [searchValue, setSearchValue] = useState('');
 
-  // Fetch knowledge spaces from the new vault backend.
-  const { data: knowledgeData, loading, refresh } = useRequest(
-    async () => {
-      const [, data] = await apiInterceptors(listSpaces());
-      return data || [];
-    }
-  );
+  // Fetch all available knowledge
+  const { data: knowledgeData, loading, refresh } = useRequest(async () => await getResourceV2({ type: 'knowledge' }));
 
+  // Extract available knowledge items
   const allKnowledge = useMemo(() => {
-    return (knowledgeData || [])
-      .filter((space: SpaceInfo) => !(space.slug || '').startsWith('memory-'))
-      .map((space: SpaceInfo) => ({
-        key: space.slug,
-        value: space.slug,
-        label: space.slug,
-        name: space.slug,
-        description: space.root,
-      }));
+    const items: any[] = [];
+    knowledgeData?.data?.data?.forEach((group: any) => {
+      if (group.param_name === 'knowledge') {
+        group.valid_values?.forEach((item: any) => {
+          items.push({ ...item });
+        });
+      }
+    });
+    return items;
   }, [knowledgeData]);
 
-  // Currently enabled knowledge slugs (legacy `knowledge_id` field name kept
-  // for back-compat with the App builder resource_knowledge structure).
+  // Get currently enabled knowledge ids
   const enabledKnowledgeIds = useMemo(() => {
     const resourceKnowledge = appInfo?.resource_knowledge?.[0]?.value;
     if (!resourceKnowledge) return [];
     try {
       const parsed = JSON.parse(resourceKnowledge);
-      return (parsed?.knowledges || []).map((k: any) => k.knowledge_id || k.slug);
+      return (parsed?.knowledges || []).map((k: any) => k.knowledge_id);
     } catch {
       return [];
     }
   }, [appInfo?.resource_knowledge]);
 
+  // Filter by search
   const filteredKnowledge = useMemo(() => {
     if (!searchValue) return allKnowledge;
     const lower = searchValue.toLowerCase();
     return allKnowledge.filter(k => (k.label || k.name || '').toLowerCase().includes(lower) || (k.key || '').toLowerCase().includes(lower));
   }, [allKnowledge, searchValue]);
 
+  // Toggle knowledge on/off
   const handleToggle = (knowledge: any) => {
     const knowledgeId = knowledge.key || knowledge.value;
     const knowledgeName = knowledge.label || knowledge.name;
@@ -69,7 +64,8 @@ export default function TabKnowledge() {
     }
 
     if (isEnabled) {
-      const updatedKnowledges = currentKnowledges.filter((k: any) => (k.knowledge_id || k.slug) !== knowledgeId);
+      // Remove
+      const updatedKnowledges = currentKnowledges.filter((k: any) => k.knowledge_id !== knowledgeId);
       const newResourceKnowledge = [{
         ...(appInfo.resource_knowledge?.[0] || {}),
         type: 'knowledge_pack',
@@ -78,6 +74,7 @@ export default function TabKnowledge() {
       }];
       fetchUpdateApp({ ...appInfo, resource_knowledge: updatedKnowledges.length > 0 ? newResourceKnowledge : [] });
     } else {
+      // Add
       const updatedKnowledges = [...currentKnowledges, { knowledge_id: knowledgeId, knowledge_name: knowledgeName }];
       const newResourceKnowledge = [{
         ...(appInfo.resource_knowledge?.[0] || {}),
@@ -89,8 +86,9 @@ export default function TabKnowledge() {
     }
   };
 
+  // Navigate to create a new knowledge base in a new tab
   const handleCreateKnowledge = () => {
-    window.open('/knowledge-vault', '_blank');
+    window.open('/knowledge', '_blank');
   };
 
   return (

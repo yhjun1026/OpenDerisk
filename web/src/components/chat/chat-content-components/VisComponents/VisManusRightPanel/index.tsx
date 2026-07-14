@@ -25,7 +25,7 @@ import {
   FilePdfOutlined,
   PrinterOutlined,
 } from '@ant-design/icons';
-import { Tooltip, Dropdown, message, Modal } from 'antd';
+import { Tooltip, Dropdown, message } from 'antd';
 import type { MenuProps } from 'antd';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -53,7 +53,6 @@ import {
   SkillReadRenderer,
   SqlQueryRenderer,
 } from './renderers';
-import FilePreviewModal from '../FilePreviewModal';
 
 interface IProps {
   data: ManusRightPanelData;
@@ -171,8 +170,7 @@ const StepRenderer: FC<{
     case 'skill':
       if (action === 'skill_read') return <SkillReadRenderer outputs={outputs} skillName={activeStep.title} />;
       if (action === 'skill_exec' || action === 'execute_skill_script_file') return <SkillScriptRenderer outputs={outputs} skillName={activeStep.title} />;
-      if (action === 'skill_list') return <OutputRenderer outputs={outputs} />;
-      if (action === 'get_skill_resource' || action === 'load_skill') return <SkillCardRenderer outputs={outputs} skillName={activeStep.title} />;
+      if (action === 'skill_list' || action === 'get_skill_resource' || action === 'load_skill') return <SkillCardRenderer outputs={outputs} skillName={activeStep.title} />;
       return <SkillReadRenderer outputs={outputs} skillName={activeStep.title} />;
     default:
       return <OutputRenderer outputs={outputs} />;
@@ -257,36 +255,56 @@ const getFileTypeColor = (fileType: string): string => {
    TaskFilesView
    ═══════════════════════════════════════════════════════════════ */
 
-/** Resolve a preview URL for a task file.
- *  The backend's relative preview_url currently points to the direct download
- *  endpoint (/files/{bucket}/{file_id}), which always returns attachment.
- *  We therefore prefer the derisk-fs:// oss_url and route it through the
- *  /files/preview endpoint, which returns inline Content-Disposition for
- *  previewable MIME types. */
+/** Resolve a usable URL for a task file, handling derisk-fs:// URIs and object_path fallback */
 const resolveTaskFilePreviewUrl = (file: ManusTaskFileItem): string | null => {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-  if (file.oss_url?.startsWith('derisk-fs://')) {
-    return `${apiBaseUrl}/api/v2/serve/file/files/preview?uri=${encodeURIComponent(file.oss_url)}`;
+  // 1. Try direct preview_url
+  const raw = file.preview_url || file.oss_url;
+  if (raw) {
+    if (raw.startsWith('derisk-fs://')) {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      return `${apiBaseUrl}/api/v2/serve/file/files/preview?uri=${encodeURIComponent(raw)}`;
+    }
+    if (raw.startsWith('http')) return transformFileUrl(raw);
   }
-  if (file.preview_url?.startsWith('http')) return transformFileUrl(file.preview_url);
+  // 2. Try object_path → API endpoint (same as VisDAttach)
   if (file.object_path) {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
     return `${apiBaseUrl}/api/oss/getFileByFileName?fileName=${encodeURIComponent(file.object_path)}`;
   }
   return null;
 };
 
-/** Resolve a download URL for a task file. */
 const resolveTaskFileDownloadUrl = (file: ManusTaskFileItem): string | null => {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
   const raw = file.download_url || file.oss_url;
-  if (!raw) return null;
-  if (raw.startsWith('http')) return transformFileUrl(raw);
-  if (raw.startsWith('derisk-fs://')) return transformFileUrl(raw);
-  if (raw.startsWith('/')) return `${apiBaseUrl}${raw}`;
+  if (raw) {
+    if (raw.startsWith('derisk-fs://')) {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      return `${apiBaseUrl}/api/v2/serve/file/files/preview?uri=${encodeURIComponent(raw)}&download=true`;
+    }
+    if (raw.startsWith('http')) return transformFileUrl(raw);
+  }
   if (file.object_path) {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
     return `${apiBaseUrl}/api/oss/getFileByFileName?fileName=${encodeURIComponent(file.object_path)}`;
   }
   return null;
+};
+
+const handleTaskFilePreview = async (file: ManusTaskFileItem) => {
+  const url = resolveTaskFilePreviewUrl(file);
+  if (!url) return;
+  try {
+    // Fetch and open as blob to force inline display (avoid server Content-Disposition: attachment)
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const mimeType = file.mime_type || (file.file_name?.endsWith('.txt') ? 'text/plain' : blob.type) || 'text/plain';
+    const inlineBlob = new Blob([blob], { type: mimeType });
+    const blobUrl = URL.createObjectURL(inlineBlob);
+    window.open(blobUrl, '_blank', 'noopener,noreferrer');
+  } catch {
+    // Fallback: open URL directly
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 };
 
 const handleTaskFileDownload = (file: ManusTaskFileItem) => {
@@ -302,8 +320,6 @@ const handleTaskFileDownload = (file: ManusTaskFileItem) => {
 };
 
 const TaskFilesView: FC<{ files: ManusTaskFileItem[] }> = ({ files }) => {
-  const [previewFile, setPreviewFile] = useState<ManusTaskFileItem | null>(null);
-
   if (!files || files.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-32 text-gray-400">
@@ -314,67 +330,60 @@ const TaskFilesView: FC<{ files: ManusTaskFileItem[] }> = ({ files }) => {
   }
 
   return (
-    <>
-      <div className="p-5">
-        <div className="text-xs text-gray-400 mb-3">
-          共 {files.length} 个文件，总大小 {formatFileSize(files.reduce((sum, f) => sum + f.file_size, 0))}
-        </div>
-        <div className="space-y-1.5">
-          {files.map((file) => {
-            const previewUrl = resolveTaskFilePreviewUrl(file);
-            const downloadUrl = resolveTaskFileDownloadUrl(file);
-            return (
-              <div
-                key={file.file_id}
-                className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg hover:bg-gray-50 transition-colors group"
-              >
-                <span className="text-base flex-shrink-0">{getFileIcon(file.file_name)}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium text-gray-700 truncate">{file.file_name}</div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {file.file_size > 0 && (
-                      <span className="text-[11px] text-gray-400">{formatFileSize(file.file_size)}</span>
-                    )}
-                    {file.file_type && (
-                      <span className={classNames('text-[10px] px-1.5 py-px rounded font-medium', getFileTypeColor(file.file_type))}>
-                        {file.file_type}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                  {previewUrl && (
-                    <Tooltip title="预览">
-                      <button
-                        onClick={() => setPreviewFile(file)}
-                        className="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-                      >
-                        <EyeOutlined className="text-xs" />
-                      </button>
-                    </Tooltip>
+    <div className="p-5">
+      <div className="text-xs text-gray-400 mb-3">
+        共 {files.length} 个文件，总大小 {formatFileSize(files.reduce((sum, f) => sum + f.file_size, 0))}
+      </div>
+      <div className="space-y-1.5">
+        {files.map((file) => {
+          const previewUrl = resolveTaskFilePreviewUrl(file);
+          const downloadUrl = resolveTaskFileDownloadUrl(file);
+          return (
+            <div
+              key={file.file_id}
+              className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg hover:bg-gray-50 transition-colors group"
+            >
+              <span className="text-base flex-shrink-0">{getFileIcon(file.file_name)}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-medium text-gray-700 truncate">{file.file_name}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {file.file_size > 0 && (
+                    <span className="text-[11px] text-gray-400">{formatFileSize(file.file_size)}</span>
                   )}
-                  {downloadUrl && (
-                    <Tooltip title="下载">
-                      <button
-                        onClick={() => handleTaskFileDownload(file)}
-                        className="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-                      >
-                        <DownloadOutlined className="text-xs" />
-                      </button>
-                    </Tooltip>
+                  {file.file_type && (
+                    <span className={classNames('text-[10px] px-1.5 py-px rounded font-medium', getFileTypeColor(file.file_type))}>
+                      {file.file_type}
+                    </span>
                   )}
                 </div>
               </div>
-            );
-          })}
-        </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                {previewUrl && (
+                  <Tooltip title="预览">
+                    <button
+                      onClick={() => handleTaskFilePreview(file)}
+                      className="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                    >
+                      <EyeOutlined className="text-xs" />
+                    </button>
+                  </Tooltip>
+                )}
+                {downloadUrl && (
+                  <Tooltip title="下载">
+                    <button
+                      onClick={() => handleTaskFileDownload(file)}
+                      className="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                    >
+                      <DownloadOutlined className="text-xs" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <FilePreviewModal
-        visible={!!previewFile}
-        file={previewFile}
-        onClose={() => setPreviewFile(null)}
-      />
-    </>
+    </div>
   );
 };
 
@@ -384,16 +393,15 @@ const TaskFilesView: FC<{ files: ManusTaskFileItem[] }> = ({ files }) => {
 
 /** Resolve the best usable URL for a deliverable file.
  *  For derisk-fs:// URIs, use the preview API (returns inline Content-Disposition).
- *  For absolute URLs, use directly; for backend-relative paths, prepend the API base. */
+ *  For regular HTTPS URLs, use directly. */
 const resolveFileUrl = (file: ManusDeliverableFile): string | null => {
   const raw = file.content_url || file.download_url;
   if (!raw) return null;
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
   // derisk-fs:// URIs → use preview API endpoint for inline rendering
   if (raw.startsWith('derisk-fs://')) {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
     return `${apiBaseUrl}/api/v2/serve/file/files/preview?uri=${encodeURIComponent(raw)}`;
   }
-  if (raw.startsWith('/')) return `${apiBaseUrl}${raw}`;
   return transformFileUrl(raw);
 };
 

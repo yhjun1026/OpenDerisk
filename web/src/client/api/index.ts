@@ -1,5 +1,5 @@
 import { getUserId } from '@/utils';
-import { HEADER_USER_ID_KEY, STORAGE_USERINFO_KEY, STORAGE_USERINFO_VALID_TIME_KEY } from '@/utils/constants/index';
+import { HEADER_USER_ID_KEY } from '@/utils/constants/index';
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 
 export type ResponseType<T = any> = {
@@ -39,14 +39,6 @@ const LONG_TIME_API: string[] = [
   '/personal/agent/upload',
 ];
 
-// Endpoints whose 401 should NOT trigger a redirect (the page handles them inline).
-const AUTH_ENDPOINTS_BYPASS_REDIRECT = [
-  '/api/v1/auth/me',
-  '/api/v1/auth/local/login',
-  '/api/v1/auth/local/register',
-  '/api/v1/auth/oauth/status',
-];
-
 ins.interceptors.request.use(request => {
   const isLongTimeApi = LONG_TIME_API.some(item => request.url && request.url.indexOf(item) >= 0);
   if (!request.timeout) {
@@ -55,29 +47,6 @@ ins.interceptors.request.use(request => {
   request.headers.set(HEADER_USER_ID_KEY, getUserId());
   return request;
 });
-
-ins.interceptors.response.use(
-  response => response,
-  (error: AxiosError) => {
-    if (typeof window !== 'undefined' && error.response?.status === 401) {
-      const url = error.config?.url || '';
-      const path = window.location.pathname;
-      const onAuthPage = path.startsWith('/login') || path.startsWith('/auth/callback');
-      const bypass = AUTH_ENDPOINTS_BYPASS_REDIRECT.some(p => url.indexOf(p) >= 0);
-      if (!onAuthPage && !bypass) {
-        try {
-          localStorage.removeItem(STORAGE_USERINFO_KEY);
-          localStorage.removeItem(STORAGE_USERINFO_VALID_TIME_KEY);
-        } catch {
-          /* ignore */
-        }
-        const next = encodeURIComponent(path + window.location.search);
-        window.location.href = `/login?next=${next}`;
-      }
-    }
-    return Promise.reject(error);
-  },
-);
 
 export const GET = <Params = any, Response = any, D = any>(
   url: string,
@@ -115,7 +84,7 @@ export * from './app';
 export * from './chat';
 export * from './evaluate';
 export * from './flow';
-// TODO: rewire to new knowledge-vault page — `export * from './knowledge';` removed.
+export * from './knowledge';
 export * from './prompt';
 export * from './request';
 export * from './tools';
@@ -123,12 +92,3 @@ export * from './skill';
 export * from './cron';
 export * from './channel';
 export * from './monitoring';
-// Scenario Workspace MVP modules
-export * from './workspace';
-export * from './task';
-export * from './playbook';
-export * from './artifact';
-export * from './workspace-asset';
-export * from './delivery';
-export * from './intervention';
-export * from './trigger';

@@ -3,7 +3,6 @@ import markdownComponents, {
   preprocessLaTeX,
 } from "@/components/chat/chat-content-components/config";
 import { ChatContentContext } from "@/contexts";
-import { CompactChatContext } from "@/contexts/chat-content-context";
 import { IChatDialogueMessageSchema } from "@/types/chat";
 import { STORAGE_USERINFO_KEY } from "@/utils/constants/storage";
 import {
@@ -19,29 +18,22 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import React, { memo, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { transformFileUrl } from "@/utils";
 
 const UserIcon: React.FC = () => {
-  const [user, setUser] = React.useState<any>({});
-
-  React.useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_USERINFO_KEY);
-      if (stored) {
-        setUser(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
+  let user: any = {};
+  try {
+    user = JSON.parse(localStorage.getItem(STORAGE_USERINFO_KEY) ?? "{}");
+  } catch (e) {
+    console.error(e);
+  }
 
   return (
     <Avatar
-      src={user?.avatar_url || undefined}
+      src={user?.avatar_url}
       className="bg-gradient-to-tr from-[#31afff] to-[#1677ff] cursor-pointer shrink-0"
       size={32}
     >
-      {user?.nick_name?.charAt(0) || "U"}
+      {user?.nick_name}
     </Avatar>
   );
 };
@@ -51,7 +43,7 @@ const AgentIcon: React.FC = () => {
   
   return (
     <Avatar
-      src={appInfo?.icon || undefined}
+      src={appInfo?.icon}
       className="bg-gradient-to-tr from-[#52c41a] to-[#389e0d] cursor-pointer shrink-0"
       size={32}
     >
@@ -126,10 +118,9 @@ const ChatContent: React.FC<{
           template_introduce: string;
         };
   };
-  onLinkClick?: () => void;
+  onLinkClick: () => void;
   messages: any[];
-  compact?: boolean;
-}> = ({ content, onLinkClick, messages, compact }) => {
+}> = ({ content, onLinkClick, messages }) => {
   const { t } = useTranslation();
   const { context, role, thinking } = content;
   const isRobot = useMemo(() => role === "view", [role]);
@@ -219,45 +210,14 @@ const ChatContent: React.FC<{
     [cachePluginContext]
   );
 
-  const MAX_CONTEXT_PARSE_SIZE = 10_000_000; // 10MB limit for JSON parsing
-
   const _context = useMemo(() => {
     if (typeof value === 'string' && value.trim().startsWith('{')) {
-      // Size check: skip parsing if context is too large
-      if (value.length > MAX_CONTEXT_PARSE_SIZE) {
-        console.warn(`[ChatContent] Context too large (${value.length} chars), returning raw value`);
-        return value;
-      }
       try {
         const parsed = JSON.parse(value);
         // 检查 planning_window 字段是否存在（即使为空字符串也应该使用它，
         // 因为这意味着这是一个多窗口布局的数据格式）
         if ('planning_window' in parsed) {
-          let pw = parsed.planning_window || '';
-          // Strip trailing plain text after the last VIS tag block to avoid
-          // duplicate rendering (vis_final may append a conclusion that already
-          // appears in the structured VIS component or right-panel summary).
-          if (pw.includes('```manus-left-panel') || pw.includes('```manus-right-panel')) {
-            const lastVisClose = pw.lastIndexOf('\n```');
-            if (lastVisClose > 0) {
-              const afterClose = lastVisClose + 4; // length of '\n```'
-              const trailing = pw.substring(afterClose).trim();
-              if (trailing) {
-                pw = pw.substring(0, afterClose);
-              }
-            }
-          }
-          // Collapse excessive blank lines that produce empty paragraphs and
-          // make the compact Manus left panel feel too sparse. Skip code blocks
-          // so their internal formatting is preserved.
-          const codeBlocks: string[] = [];
-          pw = pw.replace(/(```[\s\S]*?```)/g, (match) => {
-            codeBlocks.push(match);
-            return '__MANUS_CODE_BLOCK_' + (codeBlocks.length - 1) + '__';
-          });
-          pw = pw.replace(/\n{3,}/g, '\n\n');
-          pw = pw.replace(/__MANUS_CODE_BLOCK_(\d+)__/g, (_, index) => codeBlocks[parseInt(index)]);
-          return pw;
+          return parsed.planning_window || '';
         }
         if (parsed?.vis) {
           const visData = typeof parsed.vis === 'string' ? JSON.parse(parsed.vis) : parsed.vis;
@@ -296,7 +256,7 @@ const ChatContent: React.FC<{
                         // @ts-ignore
                         img: ({ src, alt, ...props }) => (
                           <img
-                            src={transformFileUrl(src || '')}
+                            src={src}
                             alt={alt || 'image'}
                             className='max-w-full md:max-w-[80%] lg:max-w-[70%] object-contain'
                             style={{ maxHeight: '200px' }}
@@ -320,33 +280,19 @@ const ChatContent: React.FC<{
         </div>
       )}
       {isRobot && (
-        <div className={classNames('flex flex-1 justify-start items-start', compact ? 'pb-2 pt-3' : 'pb-4 pt-6')} style={{ gap: 12 }}>
+        <div className='flex flex-1 justify-start items-start pb-4 pt-6' style={{ gap: 12 }}>
           <AgentIcon />
-          <div className='flex flex-col flex-1 min-w-0 border-dashed border-r0 overflow-x-auto compact-markdown-container'>
+          <div className='flex flex-col flex-1 min-w-0 border-dashed border-r0 overflow-x-auto'>
             {/* @ts-ignore */}
-            <CompactChatContext.Provider value={!!compact}>
-              {compact && (
-                <style dangerouslySetInnerHTML={{ __html: `
-                  .compact-markdown-container > pre {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                  }
-                  .compact-markdown-container .markdown-content-wrap > pre {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                  }
-                `}} />
-              )}
-              <GPTVis
-                components={{
-                  ...markdownComponents,
-                  ...extraMarkdownComponents,
-                }}
-                {...markdownPlugins}
-              >
-                {preprocessLaTeX(formatMarkdownValForAgent(_context))}
-              </GPTVis>
-            </CompactChatContext.Provider>
+            <GPTVis
+              components={{
+                ...markdownComponents,
+                ...extraMarkdownComponents,
+              }}
+              {...markdownPlugins}
+            >
+              {preprocessLaTeX(formatMarkdownValForAgent(_context))}
+            </GPTVis>
             {thinking && !context && (
               <div className='flex items-center gap-2'>
                 <span className='flex text-sm text-[#1c2533] dark:text-white'>{t('thinking')}</span>

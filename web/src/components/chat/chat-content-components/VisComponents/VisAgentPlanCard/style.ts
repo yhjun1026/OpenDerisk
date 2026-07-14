@@ -5,7 +5,7 @@ export const VisAgentPlanCardWrap = styled.div`
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 0;
+  padding: 3px 0;
 
   &.selected {
     .header-plan {
@@ -17,7 +17,7 @@ export const VisAgentPlanCardWrap = styled.div`
   .header {
     width: 100%;
     border-radius: 8px;
-    padding: 4px 8px;
+    padding: 8px 10px;
     color: #334155;
     background: transparent;
     transition: background 0.15s ease;
@@ -123,7 +123,7 @@ export const VisAgentPlanCardWrap = styled.div`
   .markdown-content-wrap {
     width: 100%;
     background: transparent;
-    padding: 2px 0 0 0;
+    padding: 6px 0 0 0;
   }
 
   .markdown-content-wrap-stage {
@@ -237,30 +237,28 @@ export const VisAgentPlanCardWrap = styled.div`
   }
 
   .header-plan {
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(226, 232, 240, 0.6);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 10px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.85);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
     }
   }
 
   .header-task {
     width: fit-content;
     max-width: 85%;
-    background: rgba(255, 255, 255, 0.6);
-    border: 1px solid rgba(226, 232, 240, 0.5);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
-    padding: 3px 10px;
+    padding: 5px 12px;
     transition: all 0.15s ease;
     cursor: pointer;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.8);
+      background: #f1f5f9;
     }
 
     .task-icon {
@@ -300,18 +298,17 @@ export const VisAgentPlanCardWrap = styled.div`
   }
 
   .header-agent {
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(226, 232, 240, 0.6);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 5px 10px;
+    padding: 10px 12px;
     transition: all 0.15s ease;
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.85);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      background: #f8fafc;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
     }
 
     .task-icon {
@@ -340,7 +337,7 @@ export const VisAgentPlanCardWrap = styled.div`
   .header-stage {
     background: transparent;
     border-radius: 6px;
-    padding: 4px 6px 4px 0;
+    padding: 6px 8px 6px 0;
     transition: background 0.15s ease;
     cursor: pointer;
 

@@ -22,7 +22,7 @@ const VisMsgCard = ({ data }: IProps) => {
         <Bubble 
           content={data?.markdown}
           avatar={
-            <Avatar src={data?.avatar || undefined}/>
+            <Avatar src={data?.avatar}/>
           }
           header={
             data?.name || undefined

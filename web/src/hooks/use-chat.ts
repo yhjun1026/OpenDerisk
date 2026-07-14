@@ -7,22 +7,10 @@ import { message } from 'antd';
 import { useCallback, useState } from 'react';
 import { VisParser } from '@/utils/parse-vis';
 
-export type WorkspaceEventType =
-  | 'task_created'
-  | 'context_loaded'
-  | 'intervention_triggered'
-  | 'artifact_produced'
-  | 'delivery_sent'
-  | 'asset_referenced';
-
-export interface WorkspaceEvent {
-  type: WorkspaceEventType;
-  payload: Record<string, any>;
-}
-
 type Props = {
   queryAgentURL?: string;
   app_code?: string;
+  agent_version?: 'v1' | 'v2';
 };
 
 type ChatParams = {
@@ -34,7 +22,13 @@ type ChatParams = {
   onClose?: () => void;
   onDone?: () => void;
   onError?: (content: string, error?: Error) => void;
-  onWorkspaceEvent?: (event: WorkspaceEvent) => void;
+};
+
+type V2StreamChunk = {
+  type: 'response' | 'thinking' | 'tool_call' | 'error';
+  content: string;
+  metadata: Record<string, any>;
+  is_final: boolean;
 };
 
 export function parseChunkData(
@@ -55,19 +49,113 @@ export function parseChunkData(
   return { answerText, midMsgObject };
 }
 
-const useChat = ({ queryAgentURL = '/api/v1/chat/completions', app_code }: Props) => {
+const useChat = ({ queryAgentURL = '/api/v1/chat/completions', app_code, agent_version = 'v1' }: Props) => {
   const [ctrl, setCtrl] = useState<AbortController>({} as AbortController);
-  const [usageMetrics, setUsageMetrics] = useState<{
-    total: number;
-    prompt: number;
-    completion: number;
-    context_window: number;
-    ratio: number;
-    step_state?: string;
-  } | null>(null);
+  
+  const chatV2 = useCallback(async ({ data, onMessage, onClose, onDone, onError, ctrl }: ChatParams) => {
+    let messageText = '';
+    if (typeof data?.user_input === 'string') {
+      messageText = data.user_input;
+    } else if (data?.user_input?.content) {
+      const textItems = data.user_input.content.filter((item: any) => item.type === 'text');
+      messageText = textItems.map((item: any) => item.text).join(' ');
+    }
+
+    if (!messageText && !data?.doc_id) {
+      message.warning(i18n.t('no_context_tip'));
+      return;
+    }
+
+    const requestBody: Record<string, any> = {
+      message: messageText,
+      user_input: data?.user_input,
+      conv_uid: data?.conv_uid,
+      session_id: data?.conv_uid,
+      app_code: app_code,
+      agent_name: app_code,
+      model_name: data?.model_name,
+      select_param: data?.select_param,
+      chat_in_params: data?.chat_in_params,
+      temperature: data?.temperature,
+      max_new_tokens: data?.max_new_tokens,
+      work_mode: data?.work_mode || 'simple',
+      stream: true,
+      user_id: getUserId(),
+      ext_info: data?.ext_info || {},
+    };
+
+    if (data?.messages) {
+      requestBody.messages = data.messages;
+    }
+
+    const visParser = new VisParser();
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ''}/api/v2/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [HEADER_USER_ID_KEY]: getUserId() ?? '',
+        },
+        body: JSON.stringify(requestBody),
+        signal: ctrl?.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const vis = data.vis;
+              
+              if (typeof vis === 'string') {
+                if (vis === '[DONE]') {
+                  onDone?.();
+                } else if (vis.startsWith('[ERROR]')) {
+                  onError?.(vis.replace('[ERROR]', '').replace('[/ERROR]', ''));
+                } else {
+                  const merged = visParser.update(vis);
+                  onMessage?.(merged);
+                }
+              } else if (typeof vis === 'object' && vis !== null) {
+                // Handle metadata and other object messages
+                if (vis.type === 'metadata' || vis.type === 'interrupt') {
+                  onMessage?.(vis);
+                } else {
+                  onMessage?.(vis);
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+      onDone?.();
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        onError?.('Request failed', err);
+      }
+    }
+  }, [app_code]);
 
   const chatV1 = useCallback(
-    async ({ data, onMessage, onClose, onDone, onError, onWorkspaceEvent, ctrl }: ChatParams) => {
+    async ({ data, onMessage, onClose, onDone, onError, ctrl }: ChatParams) => {
       ctrl && setCtrl(ctrl);
       if (!data?.user_input && !data?.doc_id) {
         message.warning(i18n.t('no_context_tip'));
@@ -83,7 +171,6 @@ const useChat = ({ queryAgentURL = '/api/v1/chat/completions', app_code }: Props
       try {
         await fetchEventSource(`${process.env.NEXT_PUBLIC_API_BASE_URL ?? ''}${queryAgentURL}`, {
           method: 'POST',
-          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             [HEADER_USER_ID_KEY]: getUserId() ?? '',
@@ -109,22 +196,6 @@ const useChat = ({ queryAgentURL = '/api/v1/chat/completions', app_code }: Props
                 const vis = parsedData.vis;
                 if (vis.type === 'metadata' || vis.type === 'interrupt') {
                   onMessage?.(vis);
-                  return;
-                } else if (vis.type === 'error') {
-                  onError?.(vis.content || '对话发生错误');
-                  return;
-                } else if (vis.type === 'usage_metric') {
-                  setUsageMetrics(vis.payload);
-                  return;
-                } else if (
-                  vis.type === 'task_created' ||
-                  vis.type === 'context_loaded' ||
-                  vis.type === 'intervention_triggered' ||
-                  vis.type === 'artifact_produced' ||
-                  vis.type === 'delivery_sent' ||
-                  vis.type === 'asset_referenced'
-                ) {
-                  onWorkspaceEvent?.(vis as WorkspaceEvent);
                   return;
                 }
               }
@@ -157,12 +228,14 @@ const useChat = ({ queryAgentURL = '/api/v1/chat/completions', app_code }: Props
 
   const chat = useCallback(
     async (params: ChatParams) => {
+      const version = params.data?.agent_version || agent_version;
+      if (version === 'v2') return chatV2(params);
       return chatV1(params);
     },
-    [chatV1],
+    [agent_version, chatV1, chatV2],
   );
 
-  return { chat, ctrl, usageMetrics };
+  return { chat, ctrl };
 };
 
 export default useChat;

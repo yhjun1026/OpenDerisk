@@ -7,7 +7,7 @@
 
 // ============== Base Types ==============
 
-export type VisUpdateType = 'incr' | 'all' | 'delete';
+export type VisUpdateType = 'incr' | 'all';
 
 export type VisComponentState = 'pending' | 'streaming' | 'complete' | 'error';
 

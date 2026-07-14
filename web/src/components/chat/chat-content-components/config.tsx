@@ -252,7 +252,7 @@ export const codeComponents = {
         try {
           const data = JSON.parse(content);
           return (
-            <ErrorBoundary resetKeys={[content]} fallback={<MarkdownCard content={content} />}>
+            <ErrorBoundary fallback={<MarkdownCard content={content} />}>
               <FileAttach data={data} />
             </ErrorBoundary>
           );
@@ -375,12 +375,6 @@ export const basicComponents: { [key: string]: (props: any) => React.ReactNode }
   },
   h4({ children }) {
     return <h3 className='text-base font-semibold my-1'>{children}</h3>;
-  },
-  p({ children }) {
-    return <p>{children}</p>;
-  },
-  pre({ children }) {
-    return <pre style={{ margin: 0, padding: 0 }}>{children}</pre>;
   },
   a({ children, href }) {
     return (

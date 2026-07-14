@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { apiInterceptors } from '@/client/api';
 import {
   deleteRawFile,
@@ -10,22 +11,17 @@ import {
 } from '@/client/api/knowledge-vault';
 import type { VerbatFull } from '@/types/knowledge-vault';
 import { DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { Button, Empty, Spin, Tag, message } from 'antd';
+import { Button, Empty, Spin, Tag, Tooltip, message } from 'antd';
+import MarkdownIt from 'markdown-it';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import MarkdownEditor from './MarkdownEditor';
+import 'react-markdown-editor-lite/lib/index.css';
 import { useSpace } from './SpaceContext';
 
-/** 允许在 RawEditor 里编辑的文本类扩展名。
- *  raw/convos/ 下的 verbat 现在写 .md（含 [交付] section、表格、列表），
- *  旧的 .txt 也允许编辑，方便历史文件回填。二进制（图片/PDF/zip 等）
- *  仍走 Empty 占位。 */
-const TEXT_EDITABLE_EXTS = new Set(['.md', '.txt', '.markdown', '.text']);
+const MdEditor = dynamic(() => import('react-markdown-editor-lite'), {
+  ssr: false,
+});
 
-function isTextEditable(path: string | undefined | null): boolean {
-  if (!path) return false;
-  const lower = path.toLowerCase();
-  return Array.from(TEXT_EDITABLE_EXTS).some((ext) => lower.endsWith(ext));
-}
+const mdParser = new MarkdownIt({ html: false, linkify: true, typographer: true });
 
 export default function RawEditor() {
   const { slug, selectedRaw, setSelectedRaw, selectedVerbat, setSelectedVerbat, refresh } = useSpace();
@@ -162,10 +158,10 @@ export default function RawEditor() {
   }
 
   return (
-    <Spin spinning={loading} wrapperClassName="h-full">
+    <Spin spinning={loading} className="h-full">
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
-          <EditOutlined className="text-[#0C75FC]" />
+          <EditOutlined className="text-violet-500" />
           <span className="text-sm font-medium text-gray-800 truncate" title={selectedRaw || undefined}>
             {displayPath}
           </span>
@@ -174,7 +170,7 @@ export default function RawEditor() {
           <Button danger size="small" icon={<DeleteOutlined />} onClick={remove} loading={deleting}>
             删除
           </Button>
-          {isTextEditable(selectedRaw) && (
+          {selectedRaw?.endsWith('.md') && (
             <Button
               type="primary"
               size="small"
@@ -187,23 +183,29 @@ export default function RawEditor() {
             </Button>
           )}
         </div>
-        {!isTextEditable(selectedRaw) ? (
-          <Empty description="该文件类型暂不支持编辑（仅支持 .md / .txt）" className="mt-12" />
+        {!selectedRaw?.endsWith('.md') ? (
+          <Empty description="非 md 文件，暂不支持编辑" className="mt-12" />
         ) : (
           <>
             <div className="text-[11px] text-gray-400 px-4 py-2 bg-white">
               编辑 raw 原文件，保存后自动重新 ingest
             </div>
-            <div className="flex-1 min-h-0 bg-white overflow-hidden">
-              {!loading && (
-                <MarkdownEditor
-                  value={content}
-                  onChange={(text) => {
-                    setContent(text);
-                    setDirty(true);
-                  }}
-                />
+            <div className="flex-1 min-h-0 bg-white relative">
+              {!loading && content === '' && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                  <Empty description="文件内容为空" imageStyle={{ height: 40 }} />
+                </div>
               )}
+              <MdEditor
+                value={content}
+                style={{ height: '100%' }}
+                renderHTML={(text) => mdParser.render(text)}
+                onChange={({ text }) => {
+                  setContent(text);
+                  setDirty(true);
+                }}
+                view={{ menu: true, md: true, html: true }}
+              />
             </div>
           </>
         )}

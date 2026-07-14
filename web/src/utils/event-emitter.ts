@@ -9,22 +9,11 @@ export const EVENTS = {
   ADD_TASK: 'addTask',
   CLOSE_PANEL: 'closePanel',
   OPEN_PANEL: 'openPanel',
-  SWITCH_TAB: 'switchTab',
 };
 
 const DEBUG_EMITTER = false; // 调试 folder/work 联动时打开
 
 const rawEE = new EE();
-
-/**
- * 清理所有事件监听器（用于对话切换时的内存清理）
- */
-export const clearAllEventListeners = () => {
-  // Remove all listeners for all defined events
-  Object.values(EVENTS).forEach(event => {
-    rawEE.off(event);
-  });
-};
 
 /**
  * 用于全局通信，谨慎使用
@@ -43,10 +32,6 @@ export const ee = DEBUG_EMITTER
       emit: (event: string, ...args: any[]) => {
         console.log('[ee] emit', event, args);
         return rawEE.emit(event, ...args);
-      },
-      clearAll: () => {
-        console.log('[ee] clearAll');
-        return clearAllEventListeners();
       },
     }
   : rawEE;

@@ -16,12 +16,11 @@ import React, {
 } from "react";
 import BasicChatContent from "./content/basic-chat-content";
 import TaskChatContent from "./content/task-chat-content";
-import ManusChatContent from "./content/manus-chat-content";
 import { ChatContentContext } from '@/contexts';
 
-
-const ChatContentContainer = (props: { ctrl: AbortController; hideRightPanel?: boolean; workspaceId?: string | number; }, ref: React.ForwardedRef<any>) => {
-  const { ctrl, hideRightPanel, workspaceId } = props;
+ 
+const ChatContentContainer = (props: { ctrl: AbortController; }, ref: React.ForwardedRef<any>) => {
+  const { ctrl } = props;
   const { appInfo } = useContext(ChatContentContext);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollButtons, setShowScrollButtons] = useState<boolean>(false);
@@ -32,28 +31,16 @@ const ChatContentContainer = (props: { ctrl: AbortController; hideRightPanel?: b
     return containerRef.current;
   });
 
-  const isManusLayout = useMemo(() => {
-    const layoutName = appInfo?.layout?.chat_layout?.name;
-    const reuseName = appInfo?.layout?.chat_layout?.reuse_name;
-    return layoutName === 'vis_manus' || reuseName === 'vis_manus';
-  }, [appInfo?.layout?.chat_layout?.name, appInfo?.layout?.chat_layout?.reuse_name]);
-
   const isDoubleVis = useMemo(()=>{
     const layoutName = appInfo?.layout?.chat_layout?.name;
     const reuseName = appInfo?.layout?.chat_layout?.reuse_name;
-    return ['vis_window3', 'derisk_vis_window'].includes(layoutName) ||
+    return ['vis_window3', 'derisk_vis_window'].includes(layoutName) || 
            ['vis_window3', 'derisk_vis_window'].includes(reuseName);
   },[appInfo?.layout?.chat_layout?.name, appInfo?.layout?.chat_layout?.reuse_name]);
 
   return (
     <div ref={containerRef} className="flex flex-1 h-full w-full overflow-hidden">
-      {isManusLayout ? (
-        <ManusChatContent ctrl={ctrl} hideRightPanel={hideRightPanel} />
-      ) : isDoubleVis ? (
-        <TaskChatContent ctrl={ctrl} />
-      ) : (
-        <BasicChatContent ctrl={ctrl} workspaceId={workspaceId} />
-      )}
+      {isDoubleVis ? <TaskChatContent ctrl={ctrl} /> : <BasicChatContent ctrl={ctrl} />}
     </div>
   );
 };

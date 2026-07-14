@@ -2,10 +2,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Avatar,
   Button,
-  Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Space,
@@ -22,9 +21,8 @@ import {
   DeleteOutlined,
   ReloadOutlined,
   TeamOutlined,
-  UserAddOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
-import UserAvatar from '@/components/common/user-avatar';
 import { useTranslation } from 'react-i18next';
 import {
   permissionsService,
@@ -68,9 +66,6 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
   const [groupAssignSaving, setGroupAssignSaving] = useState(false);
   const [groupAssignUser, setGroupAssignUser] = useState<UnifiedUserRow | null>(null);
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
-  const [createUserOpen, setCreateUserOpen] = useState(false);
-  const [createUserSaving, setCreateUserSaving] = useState(false);
-  const [createForm] = Form.useForm();
 
   const loadUsers = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -193,11 +188,28 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
     }
   };
 
-  const handleToggleRole = async (user: UnifiedUserRow) => {
-    const nextRole = user.legacy_role === 'admin' ? 'normal' : 'admin';
+  const handleToggleAdmin = async (user: UnifiedUserRow) => {
+    const isAdmin = user.roles.includes('admin');
     try {
-      await usersService.updateUser(user.id, { role: nextRole });
-      message.success(nextRole === 'admin' ? t('permissions_set_admin') : t('permissions_unset_admin'));
+      if (isAdmin) {
+        // Remove admin RBAC role
+        const adminRole = allRoles.find((r) => r.name === 'admin');
+        if (adminRole) {
+          await permissionsService.batchRemoveRoles(user.id, [adminRole.id]);
+        }
+        // Also set legacy role to normal
+        await usersService.updateUser(user.id, { role: 'normal' });
+        message.success(t('permissions_unset_admin'));
+      } else {
+        // Assign admin RBAC role
+        const adminRole = allRoles.find((r) => r.name === 'admin');
+        if (adminRole) {
+          await permissionsService.batchAssignRoles(user.id, [adminRole.id]);
+        }
+        // Also set legacy role to admin (for checker.py bypass compatibility)
+        await usersService.updateUser(user.id, { role: 'admin' });
+        message.success(t('permissions_set_admin'));
+      }
       await loadUsers({ silent: true });
     } catch (e: unknown) {
       message.error(t('permissions_operation_failed') + ': ' + (e as Error).message);
@@ -243,34 +255,6 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
     setGroupAssignOpen(true);
   };
 
-  const handleCreateUser = async () => {
-    const values = await createForm.validateFields();
-    setCreateUserSaving(true);
-    try {
-      await usersService.createUser({
-        username: values.username,
-        password: values.password,
-        email: values.email,
-        fullname: values.fullname,
-        role_ids: values.role_ids,
-        is_active: values.is_active ? 1 : 0,
-      });
-      message.success(t('permissions_user_created'));
-      setCreateUserOpen(false);
-      createForm.resetFields();
-      loadUsers({ silent: true });
-    } catch (e: unknown) {
-      const err = e as { response?: { status?: number; data?: { detail?: string } } };
-      if (err.response?.status === 409) {
-        message.error(t('permissions_username_exists'));
-      } else {
-        message.error(t('permissions_create_user_error') + ': ' + (e as Error).message);
-      }
-    } finally {
-      setCreateUserSaving(false);
-    }
-  };
-
   const handleSaveGroupAssign = async () => {
     if (!groupAssignUser) return;
     const currentIds = getUserGroupIds(groupAssignUser.id);
@@ -310,7 +294,7 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
         key: 'avatar',
         width: 64,
         render: (_: string | undefined, record: UnifiedUserRow) => (
-          <UserAvatar avatarUrl={record.avatar} name={record.name || record.fullname} />
+          <Avatar src={record.avatar || undefined} icon={!record.avatar ? <UserOutlined /> : undefined} />
         ),
       },
       {
@@ -338,17 +322,6 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
         key: 'oauth_provider',
         width: 120,
         render: (provider: string) => (provider ? <Tag>{provider}</Tag> : <Text type="secondary">-</Text>),
-      },
-      {
-        title: t('permissions_legacy_role'),
-        dataIndex: 'legacy_role',
-        key: 'legacy_role',
-        width: 120,
-        render: (role: string) => (
-          <Tag color={role === 'admin' ? 'gold' : 'default'}>
-            {role === 'admin' ? t('permissions_admin_user') : t('permissions_normal_user')}
-          </Tag>
-        ),
       },
       {
         title: t('permissions_col_status'),
@@ -416,10 +389,10 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
             <Button type="link" size="small" onClick={() => openUserDetail(record.id)}>
               {t('permissions_add_authorization')}
             </Button>
-            <Button type="link" size="small" onClick={() => handleToggleRole(record)}>
-              {record.legacy_role === 'admin' ? t('permissions_unset_admin') : t('permissions_set_admin')}
+            <Button type="link" size="small" onClick={() => handleToggleAdmin(record)}>
+              {record.roles.includes('admin') ? t('permissions_unset_admin') : t('permissions_set_admin')}
             </Button>
-            {currentUser?.role === 'admin' && currentUser?.id !== record.id && (
+            {currentUser?.role === 'admin' && record.id !== currentUser.id && (
               <Popconfirm
                 title={t('permissions_delete_user_confirm')}
                 onConfirm={() => handleDelete(record)}
@@ -443,24 +416,13 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
             {t('permissions_user_management')}
           </Text>
         </Space>
-        <Space>
-          {currentUser?.role === 'admin' && (
-            <Button
-              type="primary"
-              icon={<UserAddOutlined />}
-              onClick={() => setCreateUserOpen(true)}
-            >
-              {t('permissions_create_user')}
-            </Button>
-          )}
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => loadUsers({ silent: true })}
-            loading={loading}
-          >
-            {t('refresh')}
-          </Button>
-        </Space>
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={() => loadUsers({ silent: true })}
+          loading={loading}
+        >
+          {t('refresh')}
+        </Button>
       </div>
 
       <div className="mb-4 flex items-center gap-2">
@@ -550,79 +512,6 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
             <UserPermissionsPanel userId={selectedUser.id} />
           </div>
         ) : null}
-      </Modal>
-
-      {/* Create User Modal */}
-      <Modal
-        title={t('permissions_create_user')}
-        open={createUserOpen}
-        onOk={handleCreateUser}
-        onCancel={() => {
-          setCreateUserOpen(false);
-          createForm.resetFields();
-        }}
-        confirmLoading={createUserSaving}
-        destroyOnClose
-      >
-        <Form
-          form={createForm}
-          layout="vertical"
-          initialValues={{ is_active: true, role_ids: [] }}
-        >
-          <Form.Item
-            name="username"
-            label={t('permissions_username')}
-            rules={[
-              { required: true, message: t('permissions_name_required') },
-              { min: 2, message: t('permissions_username_min_length') },
-            ]}
-          >
-            <Input placeholder={t('permissions_username_placeholder')} />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label={t('permissions_password')}
-            rules={[
-              { required: true, message: t('permissions_name_required') },
-              { min: 6, message: t('permissions_password_min_length') },
-            ]}
-          >
-            <Input.Password placeholder={t('permissions_password_placeholder')} />
-          </Form.Item>
-          <Form.Item
-            name="email"
-            label={t('permissions_email_optional')}
-          >
-            <Input placeholder={t('permissions_email_placeholder')} />
-          </Form.Item>
-          <Form.Item
-            name="fullname"
-            label={t('permissions_fullname_optional')}
-          >
-            <Input placeholder={t('permissions_fullname_placeholder')} />
-          </Form.Item>
-          <Form.Item
-            name="role_ids"
-            label={t('permissions_select_roles')}
-            extra={t('permissions_select_roles_hint')}
-          >
-            <Select
-              mode="multiple"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={allRoles.map((r) => ({ value: r.id, label: r.name }))}
-              placeholder={t('permissions_select_roles')}
-            />
-          </Form.Item>
-          <Form.Item
-            name="is_active"
-            label={t('permissions_status')}
-            valuePropName="checked"
-          >
-            <Switch checkedChildren={t('permissions_active')} unCheckedChildren={t('permissions_inactive')} />
-          </Form.Item>
-        </Form>
       </Modal>
     </div>
   );

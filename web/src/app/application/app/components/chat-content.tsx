@@ -31,6 +31,7 @@ function ChatContent() {
 
   const { chat, ctrl } = useChat({
     app_code: appInfo.app_code || '',
+    agent_version: appInfo.agent_version || 'v1',
   });
     const order = useRef<number>(1);
 
@@ -126,8 +127,7 @@ function ChatContent() {
             setCanAbort(true);
             if (message) {
               if (data?.incremental) {
-                // VisParser.update() 返回的是完整合并状态，直接替换而非追加
-                tempHistory[index].context = message;
+                tempHistory[index].context += message;
                 tempHistory[index].thinking = false;
               } else {
                 tempHistory[index].context = message;

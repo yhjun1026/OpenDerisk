@@ -170,10 +170,13 @@ table {
   overflow-x: auto;
 }
 
-.ant-spin-nested-loading {
-  height: 100%;
+.rc-md-editor {
+  height: inherit;
 }
 
+.rc-md-editor .editor-container>.section {
+  border-right: none !important;
+}
 .ant-spin-nested-loading .ant-spin-container {
   height: 100% !important;
   display: flex !important;
@@ -193,217 +196,9 @@ table {
   gap: 24px;
 }
 
-/* Knowledge Vault: make tab panels fill the sidebar height */
-.kv-tabs {
-  display: flex;
-  flex-direction: column;
-}
-
-.kv-tabs .ant-tabs {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.kv-tabs .ant-tabs-nav {
-  padding: 0 8px;
-  margin-bottom: 0;
-  flex-shrink: 0;
-}
-
-.kv-tabs .ant-tabs-content-holder {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.kv-tabs .ant-tabs-content {
-  height: 100%;
-}
-
-.kv-tabs .ant-tabs-tabpane {
-  height: 100%;
-  overflow: hidden;
-}
-
-.kv-tabs .ant-tabs-tabpane > div {
-  height: 100%;
-}
-
-/* Knowledge Vault: compact tree indentation */
-.kv-tree .ant-tree {
-  padding: 0 !important;
-  margin: 0 !important;
-  background: transparent !important;
-}
-
-.kv-tree .ant-tree-list {
-  padding: 0 !important;
-}
-
-.kv-tree .ant-tree-list-holder,
-.kv-tree .ant-tree-list-holder-inner {
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-.kv-tree .ant-tree-treenode {
-  padding: 2px 0 2px 2px !important;
-  margin: 0 !important;
-}
-
-.kv-tree .ant-tree-indent-unit {
-  width: 6px !important;
-}
-
-.kv-tree .ant-tree-node-content-wrapper {
-  padding: 0 2px 0 0 !important;
-  min-height: 20px !important;
-  line-height: 20px !important;
-  display: flex !important;
-  align-items: center !important;
-  min-width: 0 !important;
-}
-
-.kv-tree .ant-tree-switcher {
-  width: 12px !important;
-  line-height: 20px !important;
-  padding: 0 !important;
-  margin: 0 !important;
-}
-
-.kv-tree .ant-tree-iconEle {
-  margin-right: 2px !important;
-}
-
-.kv-tree .ant-tree-title {
-  font-size: 12px;
-  display: block !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  min-width: 0 !important;
-  flex: 1 1 auto !important;
-}
-
-.kv-tree .ant-tree-node-content-wrapper .ant-tree-title > span {
-  display: block !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  white-space: nowrap !important;
-  width: 100% !important;
-}
-
-/* Knowledge Vault: markdown editor fills center pane and scrolls */
-.rc-md-editor {
-  height: 100% !important;
-  min-height: 0 !important;
-  border: none !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
-
-.rc-md-editor .editor-container {
-  flex: 1 !important;
-  min-height: 0 !important;
-  display: flex !important;
-  width: 100% !important;
-  overflow: hidden !important;
-}
-
-.rc-md-editor .editor-container>.section {
-  flex: 1 !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-}
-
-.rc-md-editor .editor-container>.section>.section-container {
-  flex: 1 !important;
-  min-height: 0 !important;
-  overflow: auto !important;
-  padding: 8px 12px !important;
-  display: flex !important;
-  flex-direction: column !important;
-}
-
-.rc-md-editor .editor-container>.section>.section-container .html-wrap {
-  flex: 1 !important;
-  min-height: 0 !important;
-  overflow: auto !important;
-}
-
-.rc-md-editor .editor-container .sec-md .input,
-.rc-md-editor .editor-container .sec-html .html-wrap {
-  height: 100% !important;
-  overflow: auto !important;
-}
-
 @media (max-width: 768px) {
   .skill-grid,
   .explore-grid {
     grid-template-columns: 1fr;
-  }
-}
-
-/* ===== Print styles ===== */
-@media print {
-  /* Hide sidebar, navigation, and non-essential UI */
-  nav,
-  aside,
-  .ant-layout-sider,
-  [class*="sidebar"],
-  [class*="Sidebar"] {
-    display: none !important;
-  }
-
-  /* Hide chat input, header actions, toggle buttons */
-  [class*="UnifiedChatInput"],
-  [class*="chat-input"],
-  .fixed {
-    display: none !important;
-  }
-
-  /* Remove overflow constraints so content flows across pages */
-  html, body {
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  * {
-    overflow: visible !important;
-    max-height: none !important;
-  }
-
-  /* Remove background gradients for cleaner printing */
-  body {
-    background: white !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* Make containers full-width and remove fixed heights */
-  .flex.h-full.w-full {
-    display: block !important;
-    height: auto !important;
-    background: white !important;
-  }
-
-  /* Ensure page breaks work properly */
-  h1, h2, h3, h4, h5, h6 {
-    page-break-after: avoid;
-  }
-
-  table, figure, img {
-    page-break-inside: avoid;
-  }
-
-  /* Remove shadows and borders for clean print */
-  [style*="boxShadow"],
-  [style*="box-shadow"] {
-    box-shadow: none !important;
   }
 }

@@ -1,1 +1,1 @@
-export const HEADER_USER_ID_KEY = 'X-User-ID';
+export const HEADER_USER_ID_KEY = 'user-id';
