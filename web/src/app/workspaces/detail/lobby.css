@@ -150,14 +150,30 @@
   font-weight: 400;
 }
 
-.ws-lobby__input {
+.ws-lobby__input-hint {
   position: sticky;
   bottom: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--ws-border, #e5e7eb);
+  padding: 10px 14px;
+  border: 1px dashed var(--ws-border, #e5e7eb);
   border-radius: 8px;
   background: var(--ws-bg, #fff);
+  color: var(--ws-ink-3, #94a3b8);
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--ws-transition, .15s);
   z-index: 10;
+}
+.ws-lobby__input-hint:hover {
+  border-color: var(--ws-accent, #0069fe);
+  color: var(--ws-accent, #0069fe);
+}
+.ws-lobby__input-hint code {
+  font-family: var(--ws-mono, ui-monospace, monospace);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ws-border-subtle, #f0f0f5);
+  color: var(--ws-ink-2, #475569);
 }
 
 .ws-empty {

@@ -11,7 +11,6 @@ import {
   listDeliveries,
   listPlaybooks,
 } from '@/client/api';
-import { LobbyChatInput } from './lobby-chat-input';
 import { GrowthCard } from './growth-card';
 import './lobby.css';
 
@@ -164,12 +163,9 @@ export function Lobby({
           </div>
         </section>
 
-        {/* 输入框常驻底部 */}
-        <div className="ws-lobby__input">
-          <LobbyChatInput
-            placeholder="发起新任务..."
-            onSend={onSendFirstMessage}
-          />
+        {/* 发起入口：引导到右侧 Agent 输入框（场景空间单输入框设计） */}
+        <div className="ws-lobby__input-hint" onClick={() => onSendFirstMessage('')} role="button">
+          发起新任务… 在右侧输入框下达指令，或输入 <code>/</code> 选择剧本
         </div>
       </div>
 
