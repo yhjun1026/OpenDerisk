@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import {
   ApartmentOutlined,
+  BarChartOutlined,
   BookOutlined,
   FileOutlined,
   FileSearchOutlined,
@@ -18,6 +19,7 @@ const ITEMS: { value: View; label: string; icon: React.ReactNode }[] = [
   { value: 'graph', label: 'Graph', icon: <ApartmentOutlined /> },
   { value: 'schema', label: 'Schema', icon: <FileSearchOutlined /> },
   { value: 'lint', label: 'Lint', icon: <ToolOutlined /> },
+  { value: 'usage', label: 'Usage', icon: <BarChartOutlined /> },
   { value: 'settings', label: 'Settings', icon: <SettingOutlined /> },
 ];
 

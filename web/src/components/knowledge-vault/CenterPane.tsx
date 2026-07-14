@@ -9,6 +9,7 @@ const GraphCanvas = lazy(() => import('./GraphCanvas'));
 const SchemaEditor = lazy(() => import('./SchemaEditor'));
 const LintView = lazy(() => import('./LintView'));
 const SpaceSettings = lazy(() => import('./SpaceSettings'));
+const UsageView = lazy(() => import('./UsageView'));
 
 export default function CenterPane() {
   const { view, slug, openDoc } = useSpace();
@@ -19,6 +20,7 @@ export default function CenterPane() {
     graph: <GraphCanvas />,
     schema: <SchemaEditor slug={slug} />,
     lint: <LintView slug={slug} onOpenDoc={openDoc} />,
+    usage: <UsageView slug={slug} />,
     settings: <SpaceSettings slug={slug} />,
   };
 

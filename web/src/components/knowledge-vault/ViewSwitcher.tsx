@@ -4,6 +4,7 @@ import { useSpace, type View } from './SpaceContext';
 import { Segmented } from 'antd';
 import {
   ApartmentOutlined,
+  BarChartOutlined,
   BookOutlined,
   FileOutlined,
   FileSearchOutlined,
@@ -17,6 +18,7 @@ const OPTIONS = [
   { value: 'graph', label: 'Graph', icon: <ApartmentOutlined /> },
   { value: 'schema', label: 'Schema', icon: <FileSearchOutlined /> },
   { value: 'lint', label: 'Lint', icon: <ToolOutlined /> },
+  { value: 'usage', label: 'Usage', icon: <BarChartOutlined /> },
   { value: 'settings', label: 'Settings', icon: <SettingOutlined /> },
 ];
 

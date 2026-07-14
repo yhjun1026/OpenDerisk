@@ -582,6 +582,14 @@ function SideBar() {
         icon: <DashboardOutlined className='w-5 h-5 text-gray-500' />,
         path: '/monitoring',
       }] : []),
+      // async task engine - task management
+      ...(hasResourceRead('tool') ? [{
+        key: 'tasks',
+        name: '任务引擎',
+        isActive: pathname.startsWith('/tasks'),
+        icon: <ClockCircleOutlined className='w-5 h-5 text-gray-500' />,
+        path: '/tasks',
+      }] : []),
     ];
 
     const items: RouteItem[] = [
