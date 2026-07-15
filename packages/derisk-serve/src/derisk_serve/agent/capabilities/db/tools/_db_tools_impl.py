@@ -112,7 +112,7 @@ def _resolve_db_from_agent(db_name: str, kwargs: Dict, context=None) -> tuple:
         (connector, datasource_id): connector 可能为 None
     """
     # V2 路径: 从 ToolContext 获取 db_resource
-    if context is not None:
+    if context is not None and hasattr(context, "get_resource"):
         db_resource = context.get_resource("db_resource")
         if db_resource is not None:
             connector = getattr(db_resource, "_connector", None) or getattr(
