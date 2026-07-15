@@ -9,7 +9,7 @@ use derisk;
 -- MySQL DDL Script for Derisk
 -- Version: 0.3.0
 -- Generated from SQLAlchemy ORM Models
--- Generated: 2026-07-09 22:50:13
+-- Generated: 2026-07-15 17:24:21
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -427,7 +427,7 @@ CREATE TABLE IF NOT EXISTS `gpts_tool` (
   `gmt_modified` DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last update time',
   `gmt_modify` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   PRIMARY KEY (`id`),
-  KEY `idx_tool_name` (`tool_id`),
+  KEY `idx_gpts_tool_tool_id` (`tool_id`),
   KEY `idx_tool_detail_id` (`tool_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -471,7 +471,7 @@ CREATE TABLE IF NOT EXISTS `gpts_tool_messages` (
   `gmt_modify` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   PRIMARY KEY (`id`),
   KEY `idx_tool_id` (`tool_id`),
-  KEY `idx_tool_name` (`name`),
+  KEY `idx_gpts_tool_messages_name` (`name`),
   KEY `idx_tool_name_sub_name` (`name`, `sub_name`),
   KEY `idx_session_id` (`session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
