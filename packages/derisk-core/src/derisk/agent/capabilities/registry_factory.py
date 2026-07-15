@@ -193,11 +193,18 @@ class CapabilityFactoryRegistry:
             except Exception:  # noqa: BLE001
                 pass  # 回退到下方通用逻辑
 
-        # 通用回退:value 已是 dict → 直接用;string → 包成 {name: value}。
+        # 通用回退:value 已是 dict → 直接用;string → 包成含 db_name/name 的 dict。
+        # 对齐旧路径 DatasourceDBParameters.from_dict 的字段映射:
+        # value(string) → {db_name: value, name: ar.name, value: value}
+        # 使 DBCapability.from_config 能正确取到 db_name(而非仅 name)。
         if isinstance(raw_value, dict):
             return raw_value
         if isinstance(raw_value, str):
-            return {"name": name or raw_value, "value": raw_value}
+            return {
+                "db_name": name or raw_value,
+                "name": name or raw_value,
+                "value": raw_value,
+            }
         return {}
 
 
