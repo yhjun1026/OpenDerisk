@@ -124,6 +124,7 @@ class CapabilityFactoryRegistry:
         except Exception:  # noqa: BLE001
             pass
 
+        seen_keys = set()  # 去重:同 (type, name) 只产一个 Capability
         for ar in agent_resources:
             type_key = getattr(ar, "type", None)
             if not type_key:
@@ -131,6 +132,14 @@ class CapabilityFactoryRegistry:
             factory = self._factories.get(type_key)
             if factory is None:
                 continue  # 无 factory(边角类),留旧 Resource
+            ar_name = getattr(ar, "name", None) or ""
+            # 跳过空壳重复条目(name 是"用户选择了..."/"对话选择..."这种泛型占位,不是真实资源名)
+            if ar_name and ("用户选择了" in ar_name or "对话选择" in ar_name):
+                continue
+            dedup_key = (type_key, ar_name)
+            if dedup_key in seen_keys:
+                continue  # 去重
+            seen_keys.add(dedup_key)
             # 规范化 value:优先用 ResourceManager 的 parameter_cls.from_dict
             # (每种资源类型自带的参数类知道怎么从 string/dict 提取字段)。
             value = self._normalize_value(ar, rm)
