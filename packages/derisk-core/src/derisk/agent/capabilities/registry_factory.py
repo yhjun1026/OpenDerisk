@@ -105,12 +105,25 @@ class CapabilityFactoryRegistry:
 
         遍历 agent_resources,对每个有 factory 的 type 调 factory(value, system_app) 产
         Capability 装包;无 factory 的 type 跳过(留旧 Resource 路径)。未 discover 时先 discover。
+
+        value 规范化:AgentResource.value 可能是 string(历史 db_name/skill_name)或
+        dict(v2 JSON)。不动 build_pack 逻辑,交给 ResourceManager 的 parameter_cls.from_dict
+        做规范化(每种资源类型的参数类自己知道怎么从 string/dict 提取字段)——动态注册的
+        新资源类型自动适配,无需在 build_pack 里硬编码。
         """
         if not self._discovered:
             self.discover()
         pack = CapabilityPack()
         if not agent_resources:
             return pack
+        # 复用 ResourceManager 的 parameter_cls 做 value 规范化(动态类型解析)。
+        rm = None
+        try:
+            from derisk.agent.resource.manage import get_resource_manager
+            rm = get_resource_manager(system_app)
+        except Exception:  # noqa: BLE001
+            pass
+
         for ar in agent_resources:
             type_key = getattr(ar, "type", None)
             if not type_key:
@@ -118,36 +131,65 @@ class CapabilityFactoryRegistry:
             factory = self._factories.get(type_key)
             if factory is None:
                 continue  # 无 factory(边角类),留旧 Resource
-            value = getattr(ar, "value", None)
-            if value is None:
-                value = {}
-            # AgentResource.value 可能是 string(db_name、skill_name 等)非 dict,
-            # 按 type_key 包成对应 dict 给 factory(避免 'str' has no attribute 'get')。
-            if isinstance(value, str):
-                name = getattr(ar, "name", None) or value
-                if type_key == "datasource":
-                    value = {"db_name": name}
-                elif type_key == "skill(derisk)":
-                    value = {"skill_name": name, "name": name}
-                elif type_key == "app":
-                    value = {"app_name": name, "app_code": name}
-                elif type_key == "knowledge_pack":
-                    value = {"knowledges": [{"name": name, "knowledge_id": name}]}
-                elif type_key == "tool":
-                    value = {"mcp_name": name, "name": name}
-                else:
-                    value = {"name": name}
+            # 规范化 value:优先用 ResourceManager 的 parameter_cls.from_dict
+            # (每种资源类型自带的参数类知道怎么从 string/dict 提取字段)。
+            value = self._normalize_value(ar, rm)
             try:
                 cap = factory(value, system_app)
             except Exception as e:  # noqa: BLE001
                 logger.warning(
                     f"capability factory {type_key} failed for "
                     f"{getattr(ar,'name','?')}: {e}; skipping"
+                    f"{getattr(ar,'name','?')}: {e}; skipping"
                 )
                 continue
             if cap is not None:
                 pack.add(cap)
         return pack
+
+    @staticmethod
+    def _normalize_value(ar: Any, rm: Any = None) -> dict:
+        """将 AgentResource.value 规范化为 dict,供 Capability factory 使用。
+
+        优先复用 ResourceManager 的 parameter_cls.from_dict(动态类型解析:每种资源
+        类型的参数类自己知道怎么从 string/dict 提取字段,新增类型自动适配)。
+        回退:直接用 ar.to_dict()(含 type/value/name 等字段)。
+        """
+        raw_value = getattr(ar, "value", None)
+        name = getattr(ar, "name", None) or ""
+
+        # 尝试用 ResourceManager 的 parameter_cls 做规范化(动态解析)。
+        if rm is not None:
+            try:
+                type_key = getattr(ar, "type", None)
+                items = rm._type_to_resources.get(type_key)
+                if items:
+                    single_item = items[0]
+                    parameter_cls = single_item.get_parameter_class()
+                    # 旧路径逻辑:value 是 JSON string 先 json.loads;否则用 to_dict()。
+                    resource_value = raw_value
+                    v2 = False
+                    if isinstance(resource_value, str):
+                        try:
+                            import json
+                            resource_value = json.loads(resource_value)
+                            v2 = True
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    elif isinstance(resource_value, dict):
+                        v2 = True
+                    source = resource_value if v2 else ar.to_dict()
+                    param = parameter_cls.from_dict(source, ignore_extra_fields=True)
+                    return param.to_dict()
+            except Exception:  # noqa: BLE001
+                pass  # 回退到下方通用逻辑
+
+        # 通用回退:value 已是 dict → 直接用;string → 包成 {name: value}。
+        if isinstance(raw_value, dict):
+            return raw_value
+        if isinstance(raw_value, str):
+            return {"name": name or raw_value, "value": raw_value}
+        return {}
 
 
 _default_registry: Optional[CapabilityFactoryRegistry] = None
