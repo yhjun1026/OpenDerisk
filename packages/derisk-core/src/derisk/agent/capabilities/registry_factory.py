@@ -121,6 +121,22 @@ class CapabilityFactoryRegistry:
             value = getattr(ar, "value", None)
             if value is None:
                 value = {}
+            # AgentResource.value 可能是 string(db_name、skill_name 等)非 dict,
+            # 按 type_key 包成对应 dict 给 factory(避免 'str' has no attribute 'get')。
+            if isinstance(value, str):
+                name = getattr(ar, "name", None) or value
+                if type_key == "datasource":
+                    value = {"db_name": name}
+                elif type_key == "skill(derisk)":
+                    value = {"skill_name": name, "name": name}
+                elif type_key == "app":
+                    value = {"app_name": name, "app_code": name}
+                elif type_key == "knowledge_pack":
+                    value = {"knowledges": [{"name": name, "knowledge_id": name}]}
+                elif type_key == "tool":
+                    value = {"mcp_name": name, "name": name}
+                else:
+                    value = {"name": name}
             try:
                 cap = factory(value, system_app)
             except Exception as e:  # noqa: BLE001
