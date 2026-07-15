@@ -10,12 +10,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from derisk.core.interface.input import (
-    BUILTIN_EXECUTOR_ID,
+from derisk.core.interface.resource.bundle import (
     CacheScope,
     Contribution,
     Lifetime,
     Slot,
+)
+from derisk.core.interface.resource.tool_entry import (
+    BUILTIN_EXECUTOR_ID,
     ToolEntry,
 )
 from derisk.core.interface.resource.protocol import ResourceProtocol
@@ -105,5 +107,12 @@ class SandboxResource(ResourceProtocol):
         return entries
 
     def requires(self, config: Any = None) -> List[str]:
-        """沙箱 env 声明本身不依赖 executor(工具执行已走 builtin 回调)。"""
-        return []
+        """沙箱 env/工具声明依赖共享 SandboxExecutor(RFC-006 Stage 2)。
+
+        SandboxExecutor 由接入层(react_master._get_resource_facade)注入
+        executor_provider["sandbox"];capability 经此 requires 引用,触发
+        registry.acquire → prepare(client 就绪校验)。注:当前 sandbox resource
+        经 extra_static_contribs 旁路注入,不进 _build_static_bundle 的 sub 遍历,
+        故本 requires 暂不触发 acquire;留作语义正确,供将来 sandbox 作 sub 时用。
+        """
+        return ["sandbox"]

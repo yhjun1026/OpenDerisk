@@ -75,6 +75,25 @@ def _get_mime_type(file_name: str) -> str:
     return mime_type or "application/octet-stream"
 
 
+def _is_deliverable_url(url: Any) -> bool:
+    """判断一个 URL 是否可被浏览器直接访问，适合作为交付链接。
+
+    接受：
+    - http(s) 绝对 URL（远程 OSS / 反代后端）
+    - 以 "/" 开头的相对 URL（本地 SimpleDistributedStorage 后端对非公网
+      host 返回的 /api/v2/serve/file/files/... 链接，浏览器会以当前 host 拼接）
+
+    拒绝：
+    - None / 空串 / 非字符串
+    - oss:// 、derisk-fs:// 等无法被浏览器直接访问的内部 URI
+    """
+    if not url or not isinstance(url, str):
+        return False
+    if url.startswith(("http://", "https://")):
+        return True
+    return url.startswith("/")
+
+
 class DeliverFileTool(SandboxToolBase):
     """沙箱文件交付工具"""
 
@@ -136,12 +155,19 @@ class DeliverFileTool(SandboxToolBase):
         # 检查沙箱可用性，决定执行模式
         client = self._get_sandbox_client(context)
         if client is not None:
-            return await self._execute_sandbox(path, description, file_type, client)
+            return await self._execute_sandbox(
+                path, description, file_type, client, context
+            )
         else:
             return await self._execute_local(path, description, file_type, context)
 
     async def _execute_sandbox(
-        self, path: str, description: str, file_type: str, client: Any
+        self,
+        path: str,
+        description: str,
+        file_type: str,
+        client: Any,
+        context: Optional[ToolContext] = None,
     ) -> ToolResult:
         """沙箱模式执行文件交付"""
 
@@ -255,8 +281,10 @@ class DeliverFileTool(SandboxToolBase):
                 # 从元数据获取 OSS 信息
                 # 优先使用 download_url（不受预览白名单限制，对 .pptx/.docx/.xlsx
                 # 等所有文件类型都可生成），回退到 preview_url 和 oss_url。
-                # 仅接受 HTTP(S) URL，避免把 oss:// 这类无法直接访问的 URI
-                # 错误地透传给前端。
+                # 接受 HTTP(S) 绝对 URL，或以 "/" 开头的相对 URL（本地
+                # SimpleDistributedStorage 后端对社会化 host 返回的就是
+                # /api/v2/serve/file/files/... 相对链接，前端 a.href 可直接用）。
+                # 跳过 oss://、derisk-fs:// 等无法被浏览器直接访问的内部 URI。
                 if file_metadata:
                     preview_url_value = file_metadata.preview_url
                     download_url_value = file_metadata.download_url
@@ -269,9 +297,7 @@ class DeliverFileTool(SandboxToolBase):
                                 preview_url_value,
                                 oss_url_value,
                             )
-                            if url
-                            and isinstance(url, str)
-                            and url.startswith(("http://", "https://"))
+                            if _is_deliverable_url(url)
                         ),
                         None,
                     )
@@ -345,18 +371,12 @@ class DeliverFileTool(SandboxToolBase):
             # 此时回退到 oss_temp_url（可下载链接）以保证前端有可用 URL。
             dattach_preview_url = (
                 preview_url_value
-                if file_metadata
-                and preview_url_value
-                and isinstance(preview_url_value, str)
-                and preview_url_value.startswith(("http://", "https://"))
+                if file_metadata and _is_deliverable_url(preview_url_value)
                 else oss_temp_url
             )
             dattach_download_url = (
                 download_url_value
-                if file_metadata
-                and download_url_value
-                and isinstance(download_url_value, str)
-                and download_url_value.startswith(("http://", "https://"))
+                if file_metadata and _is_deliverable_url(download_url_value)
                 else oss_temp_url
             )
 

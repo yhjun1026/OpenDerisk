@@ -3,7 +3,7 @@
 import type { VerbatFull } from '@/types/knowledge-vault';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-export type View = 'raw' | 'wiki' | 'graph' | 'schema' | 'lint' | 'settings';
+export type View = 'raw' | 'wiki' | 'graph' | 'schema' | 'lint' | 'settings' | 'usage';
 
 interface SpaceContextValue {
   slug: string;

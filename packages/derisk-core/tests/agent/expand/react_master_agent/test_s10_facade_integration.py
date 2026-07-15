@@ -14,14 +14,8 @@ from typing import Any, List
 
 import pytest
 
-from derisk.core.interface.input import (
-    CacheScope,
-    Contribution,
-    Lifetime,
-    Slot,
-    SystemBlock,
-)
-from derisk.agent.shared.prompt_assembly.resource_facade import ResourceFacade
+from derisk.core.interface.resource.bundle import CacheScope, Contribution, Lifetime, Slot, SystemBlock
+from derisk.agent.capabilities.facade import ResourceFacade
 from derisk.agent.expand.react_master_agent.react_master_agent import (
     separator_join_system_blocks,
 )
@@ -159,7 +153,7 @@ class _FakeSandboxClient:
 
 async def test_sandbox_env_in_system_snapshot():
     """S14: 沙箱 env 作为 Capability 进 system 快照。"""
-    from derisk.agent.shared.prompt_assembly import SandboxResource
+    from derisk.agent.capabilities.sandbox.resource import SandboxResource
 
     facade = ResourceFacade()
     sb_res = SandboxResource(_FakeSandboxClient("local"), work_dir="/pilot/data")
@@ -209,8 +203,8 @@ async def test_full_system_order_with_sandbox_env():
     USER(记忆,跨会话用户级)优先级高于 ENV(本会话环境),故 USER 在 ENV 前——
     对齐 RFC §3.8 SCOPE_PRIORITY:GLOBAL<USER<ENV<NONE。
     """
-    from derisk.core.interface.input import CacheScope
-    from derisk.agent.shared.prompt_assembly import SandboxResource
+    from derisk.core.interface.resource.bundle import CacheScope
+    from derisk.agent.capabilities.sandbox.resource import SandboxResource
 
     facade = ResourceFacade()
     env_contribs = SandboxResource(_FakeSandboxClient("docker"), work_dir="/w").declare_env()

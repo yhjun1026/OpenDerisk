@@ -4,7 +4,8 @@
 
     List[AgentResource](配置态)
       → ResourceManager.a_build_resource  --- 资源实例化(复用现有入口)
-      → 遍历资源:优先 ResourceProtocol.declare,否则 LegacyResourceAdapter 桥接
+      → 遍历资源:旧 Resource 子类经 _legacy_wrappers 包成 ResourceProtocol,
+        均走原生 declare(无 LegacyResourceAdapter 桥接,已移除)
       → 收集 requires + topological_prepare executor
       → 叠加会话/轮次运行态(SESSION/TURN)
       → freeze → AgentInputsSnapshot(不可变,可缓存/序列化/跨进程)
@@ -18,10 +19,9 @@ import inspect
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from derisk.core.interface.input import (
-    BUILTIN_EXECUTOR_ID,
+from derisk.core.interface.resource.bundle import (
     CacheScope,
     Contribution,
     FrozenBundle,
@@ -30,17 +30,21 @@ from derisk.core.interface.input import (
     SCOPE_PRIORITY,
     Slot,
     SystemBlock,
+)
+from derisk.core.interface.resource.capability import Capability
+from derisk.core.interface.resource.tool_entry import (
+    BUILTIN_EXECUTOR_ID,
     ToolEntry,
 )
-from derisk.core.interface.executor import (
+from derisk.core.interface.resource.executor import (
     Executor,
     ExecutorRegistry,
+    ExecutorStatus,
     InMemoryExecutorRegistry,
     ReleaseReason,
     topological_prepare,
 )
 from derisk.core.interface.resource.protocol import ResourceProtocol
-from .legacy_adapter import LegacyResourceAdapter
 
 # Executor工厂映射:executor_id → Executor 实例(由接入层提供)
 ExecutorProvider = Dict[str, Executor]
@@ -109,6 +113,119 @@ class ResourceFacade:
         # executor 工厂(executor_id → Executor),由接入层提供。沙箱/DB 连接器等
         # 在此注册。无则跳过 executor 链路(纯协议层、无执行投影时)。
         self.executor_provider: ExecutorProvider = executor_provider or {}
+        # 双轨迁移:旧 Resource 子类 → capability 包装映射(Step B+ 机制)。
+        # key=旧 Resource 类(or isinstance-able),value=wrapper 工厂(旧实例 → ResourceProtocol)。
+        # capability 目录 register() 时注册,使 facade 遍历 ResourcePack 子资源时
+        # 自动把旧 Resource 包成对应 capability 的 ResourceProtocol 走原生 declare。
+        self._legacy_wrappers: Dict[Any, Any] = {}
+        # RFC-006:自管理 Capability 工厂注册表。type_key(AgentResource.type)→
+        # factory(value:dict, system_app) -> Capability。各 capability 目录
+        # `register_capability(facade)` 时注册,使 facade 能直接从 AgentResource
+        # 配置构造 Capability(不经旧 Resource 子类 + wrapper)。
+        self._capability_factories: Dict[str, Callable[[dict, Any], Capability]] = {}
+        # RFC-006 Stage 4.5:过渡期"旧 Resource 实例 → 自管理 Capability"工厂。
+        # key=类 or 谓词(识别旧实例),value=factory(legacy_instance)→Capability。
+        # _to_resource_protocol 优先于 _legacy_wrappers 匹配:旧实例仍由 ResourceManager
+        # 构造(不动),但 facade 遍历时翻成真正的 Capability 对象(经适配器接入
+        # declare/prepare/execute),修复旧 wrapper 的 declare 空桩问题。Stage 9 旧类
+        # 退役后改用 _capability_factories 从 config 直接产,本表随之删除。
+        self._legacy_capability_providers: Dict[Any, Callable[[Any], Capability]] = {}
+
+    def register_capability_factory(
+        self, type_key: str, factory: Callable[[dict, Any], Capability]
+    ) -> None:
+        """注册 type_key → Capability 工厂(RFC-006 自管理能力构造入口)。
+
+        factory(value: dict, system_app) -> Capability。facade 遇此 type_key 的
+        AgentResource 时直接调 factory 产 Capability,跳过旧 Resource 子类构造。
+        与 `_legacy_wrappers` 并存(过渡期);新路径优先,无 factory 才回退 wrapper。
+        """
+        self._capability_factories[type_key] = factory
+
+    def register_legacy_capability_provider(
+        self, key: Any, factory: Callable[[Any], Capability]
+    ) -> None:
+        """注册旧 Resource 实例 → 自管理 Capability 工厂(过渡期,Stage 4.5)。
+
+        key 同 register_legacy_wrapper:类(isinstance)或谓词 callable(sub)->bool。
+        factory(legacy_instance) -> Capability。_to_resource_protocol 优先于此
+        匹配(先于 _legacy_wrappers),使旧实例被翻成 Capability 而非旧 ResourceProtocol
+        包装(declare 空桩)。Stage 9 旧类退役时删除,改走 _capability_factories(config)。
+        """
+        self._legacy_capability_providers[key] = factory
+
+    def register_legacy_wrapper(self, key: Any, wrapper_factory: Any) -> None:
+        """注册旧 Resource 子类 → capability 包装工厂(双轨迁移,纯 core)。
+
+        key 可为:
+        - 类(用 isinstance 判定):需 import 该类;serve 层用。
+        - 谓词 callable(sub)->bool(纯属性判断):core 层用,不 import 上层类,
+          避免分层倒置(core→serve 反向依赖)。
+        wrapper_factory(legacy_instance) -> ResourceProtocol 实例。
+
+        facade 遍历 ResourcePack 子资源时,命中 key 的旧实例调 factory 包成
+        新 capability 走原生 declare,脱离 legacy 桥接。
+        首个命中的 key 胜出(注册顺序即优先级)。
+        """
+        list(self._legacy_wrappers.keys())  # noqa: 触发惰性(确保存在)
+        self._legacy_wrappers[key] = wrapper_factory
+
+    def _to_resource_protocol(self, sub: Any) -> Optional[ResourceProtocol]:
+        """把 ResourcePack 子资源转成 ResourceProtocol:本身是则直接返;
+        Capability 则适配成 declare 面(并副作用注入 executor 面);
+        否则查 _legacy_wrappers 找包装(类或谓词);都无返 None。"""
+        if isinstance(sub, ResourceProtocol):
+            return sub
+        if isinstance(sub, Capability):
+            # RFC-006:Capability 自管理 —— 注入执行面到 provider,返 declare 适配器。
+            # 执行面(proto_id=cap.executor_id)供 _prepare_executors/_resolve_data_requirements
+            # 经 executor_provider 查取;declare 面(适配为 ResourceProtocol)供 _declare_one 调用。
+            if sub.executor_id not in self.executor_provider:
+                self.executor_provider[sub.executor_id] = _CapabilityExecutorAdapter(sub)
+            return _CapabilityDeclareAdapter(sub)
+        # Stage 4.5:优先把旧 Resource 实例翻成自管理 Capability(经适配器接入 declare/
+        # prepare/execute),修复旧 wrapper declare 空桩。匹配先于 _legacy_wrappers。
+        for key, factory in self._legacy_capability_providers.items():
+            if callable(key) and not isinstance(key, type):
+                try:
+                    if key(sub):
+                        cap = factory(sub)
+                        if isinstance(cap, Capability):
+                            if cap.executor_id not in self.executor_provider:
+                                self.executor_provider[cap.executor_id] = (
+                                    _CapabilityExecutorAdapter(cap)
+                                )
+                            return _CapabilityDeclareAdapter(cap)
+                except Exception:  # noqa: BLE001
+                    continue
+            else:
+                try:
+                    if isinstance(sub, key):
+                        cap = factory(sub)
+                        if isinstance(cap, Capability):
+                            if cap.executor_id not in self.executor_provider:
+                                self.executor_provider[cap.executor_id] = (
+                                    _CapabilityExecutorAdapter(cap)
+                                )
+                            return _CapabilityDeclareAdapter(cap)
+                except TypeError:
+                    continue
+        for key, factory in self._legacy_wrappers.items():
+            if callable(key) and not isinstance(key, type):
+                # 谓词:key(sub) -> bool,纯属性判断,不 import 上层类
+                try:
+                    if key(sub):
+                        return factory(sub)
+                except Exception:  # noqa: BLE001
+                    continue
+            else:
+                # 类:isinstance 判定(serve 层注册的具体 Resource 类)
+                try:
+                    if isinstance(sub, key):
+                        return factory(sub)
+                except TypeError:
+                    continue
+        return None
 
     # ----------------------------- 主入口 ----------------------------------- #
     async def assemble(
@@ -234,7 +351,16 @@ class ResourceFacade:
         返回 (bundle, required_executor_ids, executors_ready)。
         """
         bundle = InputBundle()
-        root = resource_root or (getattr(agent, "resource", None) if agent else None)
+        # RFC-006 Phase C:root 优先 agent.capability_pack(自管理 Capability 对象);
+        # fallback 旧 agent.resource(双轨过渡,Phase D 旧类退役后 resource 消亡)。
+        # resource_root 显式传入时最优先(测试/特殊场景)。
+        if resource_root is not None:
+            root = resource_root
+        elif agent is not None:
+            cap_pack = getattr(agent, "capability_pack", None)
+            root = cap_pack if cap_pack is not None else getattr(agent, "resource", None)
+        else:
+            root = None
 
         # L1 身份层 + L3 控制层(GLOBAL,跨用户通用)
         if identity:
@@ -260,13 +386,35 @@ class ResourceFacade:
                 )
             )
 
-        # L2 资源层:并行 declare 各原生 ResourceProtocol(S16 并行加载)。
+        # L2 资源层(RFC-006 时序:适配 → requires → acquire(prepare) → declare → fetch)。
+        #   prepare 先于 declare:使 Knowledge/MCP/Skill 这类 declare 依赖 prepare I/O
+        #   产出(spaces/tools 元数据)的能力自管理——旧 __init__ 的 hydrate/preload I/O
+        #   挪到 prepare,declare 读 prepared 实例。requires 是静态(capability_id/config
+        #   派生)故前置收集。缓存语义不变:frozen 缓存 declare 产出(prepared 后 stable),
+        #   命中时复用 frozen 不重跑 prepare/declare。
         required_executor_ids: list = []
+        executors_ready = True
         if root is not None:
-            subs = [
-                s for s in _iter_sub_resources(root) if isinstance(s, ResourceProtocol)
-            ]
+            subs: List[ResourceProtocol] = []
+            for sub in _iter_sub_resources(root):
+                wrapped = self._to_resource_protocol(sub)
+                if wrapped is not None:
+                    subs.append(wrapped)
             if subs:
+                # 1) 前置收集 requires(静态,不需 prepare)。
+                for s in subs:
+                    try:
+                        reqs = s.requires(getattr(s, "_config", None))
+                        if inspect.isawaitable(reqs):
+                            reqs = await reqs
+                        required_executor_ids.extend(list(reqs))
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(f"resource requires() failed: {e}")
+                # 2) acquire → prepare(实例就位)。
+                executors_ready = await self._prepare_executors(
+                    conv_id=conv_id, required_ids=required_executor_ids
+                )
+                # 3) declare(此时 Capability 实例已 prepared,declare 读 self._spaces 等)。
                 results = await asyncio.gather(
                     *[
                         self._declare_one(s, getattr(s, "_config", None))
@@ -274,35 +422,78 @@ class ResourceFacade:
                     ],
                     return_exceptions=False,
                 )
-                declared_any = False
-                for (contribs, reqs) in results:
+                for (contribs, _reqs) in results:
                     if contribs is None:
                         continue
-                    declared_any = True
                     bundle.extend(contribs)
-                    required_executor_ids.extend(reqs)
-            else:
-                declared_any = False
-        else:
-            declared_any = False
+        # 无子资源 / 全部 declare 为空 → 资源层即为空(无 LegacyResourceAdapter 桥接)。
+        # WorkflowResource/ReasoningEngineResource 无 wrapper 但不出现在部署资源包中,
+        # 普通无资源 agent 亦应得到空资源层而非旧桥接。
 
-        # 桥接兜底:未原生 declare 时,用 LegacyResourceAdapter 整体桥接
-        if not declared_any and agent is not None:
-            from derisk.agent.shared.prompt_assembly.resource_injector import (
-                ResourceContext,
-            )
-            ctx = ResourceContext.from_v1_agent(agent)
-            adapter = LegacyResourceAdapter()
-            legacy_bundle = await adapter.from_context(ctx, resource_root=root)
-            bundle.extend(legacy_bundle.system)
-            bundle.extend(legacy_bundle.tools)
+        # executor 链路已在上方 prepare(时序前置)。
 
-        # executor 链路:据 requires 收集所需 executor,registry.acquire 触发 prepare。
-        executors_ready = await self._prepare_executors(
-            conv_id=conv_id, required_ids=required_executor_ids
-        )
+        # 数据需求回填(Step A):扫描 declare 产出中 content 为 DataRequirement 的
+        # Contribution,调对应 executor.fetch 预取,用结果重建 Contribution 替换占位。
+        await self._resolve_data_requirements(bundle, conv_id=conv_id)
 
         return bundle, required_executor_ids, executors_ready
+
+    async def _resolve_data_requirements(self, bundle: InputBundle, *, conv_id: str) -> None:
+        """扫描 system/tools 槽中 content 为 DataRequirement 的 Contribution,
+        并行调对应 executor.fetch 预取回填,用新 Contribution 替换(Contribution frozen,
+        故重建)。失败则跳过(保留占位)。多 DataRequirement 并行 fetch,不串行阻塞。
+        """
+        from derisk.core.interface.resource.data_requirement import DataRequirement
+
+        async def _resolve_slot(slot_name: str) -> None:
+            src = getattr(bundle, slot_name)
+            if not src:
+                return
+            # 收集需 fetch 的 (index, contribution) 并行单元
+            fetch_tasks = []
+            pending: List[Tuple[int, Contribution]] = []
+            for idx, c in enumerate(src):
+                if isinstance(c.content, DataRequirement):
+                    ex = self.executor_provider.get(c.content.executor_id)
+                    if ex is None:
+                        continue  # 无 executor,保留占位
+                    pending.append((idx, c))
+                    fetch_tasks.append(self._fetch_one(ex, c.content))
+
+            if not pending:
+                return
+            # 并行 fetch(不阻塞事件循环,各 executor 内部 I/O 应已异步化)
+            results = await asyncio.gather(*fetch_tasks, return_exceptions=False)
+
+            # 用结果重建 slot 列表(替换占位)
+            new_list: List[Contribution] = list(src)
+            for (idx, c), result in zip(pending, results):
+                if result is None:
+                    continue  # fetch 失败已记日志,保留占位
+                rendered = result if isinstance(result, str) else str(result)
+                new_list[idx] = Contribution(
+                    capability_id=c.capability_id,
+                    slot=c.slot,
+                    content=rendered,
+                    lifetime=c.lifetime,
+                    cache_scope=c.cache_scope,
+                    order=c.order,
+                )
+            setattr(bundle, slot_name, new_list)
+
+        await asyncio.gather(_resolve_slot("system"), _resolve_slot("tools"))
+
+    @staticmethod
+    async def _fetch_one(executor: Any, requirement: Any) -> Any:
+        """并行 fetch 单元:失败返 None(占位保留),成功返 fetch 结果。"""
+        try:
+            return await executor.fetch(requirement)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"fetch failed for {requirement.kind} "
+                f"(executor={requirement.executor_id}): {e}"
+            )
+            return None
 
     async def _prepare_executors(
         self, *, conv_id: str, required_ids: List[str]
@@ -491,6 +682,66 @@ def _iter_sub_resources(root: Any) -> List[Any]:
         except Exception:  # noqa: BLE001
             return []
     return [root]
+
+
+# --------------------------------------------------------------------------- #
+# Capability 适配器(RFC-006)
+# --------------------------------------------------------------------------- #
+# Capability 不继承 ResourceProtocol/Executor(declare/requires 的 classmethod 形态
+# 与需 self 的执行面冲突),故用这两个适配器鸭子类型介入 facade 现有编排:
+#  - declare 面(_CapabilityDeclareAdapter)被 _declare_one 调用,产 Contribution + requires
+#  - 执行面(_CapabilityExecutorAdapter)注入 executor_provider,被 _prepare_executors/
+#    _resolve_data_requirements 取用(acquire/fetch),及 ToolDispatcher Route B 取用(execute)。
+# 二者共享同一 Capability 实例(Capability 自己持有 live 实例)。
+
+class _CapabilityDeclareAdapter(ResourceProtocol):
+    """把 Capability 的 declare/requires/consume 适配成 ResourceProtocol(供 _declare_one)。"""
+
+    def __init__(self, cap: Capability):
+        self._cap = cap
+
+    @property
+    def capability_id(self) -> str:
+        return self._cap.capability_id
+
+    def declare(self, config: Any = None) -> List[Contribution]:
+        return self._cap.declare(config)
+
+    def requires(self, config: Any = None) -> List[str]:
+        return self._cap.requires(config)
+
+    async def consume(self, call_result: Any) -> List[Contribution]:
+        return await self._cap.consume(call_result)
+
+
+class _CapabilityExecutorAdapter(Executor):
+    """把 Capability 的 prepare/execute/release/fetch 适配成 Executor(供 registry/provider)。"""
+
+    def __init__(self, cap: Capability):
+        self._cap = cap
+        self._status = ExecutorStatus.UNINITIALIZED
+
+    @property
+    def executor_id(self) -> str:
+        return self._cap.executor_id
+
+    @property
+    def status(self) -> ExecutorStatus:
+        return self._status
+
+    async def prepare(self) -> None:
+        await self._cap.prepare()
+        self._status = ExecutorStatus.READY
+
+    async def execute(self, call: Any) -> Any:
+        return await self._cap.execute(call)
+
+    async def release(self, reason: ReleaseReason) -> None:
+        await self._cap.release(reason)
+        self._status = ExecutorStatus.RELEASED
+
+    async def fetch(self, requirement: Any) -> Any:
+        return await self._cap.fetch(requirement)
 
 
 def _hash_optional(text: Optional[str]) -> str:

@@ -22,6 +22,48 @@ from derisk.util.tracer import root_tracer
 logger = logging.getLogger(__name__)
 
 
+def _repr_content(content: Any, max_chars: int = 2000) -> Any:
+    """将消息 content 转为可打印形式,超长做轻量截断(标注原始长度)。
+
+    content 可能是 str、list(多模态段,如 MediaContent / dict 混合)或其它类型。
+    list 中每个段:
+    - dict:取 text/数据原文;否则 default=str
+    - 对象:取 type,文本类取其 data 原文
+    截断只在最终字符串超长时发生,目的是避免日志爆炸,不改变语义可见性。
+    """
+    if content is None:
+        return None
+    if isinstance(content, str):
+        if len(content) > max_chars:
+            return content[:max_chars] + f"...[truncated len={len(content)}]"
+        return content
+    if isinstance(content, list):
+        parts = []
+        for c in content:
+            if isinstance(c, dict):
+                if c.get("type") == "text" and "text" in c:
+                    parts.append(c["text"])
+                elif "text" in c:
+                    parts.append(str(c["text"]))
+                else:
+                    parts.append(str(c))
+            else:
+                c_type = getattr(c, "type", None)
+                if c_type == "text":
+                    obj = getattr(c, "object", None)
+                    if obj is not None and hasattr(obj, "data"):
+                        parts.append(str(getattr(obj, "data", "")))
+                    else:
+                        parts.append(str(getattr(c, "data", str(c))))
+                else:
+                    parts.append(str(c))
+        joined = " ".join(parts)
+        if len(joined) > max_chars:
+            return joined[:max_chars] + f"...[truncated len={len(joined)}]"
+        return joined
+    return str(content)
+
+
 def _normalize_provider_secret_suffix(provider_name: str) -> str:
     import re
 
@@ -481,49 +523,32 @@ class AIWrapper:
 
         logger.info(f"Model Request:{llm_model}")
 
-        # 详细输入日志，方便调试
+        # 详细输入日志：打印发给模型的原始 messages（含 tool_calls/tool_call_id），
+        # 便于排查工具调用链路。超长 content 做轻量截断，但 tool_calls/tool_call_id 全量保留。
         if request.messages:
+            _MAX_LOG_CONTENT_CHARS = 2000
             messages_summary = []
             for msg in request.messages:
                 if isinstance(msg, dict):
                     role = msg.get("role", "unknown")
                     content = msg.get("content", "")
+                    tool_calls = msg.get("tool_calls")
+                    tool_call_id = msg.get("tool_call_id")
                 else:
                     role = getattr(msg, "role", "unknown")
                     content = getattr(msg, "content", str(msg))
+                    tool_calls = getattr(msg, "tool_calls", None)
+                    tool_call_id = getattr(msg, "tool_call_id", None)
 
-                if isinstance(content, list):
-                    text_parts = []
-                    for c in content:
-                        if isinstance(c, dict):
-                            if c.get("type") == "text" and "text" in c:
-                                text_parts.append(c["text"])
-                        else:
-                            c_type = getattr(c, "type", None)
-                            if c_type == "text":
-                                obj = getattr(c, "object", None)
-                                if obj:
-                                    text_parts.append(str(getattr(obj, "data", "")))
-                    if text_parts:
-                        content_str = " ".join(text_parts)
-                    else:
-                        type_list = []
-                        for c in content:
-                            if isinstance(c, dict):
-                                type_list.append(c.get("type", "unknown"))
-                            else:
-                                type_list.append(getattr(c, "type", "unknown"))
-                        content_str = "[" + ", ".join(type_list) + "]"
-                else:
-                    content_str = str(content)
-                messages_summary.append(
-                    {
-                        "role": role,
-                        "content": content_str,
-                    }
-                )
+                content_repr = _repr_content(content, _MAX_LOG_CONTENT_CHARS)
+                entry = {"role": role, "content": content_repr}
+                if tool_calls:
+                    entry["tool_calls"] = tool_calls
+                if tool_call_id:
+                    entry["tool_call_id"] = tool_call_id
+                messages_summary.append(entry)
             logger.info(
-                f"Model Input Messages: {json.dumps(messages_summary, ensure_ascii=False, indent=2)}"
+                f"Model Input Messages: {json.dumps(messages_summary, ensure_ascii=False, indent=2, default=str)}"
             )
 
         if request.tools:

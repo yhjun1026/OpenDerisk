@@ -4,12 +4,19 @@ import './scene-workspace.css';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
-import { apiInterceptors, getTaskInfo } from '@/client/api';
+import { useRequest } from 'ahooks';
+import { apiInterceptors, getTaskInfo, listPlaybooks } from '@/client/api';
 import type { WorkspaceEvent } from '@/hooks/use-chat';
 import type { AgentStep, DetailContext } from './agent-types';
 import { AgentWorkspace } from './agent-workspace';
 import { SceneSpace } from './scene-space';
 import { SceneTaskRail } from './scene-task-rail';
+
+/** 判断当前任务列表里是否有活跃任务(running 等会变化的状态),决定是否开轮询。 */
+export function hasActiveTask(tasks: any[]): boolean {
+  const active = new Set(['running', 'pending_trigger', 'blocked', 'awaiting_human', 'draft']);
+  return (tasks || []).some((t) => active.has(t?.status));
+}
 
 interface SceneWorkspaceShellProps {
   workspace: any;
@@ -42,6 +49,12 @@ export function SceneWorkspaceShell({
   const [switchingTask, setSwitchingTask] = useState(false);
   const prevActiveTaskId = useRef<number | null>(null);
 
+  const { data: playbooks } = useRequest(async () => {
+    if (!workspaceId) return [];
+    const [, data] = await apiInterceptors(listPlaybooks({ workspace_id: Number(workspaceId) }));
+    return (data || []).map((p: any) => ({ playbook_id: p.id, playbook_name: p.name }));
+  }, { refreshDeps: [workspaceId] });
+
   useEffect(() => {
     if (activeTaskId === prevActiveTaskId.current) return;
     prevActiveTaskId.current = activeTaskId;
@@ -73,6 +86,15 @@ export function SceneWorkspaceShell({
       cancelled = true;
     };
   }, [activeTaskId]);
+
+  // 运行时轮询:有活跃任务时每 4s 刷新任务/介入列表,无活跃任务时停。
+  // 后台 run_task 的状态变更无法走 workspace 事件流(fire-and-forget,无 SSE 连接),
+  // 用轮询替代;task_created 事件触发的 onRefreshLists 仍保留。
+  useEffect(() => {
+    if (!hasActiveTask(tasks) || !onRefreshLists) return;
+    const timer = setInterval(onRefreshLists, 4000);
+    return () => clearInterval(timer);
+  }, [tasks, onRefreshLists]);
 
   const handlePreview = (item: any, kind: 'task' | 'intervention') => {
     setPreviewItem(item);
@@ -156,6 +178,7 @@ export function SceneWorkspaceShell({
           interventions={interventions}
           activeTaskId={activeTaskId}
           disabled={switchingTask}
+          playbooks={playbooks}
           onPreview={handlePreview}
           onEnterConversation={handleEnterConversation}
         />
@@ -194,6 +217,7 @@ export function SceneWorkspaceShell({
           switchingTask={switchingTask}
           convLoadError={convLoadError}
           retryLoadConv={retryLoadConv}
+          playbooks={playbooks}
         />
       </div>
     </div>

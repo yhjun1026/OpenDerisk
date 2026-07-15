@@ -61,6 +61,7 @@ from .variable import VariableManager
 from .. import BlankAction
 
 from ..resource.base import Resource
+from derisk.core.interface.resource.capability import CapabilityPack
 from ..util.ext_config import ExtConfigHolder
 from ..util.llm.llm import LLMConfig, get_llm_strategy_cls
 from ..util.llm.llm_client import AIWrapper, AgentLLMOut
@@ -128,6 +129,9 @@ class ConversableAgent(Role, Agent):
     agent_context: Optional[AgentContext] = Field(None, description="Agent context")
     actions: List[Type[Action]] = Field(default_factory=list)
     resource: Optional[Resource] = Field(None, description="Resource")
+    # RFC-006 Phase A:自管理 Capability 容器(由 agent_chat 构造期产,bind 设置)。
+    # Transitional:与 resource(旧 ResourcePack)并存;Phase D 旧类退役后 resource 消亡。
+    capability_pack: Optional[Any] = Field(None, description="CapabilityPack")
     resource_map: Dict[str, List[Resource]] = Field(
         default_factory=lambda: defaultdict(list),
         description="Resource name to resource list mapping",
@@ -297,6 +301,13 @@ class ConversableAgent(Role, Agent):
         if self.resource:
             root_tracer.set_current_agent_id(self.agent_context.agent_app_code)
             await self.resource.preload_resource()
+        # RFC-006 Phase A:eager load CapabilityPack(prepare 各 Capability,如 MCP 连 server)。
+        # 与旧 self.resource.preload_resource 并行(过渡期双绑);Phase C/D 后 resource 消亡。
+        if self.capability_pack is not None:
+            try:
+                await self.capability_pack.preload_resource()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[base_agent.preload_resource] capability_pack prepare failed: {e}")
         # tidy resource
         self.resource_map = await self._tidy_resource(self.resource)
         logger.info(
@@ -357,6 +368,11 @@ class ConversableAgent(Role, Agent):
             raise ValueError("GptsMemory is not supported!Please Use Agent Memory")
         elif isinstance(target, AgentContext):
             self.agent_context = target
+        elif isinstance(target, CapabilityPack):
+            # RFC-006 Phase A:自管理 Capability 容器(非 Resource)。facade 读它渲染,
+            # base_agent.preload_resource 触发其 prepare(eager load)。与 self.resource
+            # (旧 ResourcePack)并存过渡,Phase D 旧类退役后 self.resource 消亡。
+            self.capability_pack = target
         elif isinstance(target, Resource):
             self.resource = target
         elif isinstance(target, AgentMemory):
@@ -525,7 +541,42 @@ class ConversableAgent(Role, Agent):
         """Prepare the parameters for the act method."""
         return {}
 
+    def _has_capability(self, capability_id_prefix: str) -> bool:
+        """RFC-006 Phase B1:agent 是否持有某 capability_id 前缀的 Capability。
+
+        从 self.capability_pack.sub_resources 扫,前缀匹配(如 "app"/"db"/"knowledge")。
+        供旧的 _check_have_resource(type) 重键:旧类型→capability prefix 映射。
+        """
+        pack = getattr(self, "capability_pack", None)
+        if pack is None:
+            return False
+        for c in getattr(pack, "sub_resources", []) or []:
+            cid = getattr(c, "capability_id", "")
+            if cid and cid.startswith(capability_id_prefix):
+                return True
+        return False
+
+    # 旧 3 Resource 类型 → capability_id prefix 映射(Phase B1 重键过渡)。
+    _RESOURCE_TYPE_TO_CAPABILITY_PREFIX = {
+        # AppResource / GptAppResource → "app"
+    }
+
     def _check_have_resource(self, resource_type: Type[Resource]) -> bool:
+        # RFC-006 Phase B1:优先查 capability_pack(新协议),fallback 旧 resource_map。
+        _prefix_map = {
+            "AppResource": "app",
+            "GptAppResource": "app",
+            "RetrieverResource": "knowledge",
+            "KnowledgePackSearchResource": "knowledge",
+            "DBResource": "db",
+            "DatasourceResource": "db",
+            "RDBMSConnectorResource": "db",
+        }
+        type_name = getattr(resource_type, "__name__", "")
+        prefix = _prefix_map.get(type_name)
+        if prefix and self._has_capability(prefix):
+            return True
+        # fallback:旧 resource_map isinstance(过渡期保留,Phase D 删)
         for resources in self.resource_map.values():
             if not resources:  # 防御性检查，避免空列表
                 continue
@@ -818,13 +869,25 @@ class ConversableAgent(Role, Agent):
         db_tool_names = ["get_table_spec", "execute_sql", "list_tables"]
 
         # 尝试导入 db_tools 模块以触发 @tool 装饰器自动注册
+        # (实现迁移自 derisk_serve.agent.resource.db_tools → capabilities/db/tools/_db_tools_impl)
         try:
-            import derisk_serve.agent.resource.db_tools  # noqa: F401
+            import derisk_serve.agent.capabilities.db.tools._db_tools_impl  # noqa: F401
         except ImportError:
             logger.debug(
-                "[_inject_database_tools] derisk_serve.agent.resource.db_tools "
+                "[_inject_database_tools] _db_tools_impl "
                 "not available, skipping import"
             )
+
+        # RFC-005:设 DB 工具 capability_id="db"(归 DB capability 自管)。
+        # 从 serve 层 capabilities/db/tools 的注册函数设归属(连 spec_service,
+        # 故在 serve 层)。失败不阻塞注入。
+        try:
+            from derisk_serve.agent.capabilities.db.tools import (
+                register_db_tools_capability,
+            )
+            register_db_tools_capability(tool_registry)
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[_inject_database_tools] set capability_id failed: {e}")
 
         # 从 registry 中获取已注册的数据库工具并注入
         injected = 0

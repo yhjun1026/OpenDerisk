@@ -51,6 +51,33 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Job payload schemas (exposed via GET /jobs/types so the admin UI can render
+# a dynamic form for each knowledge job type).
+# ---------------------------------------------------------------------------
+
+try:
+    from derisk._private.pydantic import BaseModel, Field  # type: ignore
+except Exception:  # pragma: no cover - pydantic always available in derisk
+    from pydantic import BaseModel, Field  # type: ignore
+
+
+class KnowledgeIngestPayload(BaseModel):
+    """Payload for the ``knowledge_ingest`` job type."""
+
+    filename: str = Field(..., description="文件名:raw/ 下已落盘的原始文件")
+    extract_mode: str = Field("upload", description="抽取模式:upload/rewrite")
+    model_override: Optional[str] = Field(None, description="抽取模型覆盖")
+    agent_id_override: Optional[str] = Field(None, description="agent id 覆盖")
+    llm_model_override: Optional[str] = Field(None, description="wiki 生成 LLM 覆盖")
+
+
+class KnowledgeRebuildWikiPayload(BaseModel):
+    """Payload for the ``knowledge_rebuild_wiki`` job type."""
+
+    llm_model: Optional[str] = Field(None, description="wiki 生成 LLM 覆盖")
+
+
+# ---------------------------------------------------------------------------
 # Job tracking (in-memory; lost on restart, good enough for v1)
 # ---------------------------------------------------------------------------
 
@@ -132,7 +159,29 @@ class IngestOrchestrator:
         agent_id_override: Optional[str] = None,
         llm_model_override: Optional[str] = None,
     ) -> IngestJob:
-        """Ingest one file end-to-end. Wiki generation runs in the background."""
+        """Ingest one file end-to-end. Wiki generation runs in the background.
+
+        If a JobService is registered on the system app, the ingest is
+        dispatched as a durable ``knowledge_ingest`` job (id ``job_…``,
+        survives restart). Otherwise it falls back to an in-memory
+        IngestJob (id ``ij_…``) driven by an asyncio task.
+        """
+        job_svc = self._get_job_service()
+        if job_svc is not None:
+            payload = {
+                "filename": original_filename,
+                "extract_mode": extract_mode.value,
+                "model_override": model_override,
+                "agent_id_override": agent_id_override,
+                "llm_model_override": llm_model_override,
+            }
+            job_id = await job_svc.submit(
+                "knowledge_ingest", payload, space_slug=space.slug,
+            )
+            return IngestJob(
+                id=job_id, space_slug=space.slug, source_file=original_filename,
+            )
+
         job = IngestJob(
             id=f"ij_{uuid.uuid4().hex[:12]}",
             space_slug=space.slug,
@@ -156,6 +205,27 @@ class IngestOrchestrator:
             )
         )
         return job
+
+    def _get_job_service(self) -> Any:
+        """Return the JobService component if registered, else None."""
+        if self._system_app is None:
+            return None
+        try:
+            from derisk_serve.job.config import (
+                SERVE_SERVICE_COMPONENT_NAME as _JOB_SERVICE_COMPONENT_NAME,
+            )
+            from derisk_serve.job.service.service import (
+                Service as _JobService,
+            )
+        except Exception:
+            # Lazy import so knowledge doesn't hard depend on job at load time.
+            return None
+        try:
+            return self._system_app.get_component(
+                _JOB_SERVICE_COMPONENT_NAME, _JobService, default_component=None,
+            )
+        except Exception:
+            return None
 
     async def rebuild_wiki_for_verbat(
         self,
@@ -323,6 +393,205 @@ class IngestOrchestrator:
                 error=str(e),
                 finished_at=datetime.utcnow().isoformat(),
             )
+
+    async def _extract_and_wiki(
+        self,
+        space: Space,
+        vault: Any,
+        file_path: Path,
+        original_filename: str,
+        extract_mode: ExtractMode,
+        model_override: Optional[str],
+        agent_id_override: Optional[str],
+        llm_model_override: Optional[str],
+        *,
+        on_status: Any = None,
+        on_verbat_ids: Any = None,
+        on_wiki_doc_id: Any = None,
+    ) -> tuple:
+        """Core extract → persist → generate-wiki pipeline.
+
+        Shared by ``_run_pipeline`` (in-memory tracking) and the job-engine
+        handler (DB-backed). The optional callbacks let each caller record
+        progress where it likes. Returns ``(verbat_ids, wiki_doc_ids)``.
+        """
+        def _noop(*args, **kwargs):
+            pass
+        on_status = on_status or _noop
+        on_verbat_ids = on_verbat_ids or _noop
+        on_wiki_doc_id = on_wiki_doc_id or _noop
+
+        # 1. Detect MIME
+        mime, _ = mimetypes.guess_type(original_filename)
+        if not mime:
+            mime = self._guess_mime_from_ext(original_filename) or "application/octet-stream"
+
+        # 2. Resolve extractor
+        registry = get_extractor_registry()
+        extractor = registry.get(mime)
+        if extractor is None:
+            raise ValueError(
+                f"No extractor registered for mime '{mime}' "
+                f"(file: {original_filename}). Register one via "
+                f"@extractor(name, [mime_patterns])."
+            )
+
+        # 3. Resolve model + 4. model caller
+        model = self._resolve_extract_model(space, mime, model_override)
+        model_caller = self._make_model_caller(space)
+
+        # 5. Extract
+        on_status("extracting")
+        specs: List[VerbatimSpec] = await extractor.extract(
+            path=file_path, mime=mime, model=model, model_caller=model_caller,
+        )
+        if not specs:
+            raise RuntimeError(
+                f"Extractor '{extractor.name}' returned no verbats for {original_filename}"
+            )
+
+        # 6. Persist verbats
+        verbat_ids: List[VerbatimId] = []
+        for spec in specs:
+            spec_source = spec.source_file
+            if not spec_source or spec_source == file_path.name:
+                spec_source = original_filename
+            v = Verbat.create(
+                space_id=vault.space_id,
+                content=spec.content,
+                source_file=spec_source,
+                extract_mode=spec.extract_mode,
+                source_path=str(file_path),
+                content_date=datetime.fromisoformat(spec.content_date)
+                if spec.content_date
+                else None,
+                source_mtime=spec.source_mtime,
+            )
+            vid = await vault.verbat_add(v)
+            verbat_ids.append(vid)
+        on_status("generating_wiki")
+        on_verbat_ids(verbat_ids)
+
+        # 7. Generate wiki for each verbat (sequential to avoid LLM hammering)
+        wiki_doc_ids: List[DocId] = []
+        llm_model = llm_model_override or space.llm_model
+        for vid in verbat_ids:
+            try:
+                doc_id = await self._generate_wiki(
+                    space=space, vault=vault, verbat_id=vid, llm_model=llm_model,
+                )
+                if doc_id:
+                    wiki_doc_ids.append(doc_id)
+                    on_wiki_doc_id(doc_id)
+            except Exception:
+                logger.exception(
+                    "Wiki generation failed for verbat %s in space %s",
+                    vid, space.slug,
+                )
+                # Don't fail the whole job — other verbats may succeed
+
+        return verbat_ids, wiki_doc_ids
+
+    async def handle_ingest_job(self, job: Any) -> Optional[Dict[str, Any]]:
+        """Job-engine handler for knowledge ingest jobs.
+
+        Dispatched by the persistent JobService. Supports two job types:
+
+        - ``knowledge_ingest``: payload ``{filename, extract_mode?, ...}`` —
+          reads the durable raw file (saved by the upload endpoint at
+          ``<vault>/raw/<filename>``), extracts verbats, generates wiki.
+        - ``knowledge_rebuild_wiki``: payload ``{llm_model?}`` — regenerates
+          L1 wiki for all non-deprecated verbats in the space.
+
+        The space slug is read from ``job.space_slug``. Returns a result dict
+        consumed by the job engine (``verbat_ids`` / ``wiki_doc_ids`` etc.).
+        """
+        ksvc = self._get_knowledge_service()
+        if ksvc is None:
+            raise RuntimeError(
+                "KnowledgeService not registered; cannot run ingest job"
+            )
+
+        space_slug = getattr(job, "space_slug", None)
+        if not space_slug:
+            raise ValueError("ingest job missing space_slug")
+        space = await ksvc.get_space_config(space_slug)
+        vault = await ksvc.get_vault(space_slug)
+
+        job_type = getattr(job, "job_type", "knowledge_ingest")
+        if job_type == "knowledge_rebuild_wiki":
+            payload = getattr(job, "payload", None) or {}
+            jobs = await self.rebuild_wiki_for_space(
+                space=space, vault=vault, llm_model_override=payload.get("llm_model"),
+            )
+            return {"space_slug": space_slug, "rebuild_count": len(jobs)}
+
+        # knowledge_ingest
+        payload = getattr(job, "payload", None) or {}
+        filename = payload.get("filename")
+        if not filename:
+            raise ValueError("knowledge_ingest payload missing 'filename'")
+        extract_mode = ExtractMode(payload.get("extract_mode", "upload"))
+
+        file_path = vault.root / "raw" / filename
+        if not file_path.exists():
+            raise FileNotFoundError(
+                f"raw file not found for ingest job: {file_path}"
+            )
+
+        verbat_ids, wiki_doc_ids = await self._extract_and_wiki(
+            space=space,
+            vault=vault,
+            file_path=file_path,
+            original_filename=filename,
+            extract_mode=extract_mode,
+            model_override=payload.get("model_override"),
+            agent_id_override=payload.get("agent_id_override"),
+            llm_model_override=payload.get("llm_model_override"),
+        )
+        return {
+            "space_slug": space_slug,
+            "verbat_ids": [str(v) for v in verbat_ids],
+            "wiki_doc_ids": [str(d) for d in wiki_doc_ids],
+        }
+
+    def _get_knowledge_service(self) -> Any:
+        """Return the KnowledgeService component if registered, else None."""
+        if self._system_app is None:
+            return None
+        from .config import SERVE_SERVICE_COMPONENT_NAME
+        from .service.service import Service as _KnowledgeService
+        try:
+            return self._system_app.get_component(
+                SERVE_SERVICE_COMPONENT_NAME, _KnowledgeService, default_component=None,
+            )
+        except Exception:
+            return None
+
+    def register_job_handlers(self, job_svc: Any) -> None:
+        """Register knowledge handlers with the persistent JobService.
+
+        Call after both the knowledge and job serves are initialized (e.g.
+        from ``KnowledgeServe.after_init``). Safe to call when no handlers
+        are expected — failures are logged, never raised, so a disabled job
+        engine never blocks knowledge startup.
+        """
+        try:
+            job_svc.register_handler(
+                "knowledge_ingest",
+                self.handle_ingest_job,
+                description="知识库整理:从 raw/ 文件抽取 verbat 并生成 L1 wiki",
+                params_schema=KnowledgeIngestPayload,
+            )
+            job_svc.register_handler(
+                "knowledge_rebuild_wiki",
+                self.handle_ingest_job,
+                description="知识库整理:重生成空间内全部 L1 wiki",
+                params_schema=KnowledgeRebuildWikiPayload,
+            )
+            logger.info("registered knowledge job handlers with job engine")
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("failed to register knowledge job handlers: %s", e)
 
     async def _run_wiki_only(
         self,

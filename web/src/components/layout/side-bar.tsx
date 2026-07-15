@@ -582,6 +582,14 @@ function SideBar() {
         icon: <DashboardOutlined className='w-5 h-5 text-gray-500' />,
         path: '/monitoring',
       }] : []),
+      // async task engine - job management (Job Engine: submit/claim/worker)
+      ...(hasResourceRead('tool') ? [{
+        key: 'jobs',
+        name: '任务引擎',
+        isActive: pathname.startsWith('/jobs'),
+        icon: <ClockCircleOutlined className='w-5 h-5 text-gray-500' />,
+        path: '/jobs',
+      }] : []),
     ];
 
     const items: RouteItem[] = [
@@ -808,7 +816,7 @@ function SideBar() {
         'animate-fade animate-duration-300 max-w-[260px] w-[260px]',
       )}
     >
-      <div className='flex flex-col w-full px-4'>
+      <div className='flex flex-col w-full px-4 shrink-0'>
         {/* LOGO */}
         <Link href='/' className='flex flex-row justify-between items-center mb-2 pl-1'>
           <Image src={isMenuExpand ? logo : '/LOGO_SMALL.png'} alt='DB-GPT' width={120} height={30} className="object-contain" />
@@ -832,6 +840,10 @@ function SideBar() {
            <span className="font-medium text-gray-700 dark:text-gray-200 text-sm">新对话</span>
         </Link>
 
+        </div>
+
+      <div className="flex-1 min-h-0 flex flex-col px-4">
+        <div className='flex-1 min-h-0 overflow-y-auto -mx-2 px-2 custom-scrollbar pr-1'>
         {/* Navigation Menu */}
         <div className='flex flex-col w-full space-y-1 mb-6'>
           {functions.map(item => {
@@ -846,8 +858,8 @@ function SideBar() {
                   onClick={() => handleChat((item as any).app)}
                   className={cls(
                     'flex items-center w-full h-9 cursor-pointer px-3 rounded-lg transition-all duration-200',
-                    item.isActive 
-                      ? 'bg-gray-200/50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium' 
+                    item.isActive
+                      ? 'bg-gray-200/50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                   )}
                   key={item.key + Date.now()}
@@ -863,8 +875,8 @@ function SideBar() {
                 href={item.path ?? '/'}
                 className={cls(
                   'flex items-center w-full h-9 cursor-pointer px-3 rounded-lg transition-all duration-200',
-                  item.isActive 
-                    ? 'bg-gray-200/50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium' 
+                  item.isActive
+                    ? 'bg-gray-200/50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
                   item.key === 'application' ? 'mt-4' : ''
                 )}
@@ -876,16 +888,13 @@ function SideBar() {
             );
           })}
         </div>
-      </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden px-4">
         {/* Chat History Header */}
         <div className="flex items-center justify-between text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
            <span>{t('chat_history')}</span>
            <SearchOutlined className="cursor-pointer hover:text-gray-600" />
         </div>
 
-        <div className='flex-1 overflow-y-auto -mx-2 px-2 custom-scrollbar pr-1' style={{ maxHeight: 'calc(100vh - 380px)' }}>
         {listLoading ? (
           Array.from({ length: 3 }).map((_, index) => (
             <MenuItem
@@ -902,7 +911,7 @@ function SideBar() {
             {searchValue ? t('no_matching_session') : t('no_history_session')}
           </div>
         )}
-      </div>
+        </div>
       </div>
 
       {/* User & Settings */}

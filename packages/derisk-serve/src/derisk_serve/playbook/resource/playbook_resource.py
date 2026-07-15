@@ -25,13 +25,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from derisk.agent.resource.tool.base import FunctionTool
-from derisk.agent.shared.prompt_assembly.input_bundle import (
+from derisk.core.interface.resource.bundle import (
     CacheScope,
     Contribution,
     Lifetime,
     Slot,
 )
-from derisk.agent.shared.prompt_assembly.resource_protocol import ResourceProtocol
+from derisk.core.interface.resource.protocol import ResourceProtocol
 
 if TYPE_CHECKING:
     from derisk.component import SystemApp
