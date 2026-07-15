@@ -75,9 +75,21 @@ class DBCapability(Capability):
         value 形如 {"db_name":..., "db_id":...}。无 I/O。
         """
         value = value or {}
+        db_name = value.get("db_name") or value.get("name") or ""
+        db_id = value.get("db_id") or value.get("id")
+
+        # ISSUE: value 中没有 db_type，需要从数据库配置中读取
+        # 但这会导致问题：如果 db_name 是错误的（如 "db"），就无法找到正确的配置
+        # 真正的问题在于：旧版本的 DatasourceResource 在 __init__ 时直接建连接，
+        # 而新版本的 DBCapability 延迟到 prepare 时建连接，但传递的参数可能不完整
+        db_type = value.get("db_type", "")
+        dialect = value.get("dialect", "")
+
         return cls(
-            db_name=value.get("db_name") or value.get("name") or "",
-            db_id=value.get("db_id") or value.get("id"),
+            db_name=db_name,
+            db_id=db_id,
+            db_type=db_type,
+            dialect=dialect,
         )
 
     @classmethod
