@@ -9,6 +9,7 @@ import os
 import logging
 
 from .base import SandboxToolBase
+from .deliver_file import _is_deliverable_url
 from ...base import ToolCategory, ToolRiskLevel, ToolEnvironment, ToolSource
 from ...metadata import ToolMetadata
 from ...context import ToolContext
@@ -194,8 +195,9 @@ class CreateFileTool(SandboxToolBase):
                 # 从元数据获取 OSS 信息
                 # 优先使用 download_url（不受预览白名单限制，对 .pptx/.docx/.xlsx
                 # 等所有文件类型都可生成），回退到 preview_url 和 oss_url。
-                # 仅接受 HTTP(S) URL，避免把 oss:// 这类无法直接访问的 URI
-                # 错误地透传给前端。
+                # 接受 HTTP(S) 绝对 URL，或以 "/" 开头的相对 URL（本地
+                # SimpleDistributedStorage 后端返回的就是 /api/v2/serve/file/files/...
+                # 相对链接，前端 a.href 可直接用）。跳过 oss:// 等内部 URI。
                 if file_metadata:
                     preview_url_value = file_metadata.preview_url
                     download_url_value = file_metadata.download_url
@@ -208,9 +210,7 @@ class CreateFileTool(SandboxToolBase):
                                 preview_url_value,
                                 oss_url_value,
                             )
-                            if url
-                            and isinstance(url, str)
-                            and url.startswith(("http://", "https://"))
+                            if _is_deliverable_url(url)
                         ),
                         None,
                     )
@@ -266,17 +266,11 @@ class CreateFileTool(SandboxToolBase):
             # preview_url 可能为 None（如 .pptx/.docx 等不在预览白名单的类型），
             # 此时回退到 oss_temp_url（可下载链接）以保证前端有可用 URL。
             dattach_preview_url = (
-                preview_url_value
-                if preview_url_value
-                and isinstance(preview_url_value, str)
-                and preview_url_value.startswith(("http://", "https://"))
+                preview_url_value if _is_deliverable_url(preview_url_value)
                 else oss_temp_url
             )
             dattach_download_url = (
-                download_url_value
-                if download_url_value
-                and isinstance(download_url_value, str)
-                and download_url_value.startswith(("http://", "https://"))
+                download_url_value if _is_deliverable_url(download_url_value)
                 else oss_temp_url
             )
 

@@ -72,8 +72,25 @@ class Serve(BaseServe):
         self._service.init_app(self._system_app)
 
     def after_init(self) -> None:
-        """Called before the app starts — nothing to do here for now."""
-        pass
+        """Called before the app starts — register with the job engine."""
+        if self._service is None:
+            return
+        try:
+            from derisk_serve.job.config import (
+                SERVE_SERVICE_COMPONENT_NAME as _JOB_SERVICE_COMPONENT_NAME,
+            )
+            from derisk_serve.job.service.service import Service as _JobService
+        except Exception:
+            return  # job engine not installed
+        try:
+            job_svc = self._system_app.get_component(
+                _JOB_SERVICE_COMPONENT_NAME, _JobService
+            )
+        except Exception:
+            return  # job serve not registered → stay on in-memory ingest
+        if job_svc is None:
+            return
+        self._service.orchestrator.register_job_handlers(job_svc)
 
     @property
     def service(self) -> Optional[Service]:

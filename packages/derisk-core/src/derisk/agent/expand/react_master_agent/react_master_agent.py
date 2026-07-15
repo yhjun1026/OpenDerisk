@@ -81,6 +81,7 @@ from ...resource.agent_skills import AgentSkillResource
 from ...resource.app import AppResource
 from ..actions.agent_action import AgentStart
 from ..actions.knowledge_action import KnowledgeSearch
+from ..actions.sql_action import SqlAction
 from ..actions.tool_action import ToolAction
 from ...core.action.blank_action import BlankAction
 
@@ -280,7 +281,7 @@ class ReActMasterAgent(ConversableAgent):
     def __init__(self, **kwargs):
         """Initialize ReActMaster Agent."""
         super().__init__(**kwargs)
-        self._init_actions([AgentStart, KnowledgeSearch, ToolAction])
+        self._init_actions([AgentStart, KnowledgeSearch, SqlAction, ToolAction])
         self._initialize_components()
 
         # 初始化交互能力
