@@ -213,6 +213,10 @@ class DBCapability(Capability):
             self._status = ExecutorStatus.READY
             return
         try:
+            # Oracle 11g 需要 thick mode，提前初始化
+            if self._db_type == "oracle" or (self._db_name and "oracle" in self._db_name.lower()):
+                await asyncio.to_thread(self._ensure_oracle_thick_mode)
+
             self._connector = await asyncio.to_thread(self._build_connector)
             # 从 connector 回取 db_type/dialect(若 config 未提供)
             if not self._db_type:
@@ -225,6 +229,34 @@ class DBCapability(Capability):
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[db-capability] prepare connector for {self._db_name} failed: {e}")
             self._status = ExecutorStatus.FAILED
+
+    def _ensure_oracle_thick_mode(self):
+        """确保 Oracle thick mode 已初始化（兼容 Oracle 11g）。
+
+        Oracle 11g 及以下版本需要 thick mode，否则会报错：
+        DPY-3010: connections to this database server version are not supported
+        by python-oracledb in thin mode
+
+        该方法会尝试初始化 thick mode，如果失败则记录警告但不阻止连接
+        （让后续错误信息更清晰）。
+        """
+        try:
+            import oracledb
+
+            # 检查是否已初始化（避免重复初始化）
+            if not getattr(oracledb, "_thick_mode_initialized", False):
+                # 尝试初始化 thick mode
+                # oracledb.init_oracle_client() 会自动检测 Oracle Client 路径
+                # 如果系统已安装 Oracle Client，会自动使用
+                oracledb.init_oracle_client()
+                oracledb._thick_mode_initialized = True
+                logger.info("[db-capability] Oracle thick mode initialized successfully")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"[db-capability] Oracle thick mode init failed: {e}. "
+                f"Oracle 11g requires thick mode. Please ensure Oracle Client is installed."
+            )
+            # thick mode 初始化失败不阻止连接，让后续错误信息更清晰
 
     def _build_connector(self):
         from derisk._private.config import Config
