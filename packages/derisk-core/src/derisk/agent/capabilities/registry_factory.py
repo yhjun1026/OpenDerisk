@@ -211,7 +211,7 @@ class CapabilityFactoryRegistry:
                     if entity:
                         # 找到配置，返回完整信息（包括 db_id 用于 Oracle 连接）
                         return {
-                            "db_name": entity.db_name,
+                            "db_name": raw_value,  # ← 关键修复：使用 raw_value，而不是 name
                             "db_id": entity.id,
                             "name": name or raw_value,
                             "value": raw_value,
@@ -219,7 +219,7 @@ class CapabilityFactoryRegistry:
                 except Exception:  # noqa: BLE001
                     pass
             return {
-                "db_name": name or raw_value,
+                "db_name": raw_value,  # ← 关键修复：使用 raw_value
                 "name": name or raw_value,
                 "value": raw_value,
             }
