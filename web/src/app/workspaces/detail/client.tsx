@@ -13,11 +13,10 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ThunderboltOutlined,
-  FileTextOutlined,
   DeliveredProcedureOutlined,
   WarningOutlined,
   SettingOutlined,
-  ClockCircleOutlined,
+  BookOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
 import { SceneWorkspaceShell } from './scene-workspace-shell';
@@ -143,17 +142,14 @@ export default function WorkspaceDetailPage() {
             </div>
           </div>
           <nav className="ws-console-nav" aria-label="Workspace navigation">
-            <Link href={`/workspaces/detail/triggers?id=${workspaceCode}`} className="ws-console-nav-link">
-              <ClockCircleOutlined />{t('workspaces.triggers') || 'Triggers'}
+            <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`} className="ws-console-nav-link">
+              <BookOutlined />{t('workspaces.playbooks') || 'Playbooks'}
             </Link>
             <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className="ws-console-nav-link">
               <ThunderboltOutlined />{t('workspaces.tasks') || 'Tasks'}
             </Link>
             <Link href={`/workspaces/detail/deliveries?id=${workspaceCode}`} className="ws-console-nav-link ws-console-nav-link--accent">
               <DeliveredProcedureOutlined />{t('workspaces.deliveries') || 'Delivery Space'}
-            </Link>
-            <Link href={`/workspaces/detail/artifacts?id=${workspaceCode}`} className="ws-console-nav-link">
-              <FileTextOutlined />{t('workspaces.artifacts') || 'Artifacts'}
             </Link>
             <Link href={`/workspaces/detail/interventions?id=${workspaceCode}`} className={`ws-console-nav-link${reviewCount > 0 ? ' ws-console-nav-link--attention' : ''}`}>
               <WarningOutlined />{t('workspaces.interventions') || 'Interventions'}
