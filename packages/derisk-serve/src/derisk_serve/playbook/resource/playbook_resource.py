@@ -353,6 +353,47 @@ class PlaybookResource(ResourceProtocol):
             },
         }
 
+    @staticmethod
+    def to_agent_resource(config: "PlaybookConfig"):
+        """序列化 PlaybookConfig 为 AgentResource(type="playbook")。
+
+        RFC-006 SSR Task 4:供 CapabilityFactoryRegistry.build_pack 还原。
+        **序列化完整 config**(playbook_id / playbook_name / text_content /
+        skills / resources / deliverables / distill),使 factory 反序列化时
+        **零 I/O**(无需 DB refetch)。
+
+        设计取舍(见 playbook_capability.py 模块 docstring):
+        - Task 5 assembler 用 ``PlaybookConfig.from_playbook_response`` 预载入
+          完整 config 后再调本方法,config 已在内存;
+        - 完整序列化使 factory 无状态、可缓存、跨进程;refetch 路径破坏对等;
+        - PlaybookConfig 字段全是 JSON-native(dict/list/str/int),路径简单。
+
+        Args:
+            config: 剧本配置(含预加载的 declaration 数据)
+
+        Returns:
+            AgentResource(type="playbook", value=<完整 config JSON>)
+        """
+        import json as _json
+
+        from derisk.agent.resource.base import AgentResource
+
+        payload = {
+            "playbook_id": config.playbook_id,
+            "playbook_name": config.playbook_name,
+            "text_content": config.text_content.to_dict(),
+            "skills": list(config.skills),
+            "resources": list(config.resources),
+            "deliverables": list(config.deliverables),
+            "distill": dict(config.distill),
+        }
+        value = _json.dumps(payload, ensure_ascii=False)
+        return AgentResource(
+            type="playbook",
+            name=f"playbook_{config.playbook_id}",
+            value=value,
+        )
+
     async def consume(self, call_result: Any) -> List[Contribution]:
         """消费面：工具执行后反改输入（可选）。
 
