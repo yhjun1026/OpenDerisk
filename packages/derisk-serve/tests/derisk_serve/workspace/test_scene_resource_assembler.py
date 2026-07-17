@@ -36,12 +36,14 @@ def _mock_system_app(workspace=None, task=None, playbook=None, missing_ws=False)
 
 def test_lobby_assembles_workspace_scene_resource():
     from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
-    sa = _mock_system_app(workspace=MagicMock(name="营收空间"))
+    sa = _mock_system_app(workspace=_ws_mock("营收空间"))
     out = SceneResourceAssembler.assemble(sa, workspace_id=1, task_id=None, conv_uid="c1")
     assert len(out) == 1
     assert out[0].type == "workspace_scene"
     data = json.loads(out[0].value) if isinstance(out[0].value, str) else out[0].value
     assert data["workspace_id"] == 1
+    assert data["conv_uid"] == "c1"
+    assert data["workspace_name"] == "营收空间"
 
 
 def test_workbench_with_playbook_assembles_playbook_resource():
