@@ -1,14 +1,15 @@
 'use client';
 
-import { apiInterceptors, getDbList } from '@/client/api';
-import { IChatDbSchema } from '@/types/db';
-import { ArrowLeftOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { apiInterceptors, getDbList, getDbSupportType } from '@/client/api';
+import { IChatDbSchema, IChatDbSupportTypeSchema } from '@/types/db';
+import { ArrowLeftOutlined, DatabaseOutlined, EditOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { Button, Spin } from 'antd';
 import { useSearchParams, useRouter } from 'next/navigation';
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import DatabaseDetail from '../components/DatabaseDetail';
+import DatabaseEditModal from '../components/DatabaseEditModal';
 import '../db-page.css';
 
 /** Map new API format {type, params, description} to flat display fields */
@@ -31,6 +32,7 @@ export default function DatabaseDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get('id') || '';
+  const [editOpen, setEditOpen] = useState(false);
 
   // Fetch datasource info by id
   const {
@@ -43,6 +45,14 @@ export default function DatabaseDetailPage() {
     if (err || !res) return null;
     const list = (res as any[]).map(normalizeDatasource) as IChatDbSchema[];
     return list.find((d) => String(d.id) === id) || null;
+  });
+
+  // Fetch supported types (backend wraps in { types: [...] })
+  const { data: supportTypes } = useRequest(async () => {
+    const [err, res] = await apiInterceptors(getDbSupportType());
+    if (err) return [];
+    const types = (res as any)?.types || res || [];
+    return Array.isArray(types) ? (types as IChatDbSupportTypeSchema[]) : [];
   });
 
   if (loading) {
@@ -81,7 +91,7 @@ export default function DatabaseDetailPage() {
       <div className="db-page-bg" />
       <div className="db-page-content">
         {/* Header with back button */}
-        <div className="db-header" style={{ marginBottom: 16 }}>
+        <div className="db-header" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="db-header-left">
             <Button
               type="text"
@@ -101,10 +111,28 @@ export default function DatabaseDetailPage() {
               </p>
             </div>
           </div>
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => setEditOpen(true)}
+          >
+            Edit Connection
+          </Button>
         </div>
 
         {/* Full-width DatabaseDetail */}
         <DatabaseDetail datasource={datasource} onRefresh={refresh} />
+
+        {/* Edit Connection Drawer */}
+        <DatabaseEditModal
+          open={editOpen}
+          datasource={datasource}
+          supportTypes={supportTypes || []}
+          onCancel={() => setEditOpen(false)}
+          onSuccess={() => {
+            setEditOpen(false);
+            refresh();
+          }}
+        />
       </div>
     </div>
   );

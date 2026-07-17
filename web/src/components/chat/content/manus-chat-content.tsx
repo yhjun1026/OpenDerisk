@@ -382,7 +382,7 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
           <div className="flex-1 overflow-y-auto min-w-0" ref={scrollRef}>
             {hasMessages ? (
               <div className={classNames("w-full px-3 py-2", !isRightPanelVisible && "max-w-3xl mx-auto")}>
-                <div className="w-full space-y-1">
+                <div className="w-full space-y-0.5">
                   {showMessages.map((content) => (
                     <div key={content.key}>
                       <ChatContent content={content} messages={showMessages} compact />

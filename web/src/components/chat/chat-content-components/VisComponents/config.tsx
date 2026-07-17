@@ -41,6 +41,7 @@ import VisConfirmResponse from './VisConfirmResponse';
 import VisSystemEvents from './VisSystemEvents';
 import VisManusLeftPanel from './VisManusLeftPanel';
 import VisManusRightPanel from './VisManusRightPanel';
+import VisCard from './VisCard';
 import VisSqlQuery from './VisSqlQuery';
 import VisDeliverable from './VisDeliverable';
 import { ee, EVENTS } from '@/utils/event-emitter';
@@ -595,14 +596,16 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       const data = parseFirstJson(content);
       return (
         <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="manus-left-panel" />}>
-          <VisManusLeftPanel
-            data={data}
-            onStepClick={(stepId) => {
-              const convId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('conv_uid') || '' : '';
-              ee.emit(EVENTS.CLICK_FOLDER, { uid: stepId, conv_id: convId });
-              ee.emit(EVENTS.OPEN_PANEL);
-            }}
-          />
+          <VisCard>
+            <VisManusLeftPanel
+              data={data}
+              onStepClick={(stepId) => {
+                const convId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('conv_uid') || '' : '';
+                ee.emit(EVENTS.CLICK_FOLDER, { uid: stepId, conv_id: convId });
+                ee.emit(EVENTS.OPEN_PANEL);
+              }}
+            />
+          </VisCard>
         </ErrorBoundary>
       );
     } catch (e) {
@@ -615,7 +618,9 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       const data = parseFirstJson(content);
       return (
         <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="manus-right-panel" />}>
-          <VisManusRightPanel data={data} />
+          <VisCard>
+            <VisManusRightPanel data={data} />
+          </VisCard>
         </ErrorBoundary>
       );
     } catch (e) {

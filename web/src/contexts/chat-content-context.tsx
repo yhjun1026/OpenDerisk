@@ -58,6 +58,8 @@ interface ChatContentProps {
   setIsShowDetail?: React.Dispatch<React.SetStateAction<boolean>>;
   isDebug?: boolean;
   isPollingMode?: boolean;
+  /** Start a brand-new conversation session (create backend conv + navigate). */
+  onNewChat?: () => Promise<void>;
 }
 
 export const ChatContentContext = createContext<ChatContentProps>({

@@ -3,26 +3,35 @@
 import { apiInterceptors, batchAddMaskingConfig, previewMasking } from '@/client/api';
 import {
   BatchMaskingConfigResponse,
-  SENSITIVE_TYPE_OPTIONS,
   MASKING_MODE_OPTIONS,
+  SENSITIVE_TYPE_OPTIONS,
 } from '@/types/db';
-import { SafetyCertificateOutlined, CheckCircleOutlined, WarningOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import {
+  ArrowRightOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SafetyCertificateOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
+import {
+  Alert,
   App,
   Button,
+  Divider,
   Form,
   Input,
-  Select,
-  Switch,
-  Modal,
-  Space,
-  Divider,
   List,
-  Typography,
+  Modal,
+  Select,
+  Space,
+  Switch,
   Tag,
+  Typography,
 } from 'antd';
-import React, { useState, useCallback, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import React, { useCallback, useEffect, useState } from 'react';
 
 // 默认示例值，便于"原值→脱敏值"试运行展示
 const SAMPLE_BY_TYPE: Record<string, string> = {
@@ -38,11 +47,199 @@ const SAMPLE_BY_TYPE: Record<string, string> = {
   custom: 'sensitive-value',
 };
 
+interface MaskingRule {
+  id: number;
+  column_names: string;
+  sensitive_type: string;
+  masking_mode: string;
+  ignore_case: boolean;
+  status: 'idle' | 'applying' | 'done' | 'error';
+  result?: BatchMaskingConfigResponse;
+  error?: string;
+  preview?: { original: string; masked: string };
+}
+
 interface BatchMaskingModalProps {
   open: boolean;
   datasourceId: number;
   onCancel: () => void;
   onSuccess: () => void;
+}
+
+let RULE_ID_SEQ = 1;
+
+function newRule(): MaskingRule {
+  return {
+    id: RULE_ID_SEQ++,
+    column_names: '',
+    sensitive_type: 'phone',
+    masking_mode: 'mask',
+    ignore_case: true,
+    status: 'idle',
+  };
+}
+
+function RuleCard({
+  rule,
+  onChange,
+  onRemove,
+}: {
+  rule: MaskingRule;
+  onChange: (patch: Partial<MaskingRule>) => void;
+  onRemove: () => void;
+}) {
+  // Per-rule preview (debounced), independent across rules.
+  useEffect(() => {
+    if (rule.status === 'done' || !rule.sensitive_type) return;
+    const sample = SAMPLE_BY_TYPE[rule.sensitive_type] || SAMPLE_BY_TYPE.custom;
+    const handle = setTimeout(async () => {
+      const [err, res] = await apiInterceptors(
+        previewMasking({
+          sensitive_type: rule.sensitive_type,
+          masking_mode: rule.masking_mode || 'mask',
+          sample_value: sample,
+        }),
+      );
+      if (!err && res) {
+        onChange({ preview: { original: res.original, masked: res.masked } });
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rule.sensitive_type, rule.masking_mode]);
+
+  const statusTag = () => {
+    switch (rule.status) {
+      case 'applying':
+        return <Tag color="processing">applying</Tag>;
+      case 'done':
+        return (
+          <Tag color="green">
+            <CheckCircleOutlined /> +{rule.result?.total_configs_added ?? 0}
+          </Tag>
+        );
+      case 'error':
+        return (
+          <Tag color="red">
+            <CloseCircleOutlined /> failed
+          </Tag>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div
+      style={{
+        border: '1px solid #f0f0f0',
+        borderRadius: 6,
+        padding: 12,
+        marginBottom: 12,
+      }}
+    >
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Space>{statusTag()}</Space>
+        <Button
+          type="text"
+          size="small"
+          danger
+          icon={<DeleteOutlined />}
+          onClick={onRemove}
+        />
+      </Space>
+
+      <Input.TextArea
+        rows={2}
+        value={rule.column_names}
+        placeholder="phone, mobile, telephone..."
+        onChange={(e) => onChange({ column_names: e.target.value, status: 'idle' })}
+        style={{ marginBottom: 8 }}
+      />
+
+      <Space wrap style={{ marginBottom: 8 }}>
+        <Select
+          size="small"
+          style={{ width: 150 }}
+          value={rule.sensitive_type}
+          options={SENSITIVE_TYPE_OPTIONS.map((o) => ({
+            value: o.value,
+            label: `${o.label} (${o.labelEn})`,
+          }))}
+          onChange={(v) => onChange({ sensitive_type: v, status: 'idle' })}
+        />
+        <Select
+          size="small"
+          style={{ width: 140 }}
+          value={rule.masking_mode}
+          options={MASKING_MODE_OPTIONS.map((o) => ({
+            value: o.value,
+            label: `${o.label} (${o.labelEn})`,
+          }))}
+          onChange={(v) => onChange({ masking_mode: v, status: 'idle' })}
+        />
+        <Space size={4}>
+          <Switch
+            size="small"
+            checked={rule.ignore_case}
+            onChange={(v) => onChange({ ignore_case: v, status: 'idle' })}
+          />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            ignore case
+          </Typography.Text>
+        </Space>
+      </Space>
+
+      {rule.preview && (
+        <div
+          style={{
+            background: 'rgba(0,0,0,0.02)',
+            borderRadius: 4,
+            padding: '6px 10px',
+            marginBottom: 8,
+          }}
+        >
+          <Space size={8}>
+            <code style={{ fontSize: 12 }}>{rule.preview.original}</code>
+            <ArrowRightOutlined style={{ color: '#999', fontSize: 12 }} />
+            <Tag color="blue" style={{ fontSize: 12 }}>
+              {rule.preview.masked}
+            </Tag>
+          </Space>
+        </div>
+      )}
+
+      {rule.status === 'done' && rule.result && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          scanned {rule.result.total_tables_scanned} tables · matched{' '}
+          {rule.result.total_columns_matched} columns · added{' '}
+          {rule.result.total_configs_added}
+        </Typography.Text>
+      )}
+      {rule.status === 'error' && rule.error && (
+        <Typography.Text type="danger" style={{ fontSize: 12 }}>
+          {rule.error}
+        </Typography.Text>
+      )}
+      {rule.status === 'done' && rule.result && rule.result.matched_columns.length > 0 && (
+        <List
+          size="small"
+          split={false}
+          style={{ marginTop: 6, maxHeight: 120, overflow: 'auto' }}
+          dataSource={rule.result.matched_columns}
+          renderItem={(item) => (
+            <List.Item style={{ padding: '2px 0' }}>
+              <Typography.Text style={{ fontSize: 12 }}>
+                <code>
+                  {item.table}.{item.column}
+                </code>
+              </Typography.Text>
+            </List.Item>
+          )}
+        />
+      )}
+    </div>
+  );
 }
 
 export default function BatchMaskingModal({
@@ -51,261 +248,145 @@ export default function BatchMaskingModal({
   onCancel,
   onSuccess,
 }: BatchMaskingModalProps) {
-  const { t } = useTranslation();
-  const [form] = Form.useForm();
   const { message } = App.useApp();
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<BatchMaskingConfigResponse | null>(null);
-  const [preview, setPreview] = useState<{ original: string; masked: string } | null>(null);
+  const [rules, setRules] = useState<MaskingRule[]>([]);
+  const [applying, setApplying] = useState(false);
+  const [anyApplied, setAnyApplied] = useState(false);
 
-  const sensitiveType = Form.useWatch('sensitive_type', form);
-  const maskingMode = Form.useWatch('masking_mode', form);
-
-  // Reset form and result when modal opens
-  React.useEffect(() => {
-    if (open) {
-      form.resetFields();
-      setResult(null);
-      setPreview(null);
-    }
-  }, [open, form]);
-
-  // 试运行：根据所选类型/模式实时展示脱敏效果（原值→脱敏值）
+  // Reset when modal opens
   useEffect(() => {
-    if (!open || result || !sensitiveType) {
-      return;
+    if (open) {
+      setRules([newRule()]);
+      setAnyApplied(false);
     }
-    const sample = SAMPLE_BY_TYPE[sensitiveType] || SAMPLE_BY_TYPE.custom;
-    const handle = setTimeout(async () => {
-      const [err, res] = await apiInterceptors(
-        previewMasking({
-          sensitive_type: sensitiveType,
-          masking_mode: maskingMode || 'mask',
-          sample_value: sample,
-        }),
-      );
-      if (!err && res) {
-        setPreview({ original: res.original, masked: res.masked });
-      }
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [open, result, sensitiveType, maskingMode]);
+  }, [open]);
 
-  const handleApply = useCallback(async () => {
-    try {
-      const values = await form.validateFields();
+  const updateRule = useCallback((id: number, patch: Partial<MaskingRule>) => {
+    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }, []);
 
-      // Parse column names - support comma or space separated
-      const columnNames = values.column_names
-        .split(/[,\s]+/)
-        .map((name: string) => name.trim())
-        .filter((name: string) => name.length > 0);
+  const addRule = () => setRules((prev) => [...prev, newRule()]);
 
-      if (columnNames.length === 0) {
-        message.error('Please enter at least one column name');
-        return;
-      }
+  const removeRule = (id: number) =>
+    setRules((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
 
-      setLoading(true);
-      const [err, res] = await apiInterceptors(
-        batchAddMaskingConfig(datasourceId, {
-          column_names: columnNames,
-          sensitive_type: values.sensitive_type,
-          masking_mode: values.masking_mode || 'mask',
-          ignore_case: values.ignore_case ?? true,
-        }),
-      );
-
-      if (err) {
-        message.error('Failed to apply batch masking config');
-        setLoading(false);
-        return;
-      }
-
-      setResult(res);
-      setLoading(false);
-    } catch {
-      message.error('Please check your input');
-      setLoading(false);
+  const applyOne = async (rule: MaskingRule): Promise<boolean> => {
+    const columnNames = rule.column_names
+      .split(/[,\s]+/)
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+    if (columnNames.length === 0) {
+      updateRule(rule.id, { status: 'error', error: 'No column names entered' });
+      return false;
     }
-  }, [datasourceId, form, message]);
-
-  const handleClose = useCallback(() => {
-    if (result && result.total_configs_added > 0) {
-      onSuccess();
+    updateRule(rule.id, { status: 'applying', error: undefined });
+    const [err, res] = await apiInterceptors(
+      batchAddMaskingConfig(datasourceId, {
+        column_names: columnNames,
+        sensitive_type: rule.sensitive_type,
+        masking_mode: rule.masking_mode || 'mask',
+        ignore_case: rule.ignore_case ?? true,
+      }),
+    );
+    if (err || !res) {
+      updateRule(rule.id, {
+        status: 'error',
+        error: 'Batch apply failed',
+      });
+      return false;
     }
+    setAnyApplied(true);
+    updateRule(rule.id, { status: 'done', result: res });
+    return true;
+  };
+
+  const handleApplyAll = async () => {
+    setApplying(true);
+    // Sequential apply: upsert has no cross-request transaction, no rollback.
+    for (const rule of rules) {
+      // eslint-disable-next-line no-await-in-loop
+      await applyOne(rule);
+    }
+    setApplying(false);
+    message.success('Batch masking applied');
+  };
+
+  const handleRetry = (rule: MaskingRule) => {
+    setApplying(true);
+    applyOne(rule).finally(() => setApplying(false));
+  };
+
+  const handleRetryAll = async () => {
+    setApplying(true);
+    for (const rule of rules.filter((r) => r.status === 'error')) {
+      // eslint-disable-next-line no-await-in-loop
+      await applyOne(rule);
+    }
+    setApplying(false);
+  };
+
+  const handleClose = () => {
+    if (anyApplied) onSuccess();
     onCancel();
-  }, [result, onSuccess, onCancel]);
+  };
+
+  const hasError = rules.some((r) => r.status === 'error');
 
   return (
     <Modal
       title={
         <Space>
           <SafetyCertificateOutlined />
-          {t('Batch Masking Configuration')}
+          Batch Masking Configuration
         </Space>
       }
       open={open}
       onCancel={handleClose}
-      footer={null}
-      width={520}
+      width={560}
       destroyOnClose
-    >
-      {!result ? (
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            sensitive_type: 'phone',
-            masking_mode: 'mask',
-            ignore_case: true,
-          }}
-        >
-          <Form.Item
-            name="column_names"
-            label={t('Column Names')}
-            rules={[{ required: true, message: t('Please enter column names') }]}
-            extra={t('Enter column names to mask. Multiple names can be separated by comma or space (e.g., "phone, mobile, email")')}
-          >
-            <Input.TextArea
-              rows={2}
-              placeholder="phone, mobile, email, telephone..."
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="sensitive_type"
-            label={t('Sensitive Type')}
-            rules={[{ required: true, message: t('Please select a sensitive type') }]}
-          >
-            <Select options={SENSITIVE_TYPE_OPTIONS.map((item) => ({
-              value: item.value,
-              label: `${item.label} (${item.labelEn})`,
-            }))} />
-          </Form.Item>
-
-          <Form.Item
-            name="masking_mode"
-            label={t('Masking Mode')}
-          >
-            <Select options={MASKING_MODE_OPTIONS.map((item) => ({
-              value: item.value,
-              label: `${item.label} (${item.labelEn})`,
-            }))} />
-          </Form.Item>
-
-          <Form.Item
-            name="ignore_case"
-            label={t('Ignore Case')}
-            extra={t('Match column names case-insensitively (recommended)')}
-          >
-            <Switch defaultChecked />
-          </Form.Item>
-
-          {/* 试运行：脱敏效果预览 */}
-          {preview && (
-            <div
-              style={{
-                background: 'rgba(0,0,0,0.02)',
-                border: '1px solid #f0f0f0',
-                borderRadius: 6,
-                padding: '8px 12px',
-                marginBottom: 8,
-              }}
-            >
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {t('Masking preview')}
-              </Typography.Text>
-              <div style={{ marginTop: 4 }}>
-                <Space size={8}>
-                  <code>{preview.original}</code>
-                  <ArrowRightOutlined style={{ color: '#999' }} />
-                  <Tag color="blue">{preview.masked}</Tag>
-                </Space>
-              </div>
-            </div>
-          )}
-
-          <Divider />
-
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={handleClose}>{t('Cancel')}</Button>
-            <Button type="primary" loading={loading} onClick={handleApply}>
-              {t('Apply')}
+      footer={
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Button onClick={addRule} icon={<PlusOutlined />} disabled={applying}>
+            Add Rule
+          </Button>
+          <Space>
+            {hasError && (
+              <Button
+                onClick={handleRetryAll}
+                loading={applying}
+                icon={<ReloadOutlined />}
+              >
+                Retry Failed
+              </Button>
+            )}
+            <Button onClick={handleClose}>Close</Button>
+            <Button type="primary" loading={applying} onClick={handleApplyAll}>
+              Apply All
             </Button>
           </Space>
-        </Form>
-      ) : (
-        <div>
-          {/* Result Summary */}
-          <div style={{ marginBottom: 16 }}>
-            {result.total_configs_added > 0 ? (
-              <Space style={{ color: '#52c41a' }}>
-                <CheckCircleOutlined />
-                <Typography.Text strong style={{ color: '#52c41a' }}>
-                  {t('Successfully added {{count}} masking configurations', { count: result.total_configs_added })}
-                </Typography.Text>
-              </Space>
-            ) : (
-              <Space style={{ color: '#faad14' }}>
-                <WarningOutlined />
-                <Typography.Text style={{ color: '#faad14' }}>
-                  {t('No matching columns found')}
-                </Typography.Text>
-              </Space>
-            )}
-          </div>
+        </Space>
+      }
+    >
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        message="按列名模式批量配置脱敏。后应用的规则会覆盖同名列的先前配置。"
+      />
 
-          <Typography.Paragraph>
-            <ul style={{ paddingLeft: 20, margin: 0 }}>
-              <li>{t('Scanned {{count}} tables', { count: result.total_tables_scanned })}</li>
-              <li>{t('Matched {{count}} columns', { count: result.total_columns_matched })}</li>
-              <li>{t('Added {{count}} configurations', { count: result.total_configs_added })}</li>
-            </ul>
-          </Typography.Paragraph>
+      {rules.map((rule) => (
+        <RuleCard
+          key={rule.id}
+          rule={rule}
+          onChange={(patch) => updateRule(rule.id, patch)}
+          onRemove={() => removeRule(rule.id)}
+        />
+      ))}
 
-          {/* Matched Columns List */}
-          {result.matched_columns.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Typography.Text strong>{t('Matched columns:')}</Typography.Text>
-              <List
-                size="small"
-                dataSource={result.matched_columns}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Typography.Text>
-                      <code>{item.table}.{item.column}</code>
-                    </Typography.Text>
-                  </List.Item>
-                )}
-                style={{ maxHeight: 200, overflow: 'auto' }}
-              />
-            </div>
-          )}
-
-          {/* Errors */}
-          {result.errors.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Typography.Text type="danger">{t('Errors:')}</Typography.Text>
-              <List
-                size="small"
-                dataSource={result.errors}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Typography.Text type="danger">{item}</Typography.Text>
-                  </List.Item>
-                )}
-              />
-            </div>
-          )}
-
-          <Divider />
-
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={handleClose}>{t('Close')}</Button>
-          </Space>
-        </div>
-      )}
+      <Divider style={{ margin: '8px 0' }} />
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        支持多列名(逗号或空格分隔);每条规则独立试运行预览,Apply All 逐条串行应用,失败可重试。
+      </Typography.Text>
     </Modal>
   );
 }

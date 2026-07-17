@@ -29,6 +29,8 @@ import {
   SensitiveColumnConfig,
   SENSITIVE_TYPES,
   MASKING_MODES,
+  SENSITIVE_TYPE_OPTIONS,
+  MASKING_MODE_OPTIONS,
 } from '@/types/db';
 import {
   CheckCircleOutlined,
@@ -56,6 +58,7 @@ import {
   Empty,
   Form,
   Modal,
+  Popover,
   Progress,
   Select,
   Space,
@@ -390,12 +393,26 @@ export default function DatabaseDetail({
         const count = data?.length || 0;
         message.success(`Detected ${count} sensitive column(s)`);
         refreshSensitive();
+        refreshTables();
       },
       onError: () => {
         message.error('Detection failed');
       },
     },
   );
+
+  // Regenerate masking rules across the whole database (full-library detect).
+  const confirmRegenerateAll = useCallback(() => {
+    Modal.confirm({
+      title: 'Regenerate Masking (All Tables)',
+      content:
+        '将对全库所有已学习表重新自动检测敏感字段。被检测到的列(含已手动配置的列)会被覆盖为自动结果(source=auto),不可撤销;未被识别的列不受影响。确认继续?',
+      okText: 'Regenerate',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancel',
+      onOk: () => runDetect(undefined),
+    });
+  }, [runDetect]);
 
   // Toggle sensitive column enabled
   const handleToggleSensitive = useCallback(
@@ -1098,14 +1115,14 @@ export default function DatabaseDetail({
                       key: 'sensitive',
                       render: (_: any, record: any) => {
                         const sc = sensitiveByColumn[record.name];
-                        if (!sc) return '-';
                         return (
-                          <Tooltip title={`Mode: ${sc.masking_mode}`}>
-                            <Tag color={SENSITIVE_TYPE_COLORS[sc.sensitive_type] || 'default'}>
-                              <LockOutlined className="mr-1" />
-                              {sc.sensitive_type}
-                            </Tag>
-                          </Tooltip>
+                          <InlineMaskingConfig
+                            datasourceId={datasourceId}
+                            tableName={selectedTableName}
+                            columnName={record.name}
+                            existing={sc || null}
+                            onSaved={refreshSensitive}
+                          />
                         );
                       },
                     },
@@ -1334,9 +1351,18 @@ export default function DatabaseDetail({
   return (
     <div>
       <div className="mb-4">
-        <Button icon={<ReloadOutlined />} onClick={refreshAll} size="small">
-          Refresh All
-        </Button>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={refreshAll} size="small">
+            Refresh All
+          </Button>
+          <Button
+            icon={<SafetyCertificateOutlined />}
+            onClick={confirmRegenerateAll}
+            size="small"
+          >
+            Regenerate Masking (All Tables)
+          </Button>
+        </Space>
       </div>
 
       <Tabs
@@ -1425,5 +1451,141 @@ export default function DatabaseDetail({
         }}
       />
     </div>
+  );
+}
+
+/** Inline masking config popover for a single column cell in the Schema tab. */
+function InlineMaskingConfig({
+  datasourceId,
+  tableName,
+  columnName,
+  existing,
+  onSaved,
+}: {
+  datasourceId: string;
+  tableName: string;
+  columnName: string;
+  existing: SensitiveColumnConfig | null;
+  onSaved: () => void;
+}) {
+  const { message } = App.useApp();
+  const [form] = Form.useForm();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleOpen = (next: boolean) => {
+    if (next) {
+      form.setFieldsValue({
+        sensitive_type: existing?.sensitive_type || 'phone',
+        masking_mode: existing?.masking_mode || 'mask',
+      });
+    }
+    setOpen(next);
+  };
+
+  const handleSave = async () => {
+    try {
+      const values = await form.validateFields();
+      setSaving(true);
+      if (existing) {
+        const [err] = await apiInterceptors(
+          updateSensitiveColumn(datasourceId, tableName, columnName, {
+            sensitive_type: values.sensitive_type,
+            masking_mode: values.masking_mode,
+          }),
+        );
+        if (err) throw err;
+      } else {
+        const [err] = await apiInterceptors(
+          addSensitiveColumn(datasourceId, {
+            table_name: tableName,
+            column_name: columnName,
+            sensitive_type: values.sensitive_type,
+            masking_mode: values.masking_mode,
+          }),
+        );
+        if (err) throw err;
+      }
+      message.success(existing ? 'Masking updated' : 'Masking configured');
+      setOpen(false);
+      onSaved();
+    } catch {
+      message.error('Failed to save masking config');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const content = (
+    <Form form={form} layout="vertical" size="small" style={{ width: 220 }}>
+      <Form.Item
+        name="sensitive_type"
+        label="Sensitive Type"
+        rules={[{ required: true }]}
+      >
+        <Select
+          options={SENSITIVE_TYPE_OPTIONS.map((o) => ({
+            value: o.value,
+            label: `${o.label} (${o.labelEn})`,
+          }))}
+        />
+      </Form.Item>
+      <Form.Item
+        name="masking_mode"
+        label="Masking Mode"
+        rules={[{ required: true }]}
+      >
+        <Select
+          options={MASKING_MODE_OPTIONS.map((o) => ({
+            value: o.value,
+            label: `${o.label} (${o.labelEn})`,
+          }))}
+        />
+      </Form.Item>
+      <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+        <Button size="small" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button size="small" type="primary" loading={saving} onClick={handleSave}>
+          Save
+        </Button>
+      </Space>
+    </Form>
+  );
+
+  if (!existing) {
+    return (
+      <Popover
+        content={content}
+        trigger="click"
+        open={open}
+        onOpenChange={handleOpen}
+        placement="right"
+      >
+        <Button type="link" size="small" icon={<PlusOutlined />}>
+          配置
+        </Button>
+      </Popover>
+    );
+  }
+
+  return (
+    <Popover
+      content={content}
+      trigger="click"
+      open={open}
+      onOpenChange={handleOpen}
+      placement="right"
+    >
+      <Space size={4}>
+        <Tooltip title={`Mode: ${existing.masking_mode}`}>
+          <Tag color={SENSITIVE_TYPE_COLORS[existing.sensitive_type] || 'default'}>
+            <LockOutlined className="mr-1" />
+            {existing.sensitive_type}
+          </Tag>
+        </Tooltip>
+        <Button type="text" size="small" icon={<EditOutlined />} />
+      </Space>
+    </Popover>
   );
 }

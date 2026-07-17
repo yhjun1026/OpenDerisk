@@ -320,23 +320,51 @@ const ChatContent: React.FC<{
         </div>
       )}
       {isRobot && (
-        <div className={classNames('flex flex-1 justify-start items-start', compact ? 'pb-2 pt-3' : 'pb-4 pt-6')} style={{ gap: 12 }}>
+        <div className={classNames('flex flex-1 justify-start items-start', compact ? 'pb-1 pt-1.5' : 'pb-4 pt-6')} style={{ gap: 12 }}>
           <AgentIcon />
           <div className='flex flex-col flex-1 min-w-0 border-dashed border-r0 overflow-x-auto compact-markdown-container'>
             {/* @ts-ignore */}
             <CompactChatContext.Provider value={!!compact}>
-              {compact && (
-                <style dangerouslySetInnerHTML={{ __html: `
-                  .compact-markdown-container > pre {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                  }
-                  .compact-markdown-container .markdown-content-wrap > pre {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                  }
-                `}} />
-              )}
+              <style dangerouslySetInnerHTML={{ __html: `
+                /* react-markdown 把每个 vis 代码块(agent-plans / agent-messages /
+                   VisContentCard 等)各包成一个 <pre>,作为 .markdown-content-wrap 的直接
+                   子节点纵向堆叠。
+                   实测:pre 自身 margin 已清零、pre 之间也查不到中间节点,但空白仍定位在
+                   markdown-content-wrap 这个父容器上——根因是父容器的 line-height / 残留
+                   padding / inline 空白文本节点把相邻 <pre> 撑开。
+                   彻底治理:用 :has(> pre) 只命中"直接子级是 <pre>"的那份外层 .markdown-content-wrap
+                   (VisAgentPlanCard 内部展开用的同名包裹其直接子级是 <div>/GPTVis 输出而非 <pre>,
+                   不会被命中),把它变成 column flex + gap:0 + line-height:0,子项再恢复 line-height。
+                   必须无条件注入:BasicChatContent 等非 compact 路径同样受影响。 */
+                .markdown-content-wrap:has(> pre) {
+                  display: flex;
+                  flex-direction: column;
+                  gap: 0;
+                  line-height: 0;
+                  padding: 0 !important;
+                }
+                .markdown-content-wrap:has(> pre) > * {
+                  margin-top: 0 !important;
+                  margin-bottom: 0 !important;
+                  line-height: normal; /* 还原子项正常行高 */
+                }
+                .markdown-content-wrap:has(> pre) > p:empty {
+                  display: none !important; /* fence 间空行产生的空段落,0 高度 */
+                }
+                /* 审美间距:文本卡片(VisContentCard)与 task 卡片之间贴齐(0px),
+                   仅相邻两个都是 task(VisAgentPlanCard)时,后者向下推开 8px,
+                   形成任务流内的分组呼吸感,而非所有卡片一刀切。用 + 前驱兄弟选择器
+                   精确命中"前一个 pre 内是 task 卡片"的连续 task。 */
+                .markdown-content-wrap:has(> pre) > pre:has(> .VisAgentPlanCardClass) + pre:has(> .VisAgentPlanCardClass) {
+                  margin-top: 8px !important;
+                }
+                .compact-markdown-container pre {
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  background: transparent !important;
+                  font-size: 100% !important;
+                }
+              `}} />
               <GPTVis
                 components={{
                   ...markdownComponents,

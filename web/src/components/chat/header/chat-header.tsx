@@ -30,7 +30,7 @@ interface ChatHeaderProps {
 }
 
 const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProcessing = false }) => {
-  const { appInfo, refreshAppInfo, history, setHistory } = useContext(ChatContentContext);
+  const { appInfo, refreshAppInfo, history, setHistory, onNewChat } = useContext(ChatContentContext);
   const { initChatId } = useContext(AppContext);
   const { t } = useTranslation();
   const searchParams = useSearchParams();
@@ -80,6 +80,12 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProces
   };
 
   const handleNewChat = async () => {
+    // /chat 路由:ChatSession 提供 onNewChat,创建全新 conv session 并跳转
+    if (onNewChat) {
+      await onNewChat();
+      return;
+    }
+    // 应用搭建页(AppContext)回退路径
     const appCode = appInfo?.app_code;
     if (appCode && initChatId) {
       setHistory?.([]);

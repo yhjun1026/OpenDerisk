@@ -1,5 +1,5 @@
 "use client"
-import { apiInterceptors, getAppInfo, getChatHistory, getDialogueList } from '@/client/api';
+import { apiInterceptors, getAppInfo, getChatHistory, getDialogueList, newDialogue } from '@/client/api';
 import { ChartData, ChatHistoryResponse, IChatDialogueSchema, UserChatContent } from '@/types/chat';
 import { IApp } from '@/types/app';
 import React, { forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -9,9 +9,9 @@ import useChatPolling from '@/hooks/use-chat-polling';
 import ChatContentContainer from '@/components/chat/chat-content-container';
 import { getInitMessage, transformFileMarkDown, transformFileUrl } from '@/utils';
 import { STORAGE_INIT_MESSAGE_KET } from '@/utils/constants/storage';
-import { Flex, Layout } from 'antd';
+import { Flex, Layout, message } from 'antd';
 import ChatPageSkeleton from '@/components/chat/content/chat-page-skeleton';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { ChatContentContext, SelectedSkill, ContextMetricsProvider } from '@/contexts';
 import HomeChat from '@/components/chat/content/home-chat';
 import { useTranslation } from 'react-i18next';
@@ -407,6 +407,31 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
     },
   }), [handleChat]);
 
+  const router = useRouter();
+
+  // 新开对话：创建全新 conv session 并跳转，URL 变更会触发上面的 useAsyncEffect 重载历史
+  const onNewChat = useCallback(async () => {
+    if (!app_code) return;
+    // 当前会话还没发过任何消息：本身就是全新会话，无需重复创建，停留当前页面
+    const hasHumanMessage = history.some(item => item.role === 'human');
+    if (!hasHumanMessage) {
+      message.info('当前已是新对话');
+      return;
+    }
+    const [, res] = await apiInterceptors(
+      newDialogue({
+        app_code,
+        model: modelValue || undefined,
+        workspace_id: workspaceId ? Number(workspaceId) : undefined,
+      }),
+    );
+    if (res?.conv_uid) {
+      setHistory([]);
+      order.current = 1;
+      router.push(`/chat/?app_code=${app_code}&conv_uid=${res.conv_uid}`);
+    }
+  }, [app_code, modelValue, workspaceId, router, history]);
+
   useAsyncEffect(async () => {
     // 如果是默认小助手，不获取历史记录
     if (isChatDefault) {
@@ -605,6 +630,7 @@ const sessionContent = (
           setChatInParams,
           chatInParams,
           isPollingMode,
+          onNewChat,
         }}
       >
         {props.inputSlot

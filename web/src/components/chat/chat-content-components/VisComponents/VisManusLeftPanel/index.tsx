@@ -57,7 +57,7 @@ const StepCard: FC<{
   return (
     <div
       className={`
-        group flex items-start gap-1.5 px-2 py-1 rounded-lg cursor-pointer
+        group flex items-start gap-1.5 px-2 py-0.5 rounded-lg cursor-pointer
         transition-all duration-200 border
         ${isActive
           ? 'bg-blue-50 border-blue-200 shadow-sm'
@@ -129,7 +129,7 @@ const SectionBlock: FC<{
   const totalCount = section.steps.length;
 
   return (
-    <div className="mb-1">
+    <div className="mb-0.5">
       {/* Section header */}
       <button
         className="flex items-center gap-2 w-full px-2 py-1 text-left rounded-md hover:bg-slate-100 transition-colors"
