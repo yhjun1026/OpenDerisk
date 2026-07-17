@@ -53,9 +53,6 @@ async def test_inject_workspace_context_appends_scene_dynamic_block():
     ), patch(
         "derisk_serve.agent.agents.chat.agent_chat.render_scene_dynamic_context",
         return_value="## 当前场景上下文\n模式：lobby",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=None,
     ):
         _inject_workspace_context(
             system_app=agent_chat.system_app,
@@ -105,9 +102,6 @@ async def test_inject_workspace_context_gates_scene_dynamic_on_app_code():
     ), patch(
         "derisk_serve.agent.agents.chat.agent_chat.render_workspace_context_summary",
         return_value="# 当前空间：Test空间",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=None,
     ):
         _inject_workspace_context(
             system_app=agent_chat.system_app,
@@ -158,9 +152,6 @@ async def test_real_renderer_produces_one_summary():
     ), patch(
         "derisk_serve.agent.agents.chat.agent_chat.build_workspace_context",
         return_value=fake_ctx,
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=None,
     ):
         _inject_workspace_context(
             system_app=agent_chat.system_app,

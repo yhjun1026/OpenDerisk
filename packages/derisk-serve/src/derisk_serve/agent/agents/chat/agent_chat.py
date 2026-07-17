@@ -85,7 +85,6 @@ from derisk_serve.workspace.agent_tools.context_builder import (
     build_workspace_context,
     render_workspace_context_summary,
 )
-from derisk_serve.workspace.agent_tools.toolkit import build_workspace_toolkit
 from derisk_serve.workspace.agent_prompts import render_scene_dynamic_context
 from derisk_serve.workspace.context_builder import (
     build_workspace_context as _legacy_build_workspace_context,
@@ -158,10 +157,11 @@ def _inject_workspace_context(
     event_queue: Optional[asyncio.Queue] = None,
     app_code: Optional[str] = None,
 ) -> None:
-    """把 workspace 上下文摘要和 WorkspaceControlAgent 注入对话。
+    """把 workspace 上下文摘要注入对话 system_prompt，并合并物化资源到 ext_info。
 
     保留旧的 workspace_context dict + 物化资源注入，保证下游 context_loaded
-    事件和动态资源消费继续工作。
+    事件和动态资源消费继续工作。场景工具/剧本资源走资源协议正道，在 chat
+    端点装配阶段注入；此处不再构造 toolkit agent，extra_agents 保持为空。
     """
     if not workspace_id:
         return
@@ -201,44 +201,13 @@ def _inject_workspace_context(
             if scene_dynamic:
                 system_prompt.append(scene_dynamic)
 
-        # NEW: RFC-005 剧本资源注入
-        # 如果存在 playbook_resource，调用 declare() 获取 Contribution，
-        # 将 SYSTEM 槽的内容追加到 system_prompt
-        # 剧本内置工具通过 playbook_config 传递给 build_workspace_toolkit
-        playbook_config = None
-        playbook_resource = getattr(ctx, "playbook_resource", None)
-        if playbook_resource is not None:
-            try:
-                from derisk.agent.shared.prompt_assembly.input_bundle import Slot
-                from derisk_serve.playbook.resource import PlaybookResource
-
-                config = playbook_resource._config
-                contributions = PlaybookResource.declare(config)
-                for contrib in contributions:
-                    if contrib.slot == Slot.SYSTEM and contrib.content:
-                        system_prompt.append(str(contrib.content))
-                # 保存 config 用于构建工具
-                playbook_config = config
-            except Exception as e:
-                logger.warning(f"playbook resource injection failed: {e}")
-
-        def _on_workspace_event(event_type: str, payload: dict):
-            if event_queue is not None:
-                event_queue.put_nowait((event_type, payload))
-
-        agent = build_workspace_toolkit(
-            system_app=system_app,
-            workspace_id=int(workspace_id),
-            user_id=user_id,
-            conv_uid=conv_uid,
-            task_id=int(task_id) if task_id else None,
-            mode=mode,
-            llm_config=llm_config,
-            on_event=_on_workspace_event,
-            playbook_config=playbook_config,  # NEW: 传递剧本配置
-        )
-        if agent is not None:
-            extra_agents.append(agent)
+        # NOTE: Scene tools/resources now flow via the resource-protocol path
+        # (WorkspaceSceneResource TOOLS slot + factories) assembled pre-chat in
+        # the chat_completions endpoint. The old toolkit-injection segment that
+        # built a WorkspaceControlAgent with a None agent_context and appended
+        # it to extra_agents (causing the agent_to_resource crash) has been
+        # removed. extra_agents must stay empty so the main-agent-build
+        # else-branch handles SINGLE_AGENT.
     except Exception:
         logger.warning("workspace context injection failed", exc_info=True)
 

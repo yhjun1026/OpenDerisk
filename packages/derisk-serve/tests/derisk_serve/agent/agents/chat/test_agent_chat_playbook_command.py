@@ -64,3 +64,25 @@ def test_extract_model_returns_none_when_absent():
     chat = SimpleAgentChat.__new__(SimpleAgentChat)
     assert chat._extract_model(None) is None  # type: ignore[attr-defined]
     assert chat._extract_model([_make_param("resource", "[]")]) is None  # type: ignore[attr-defined]
+
+
+def test_inject_workspace_context_no_longer_appends_extra_agents():
+    """移除 toolkit 注入后,_inject_workspace_context 不再往 extra_agents append。"""
+    from derisk_serve.agent.agents.chat.agent_chat import _inject_workspace_context
+    from unittest.mock import MagicMock, patch
+    extra_agents = []
+    ext_info = {"workspace_id": 1}
+    with patch("derisk_serve.agent.agents.chat.agent_chat._legacy_build_workspace_context") as mleg, \
+         patch("derisk_serve.agent.agents.chat.agent_chat.build_workspace_context") as mbwc, \
+         patch("derisk_serve.agent.agents.chat.agent_chat.render_workspace_context_summary") as msum, \
+         patch("derisk_serve.agent.agents.chat.agent_chat.render_scene_dynamic_context") as mscene:
+        mleg.return_value = {"materialized": {"dynamic_resources": [], "extra_agents": []}}
+        mbwc.return_value = MagicMock(playbook_resource=None)
+        msum.return_value = ""; mscene.return_value = ""
+        _inject_workspace_context(
+            system_app=MagicMock(), workspace_id=1, user_id="u1",
+            conv_uid="c1", task_id=None, system_prompt=[],
+            extra_agents=extra_agents, ext_info=ext_info, llm_config=None,
+            event_queue=None, app_code="scene-workspace-agent",
+        )
+    assert extra_agents == []

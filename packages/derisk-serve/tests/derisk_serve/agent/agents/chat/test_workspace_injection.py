@@ -1,8 +1,7 @@
 """Tests for workspace materialized resource injection in aggregation_chat."""
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import orjson
 import pytest
 
 # The task package __init__ eagerly imports endpoints -> runtime -> agent
@@ -13,18 +12,13 @@ if "derisk_app.config" not in sys.modules:
     sys.modules["derisk_app"] = MagicMock()
     sys.modules["derisk_app.config"] = MagicMock()
 
-from derisk.agent import ConversableAgent, LLMConfig
 from derisk_serve.agent.agents.chat.agent_chat import (
-    AgentChat,
     _inject_workspace_context,
-    _serialize_extra_for_db,
 )
-from derisk_serve.workspace.agent_tools.toolkit import build_workspace_toolkit
 
 
-class _ConcreteAgentChat(AgentChat):
-    async def chat(self, *args, **kwargs):
-        pass
+class _ConcreteAgentChat:
+    system_app = MagicMock()
 
 
 def _make_fake_ctx(materialized=None):
@@ -45,8 +39,7 @@ def _make_fake_ctx(materialized=None):
 @pytest.mark.asyncio
 async def test_workspace_materialized_resources_injected_to_ext_info():
     """workspace_id 存在时，物化的 dynamic_resources 合并到 ext_info。"""
-    agent_chat = object.__new__(_ConcreteAgentChat)
-    agent_chat.system_app = MagicMock()
+    agent_chat = _ConcreteAgentChat()
     ext_info = {"workspace_id": 1, "task_id": None}
 
     fake_resource = MagicMock()
@@ -67,9 +60,6 @@ async def test_workspace_materialized_resources_injected_to_ext_info():
     ), patch(
         "derisk_serve.agent.agents.chat.agent_chat.render_workspace_context_summary",
         return_value="summary",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=None,
     ):
         _inject_workspace_context(
             system_app=agent_chat.system_app,
@@ -140,9 +130,6 @@ async def test_workspace_materialized_resources_merged_with_existing():
     ), patch(
         "derisk_serve.agent.agents.chat.agent_chat.render_workspace_context_summary",
         return_value="summary",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=None,
     ):
         _inject_workspace_context(
             system_app=MagicMock(),
@@ -165,12 +152,12 @@ async def test_workspace_materialized_resources_merged_with_existing():
 
 
 @pytest.mark.asyncio
-async def test_workspace_control_agent_appended_to_existing_empty_extra_agents():
-    """生产路径：ext_info 已有空 extra_agents 列表时，WorkspaceControlAgent 仍被注入。
+async def test_inject_workspace_context_never_appends_toolkit_agent():
+    """回归：移除 toolkit 注入后 extra_agents 不再被追加 WorkspaceControlAgent。
 
-    调用方通过 `extra_agents=ext_info.setdefault("extra_agents", [])` 把同一个列
-    表对象传进来；_inject_workspace_context 必须保留该对象身份，否则追加的
-    WorkspaceControlAgent 会落到被丢弃的旧列表上，导致 ext_info 里看不到。
+    场景工具走资源协议正道（WorkspaceSceneResource TOOLS slot）在 chat 端点
+    预装配阶段注入；_inject_workspace_context 只负责摘要/物化资源，不再构造
+    toolkit agent，避免 agent_context=None 导致 agent_to_resource 崩溃。
     """
     ext_info = {"workspace_id": 1, "task_id": None, "extra_agents": []}
     extra_agents = ext_info["extra_agents"]
@@ -190,9 +177,6 @@ async def test_workspace_control_agent_appended_to_existing_empty_extra_agents()
     ), patch(
         "derisk_serve.agent.agents.chat.agent_chat.render_scene_dynamic_context",
         return_value="",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=fake_agent,
     ):
         _inject_workspace_context(
             system_app=MagicMock(),
@@ -205,141 +189,7 @@ async def test_workspace_control_agent_appended_to_existing_empty_extra_agents()
             ext_info=ext_info,
         )
 
-    assert ext_info["extra_agents"] is extra_agents
-    assert fake_agent in ext_info["extra_agents"]
-    assert ext_info["extra_agents"].count(fake_agent) == 1
-
-
-@pytest.mark.asyncio
-async def test_build_extra_employees_passes_through_prebuilt_agent():
-    """_build_extra_employees 对 prebuilt agent 不调用 app_service.app_detail。"""
-    system_app = MagicMock()
-    with patch(
-        "derisk_serve.workspace.agent_tools.toolkit.build_read_tools",
-        return_value=[],
-    ), patch(
-        "derisk_serve.workspace.agent_tools.toolkit.build_write_tools",
-        return_value=[],
-    ):
-        agent = build_workspace_toolkit(
-            system_app=system_app,
-            workspace_id=1,
-            user_id=None,
-            conv_uid="conv-1",
-            mode="lobby",
-            llm_config=LLMConfig(),
-        )
-
-    agent_chat = object.__new__(_ConcreteAgentChat)
-
-    fake_app_service = MagicMock()
-    fake_app_service.app_detail = AsyncMock(
-        side_effect=AssertionError("app_detail should not be called for prebuilt agent")
-    )
-
-    with patch(
-        "derisk_serve.agent.agents.chat.agent_chat.get_app_service",
-        return_value=fake_app_service,
-    ):
-        employees = await agent_chat._build_extra_employees(
-            extra_agents=[agent],
-            context=MagicMock(),
-            agent_memory=MagicMock(),
-            rm=MagicMock(),
-            scheduler=None,
-        )
-
-    assert len(employees) == 1
-    assert employees[0] is agent
-    fake_app_service.app_detail.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_workspace_control_agent_has_llm_config():
-    """WorkspaceControlAgent 通过 build_workspace_toolkit 构建后 llm_config 非空。"""
-    system_app = MagicMock()
-    with patch(
-        "derisk_serve.workspace.agent_tools.toolkit.build_read_tools",
-        return_value=[],
-    ), patch(
-        "derisk_serve.workspace.agent_tools.toolkit.build_write_tools",
-        return_value=[],
-    ):
-        agent = build_workspace_toolkit(
-            system_app=system_app,
-            workspace_id=1,
-            user_id=None,
-            conv_uid="conv-1",
-            mode="lobby",
-        )
-
-    assert isinstance(agent, ConversableAgent)
-    assert agent.llm_config is not None
-
-
-@pytest.mark.asyncio
-async def test_workspace_control_agent_forwarded_llm_config():
-    """显式传入的 llm_config 被透传到 WorkspaceControlAgent。"""
-    system_app = MagicMock()
-    cfg = LLMConfig(llm_param={"temperature": 0.42})
-    with patch(
-        "derisk_serve.workspace.agent_tools.toolkit.build_read_tools",
-        return_value=[],
-    ), patch(
-        "derisk_serve.workspace.agent_tools.toolkit.build_write_tools",
-        return_value=[],
-    ):
-        agent = build_workspace_toolkit(
-            system_app=system_app,
-            workspace_id=1,
-            user_id=None,
-            conv_uid="conv-1",
-            mode="lobby",
-            llm_config=cfg,
-        )
-
-    assert agent.llm_config is cfg
-
-
-@pytest.mark.asyncio
-async def test_ext_info_with_workspace_agent_is_serializable():
-    """WorkspaceControlAgent 注入 ext_info 后，落库序列化不能报错。
-
-    aggregation_chat 会把 ext_info 写入 GptsConversationsEntity.extra；
-    extra_agents 里是预构建的 Agent 对象，不可 JSON 序列化，必须在序列化前排除。
-    """
-    ext_info = {"workspace_id": 1, "task_id": None}
-    fake_agent = MagicMock(name="WorkspaceControlAgent")
-    fake_ctx = _make_fake_ctx()
-
-    with patch(
-        "derisk_serve.agent.agents.chat.agent_chat._legacy_build_workspace_context",
-        return_value=fake_ctx,
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_context",
-        return_value=fake_ctx,
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.render_workspace_context_summary",
-        return_value="summary",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.render_scene_dynamic_context",
-        return_value="",
-    ), patch(
-        "derisk_serve.agent.agents.chat.agent_chat.build_workspace_toolkit",
-        return_value=fake_agent,
-    ):
-        _inject_workspace_context(
-            system_app=MagicMock(),
-            workspace_id=ext_info.get("workspace_id"),
-            user_id=None,
-            conv_uid="conv-1",
-            task_id=ext_info.get("task_id"),
-            system_prompt=[],
-            extra_agents=ext_info.setdefault("extra_agents", []),
-            ext_info=ext_info,
-        )
-
-    assert fake_agent in ext_info["extra_agents"]
-    extra_json = _serialize_extra_for_db(ext_info)
-    assert isinstance(extra_json, str)
-    assert "extra_agents" not in extra_json
+    # extra_agents remains empty — no toolkit agent appended.
+    assert ext_info["extra_agents"] == []
+    assert extra_agents == []
+    assert fake_agent not in ext_info["extra_agents"]
