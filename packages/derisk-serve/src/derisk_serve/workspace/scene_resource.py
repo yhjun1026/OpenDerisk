@@ -75,3 +75,35 @@ class WorkspaceSceneResource(ResourceProtocol):
             "- 产物/交付/资产:list_artifacts/list_deliveries/list_assets。\n"
             "实时数量与详情通过上述工具按需查找,不在此列出。\n"
         )
+
+    @staticmethod
+    def to_agent_resource(config: "WorkspaceSceneConfig"):
+        """序列化 WorkspaceSceneConfig 为 AgentResource(type="workspace_scene")。
+
+        RFC-006 SSR Task 5:供 SceneResourceAssembler 装配 lobby 资源,并由
+        CapabilityFactoryRegistry.build_pack 还原为 Contribution。
+
+        序列化 config(workspace_id / conv_uid / workspace_name),使 factory
+        反序列化时零 I/O(无需 DB refetch)。与 PlaybookResource.to_agent_resource
+        (Task 4)对齐同模式。
+
+        Args:
+            config: 场景空间配置
+
+        Returns:
+            AgentResource(type="workspace_scene", value=<config JSON>)
+        """
+        import json as _json
+
+        from derisk.agent.resource.base import AgentResource
+
+        value = _json.dumps({
+            "workspace_id": config.workspace_id,
+            "conv_uid": config.conv_uid,
+            "workspace_name": config.workspace_name,
+        }, ensure_ascii=False)
+        return AgentResource(
+            type="workspace_scene",
+            name=f"workspace_scene_{config.workspace_id}",
+            value=value,
+        )
