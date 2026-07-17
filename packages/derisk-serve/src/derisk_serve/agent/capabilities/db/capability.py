@@ -213,9 +213,13 @@ class DBCapability(Capability):
             self._status = ExecutorStatus.READY
             return
         try:
-            # Oracle 11g 需要 thick mode，提前初始化
-            if self._db_type == "oracle" or (self._db_name and "oracle" in self._db_name.lower()):
-                await asyncio.to_thread(self._ensure_oracle_thick_mode)
+            # Oracle thick mode 不在此提前初始化——get_connector 内部已有完整的
+            # Oracle 处理(读 ext_config force_thick_mode/oracle_client_lib + 全局
+            # config oracle_enable_thick_mode/oracle_instant_client_path →
+            # from_uri_db(force_thick_mode=..., oracle_client_lib=...) →
+            # connector 内部 init_oracle_client(lib_dir=...))。提前调
+            # init_oracle_client()(无 lib_dir)会导致后续 get_connector 内部再
+            # 初始化时冲突或 lib_dir 不匹配 → Oracle 11g 连接失败。
 
             self._connector = await asyncio.to_thread(self._build_connector)
             # 从 connector 回取 db_type/dialect(若 config 未提供)
