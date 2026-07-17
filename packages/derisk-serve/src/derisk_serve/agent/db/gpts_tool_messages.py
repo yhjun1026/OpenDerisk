@@ -85,7 +85,7 @@ class GptsToolMessagesEntity(Model):
 
     __table_args__ = (
         Index("idx_tool_id", "tool_id"),
-        Index("idx_tool_name", "name"),
+        Index("idx_gpts_tool_messages_name", "name"),
         Index("idx_tool_name_sub_name", "name", "sub_name"),
         Index("idx_session_id", "session_id")
     )

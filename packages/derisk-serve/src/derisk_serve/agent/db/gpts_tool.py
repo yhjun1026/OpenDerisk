@@ -75,7 +75,7 @@ class GptsToolEntity(Model):
     gmt_modified = Column(DateTime, name="gmt_modified", default=datetime.utcnow, onupdate=datetime.utcnow,
                           comment="last update time", )
 
-    __table_args__ = (Index("idx_tool_name", "tool_id")),
+    __table_args__ = (Index("idx_gpts_tool_tool_id", "tool_id")),
 
 
 class GptsToolDao(BaseDao):

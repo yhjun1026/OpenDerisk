@@ -190,7 +190,8 @@ class CapabilityFactoryRegistry:
                     source = resource_value if v2 else ar.to_dict()
                     param = parameter_cls.from_dict(source, ignore_extra_fields=True)
                     return param.to_dict()
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"[registry_factory] parameter_cls parse failed: {e}")
                 pass  # 回退到下方通用逻辑
 
         # 通用回退:value 已是 dict → 直接用;string → 包成含 db_name/name 的 dict。
@@ -200,8 +201,25 @@ class CapabilityFactoryRegistry:
         if isinstance(raw_value, dict):
             return raw_value
         if isinstance(raw_value, str):
+            # 对于 datasource 类型，尝试从数据库配置中查询完整信息（包括 db_id）
+            # 解决 RFC-006 处理旧数据格式时丢失 db_id 导致 Oracle 连接失败的问题
+            type_key = getattr(ar, "type", None)
+            if type_key == "datasource":
+                try:
+                    from derisk_serve.datasource.manages.connect_config_db import ConnectConfigDao
+                    entity = ConnectConfigDao().get_by_names(raw_value)
+                    if entity:
+                        # 找到配置，返回完整信息（包括 db_id 用于 Oracle 连接）
+                        return {
+                            "db_name": raw_value,  # ← 关键修复：使用 raw_value，而不是 name
+                            "db_id": entity.id,
+                            "name": name or raw_value,
+                            "value": raw_value,
+                        }
+                except Exception:  # noqa: BLE001
+                    pass
             return {
-                "db_name": name or raw_value,
+                "db_name": raw_value,  # ← 关键修复：使用 raw_value
                 "name": name or raw_value,
                 "value": raw_value,
             }

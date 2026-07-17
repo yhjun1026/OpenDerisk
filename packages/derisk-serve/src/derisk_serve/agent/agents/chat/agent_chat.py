@@ -560,22 +560,31 @@ class AgentChat(BaseComponent, ABC):
             todo_db_storage=todo_db_storage,
         )
 
-        # Register GptsMemory to system_app for file_dispatch.py to access
-        try:
-            from derisk.component import ComponentType
-
-            self.system_app.register_instance(self.memory)
-            logger.info("[AgentChat] Registered GptsMemory to system_app")
-        except Exception as e:
-            logger.warning(f"[AgentChat] Failed to register GptsMemory: {e}")
-
         self.llm_provider = llm_provider
         self.agent_memory_map = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
 
+        # 设置 system_app 属性
         super().__init__(system_app)
         self.system_app = system_app
         self.agent_manage = get_agent_manager(system_app)
+
+        # Register GptsMemory to system_app for file_dispatch.py to access (全局单例，只注册一次)
+        # Note: GptsMemory is not a BaseComponent, so we manually add it to components dict
+        # without calling lifecycle methods
+        try:
+            from derisk.component import ComponentType
+
+            # 检查是否已经注册，避免重复注册
+            name = ComponentType.GPTS_MEMORY.value if isinstance(ComponentType.GPTS_MEMORY, ComponentType) else ComponentType.GPTS_MEMORY
+            if name not in self.system_app.components:
+                # Manually add to components dict without calling init_app or lifecycle methods
+                self.system_app.components[name] = self.memory
+                logger.info("[AgentChat] Registered GptsMemory to system_app")
+            else:
+                logger.debug("[AgentChat] GptsMemory already registered, skipping")
+        except Exception as e:
+            logger.warning(f"[AgentChat] Failed to register GptsMemory: {e}")
 
         # 注册全局 SubagentCoordinator 单例，供 SubAgent 工具 async 模式访问
         try:

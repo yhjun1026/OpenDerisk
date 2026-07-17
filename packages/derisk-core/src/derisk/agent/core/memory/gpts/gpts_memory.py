@@ -16,6 +16,7 @@ import psutil
 from cachetools import TTLCache
 
 from derisk.util.executor_utils import blocking_func_to_async, execute_no_wait
+from derisk.component import LifeCycle
 from .agent_system_message import AgentSystemMessage
 from .base import (
     GptsMessage,
@@ -412,7 +413,7 @@ class DynamicThreadPoolExecutor(ThreadPoolExecutor):
 # --------------------------
 # 全局内存管理（单例）
 # --------------------------
-class GptsMemory(FileMetadataStorage, WorkLogStorage, KanbanStorage, TodoStorage):
+class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, TodoStorage):
     """会话全局消息记忆管理（包含文件元数据管理、工作日志、看板和任务列表管理）.
 
     同时实现了 FileMetadataStorage、WorkLogStorage、KanbanStorage 和 TodoStorage 接口，
