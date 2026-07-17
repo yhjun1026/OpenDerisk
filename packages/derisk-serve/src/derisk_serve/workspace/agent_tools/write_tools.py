@@ -216,7 +216,7 @@ def build_scene_write_tools(
         ("create_playbook", "在当前空间下创建一个剧本", create_playbook),
         ("update_playbook", "更新指定剧本的声明", update_playbook),
         ("delete_playbook", "删除指定剧本", delete_playbook),
-        ("resolve_intervention", "批准并执行一个待介入请求", resolve_intervention),
+        ("resolve_intervention", "批准一个待介入请求(记录决策并流转状态)", resolve_intervention),
         ("abort_intervention", "中止一个介入请求", abort_intervention),
     ]
     for name, desc, fn in extra_specs:
