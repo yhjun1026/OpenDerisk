@@ -4,7 +4,10 @@ from typing import Callable, List, Optional
 from derisk.agent.resource.tool.base import FunctionTool
 from derisk_serve.intervention.api.schemas import InterventionRequest
 from derisk_serve.workspace.agent_tools._task_creator import create_task_from_tool
-from derisk_serve.workspace.agent_tools.read_tools import get_intervention_service
+from derisk_serve.workspace.agent_tools.read_tools import (
+    get_intervention_service,
+    get_playbook_service,
+)
 
 WorkspaceEventCallback = Callable[[str, dict], None]
 
@@ -118,3 +121,104 @@ def build_write_tools(
     for name, desc, fn in specs:
         tools.append(FunctionTool(name=name, description=desc, func=fn, args_schema=None))
     return tools
+
+
+def _coerce_declaration(raw) -> dict:
+    """Coerce a declaration payload (str JSON / dict / None) to a dict.
+
+    PlaybookService.validate_declaration requires a dict; tool callers may pass a
+    JSON string (e.g. ``declaration_dsl="{}"``) so we parse defensively.
+    """
+    import json
+
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+    return {}
+
+
+def build_scene_write_tools(
+    system_app,
+    workspace_id: int,
+    user_id: Optional[str],
+    conv_uid: str,
+    task_id: Optional[int] = None,
+    on_event: Optional[WorkspaceEventCallback] = None,
+) -> List[FunctionTool]:
+    """场景管理写工具全集:任务/剧本/介入/产物交付/workspace,供 WorkspaceSceneResource TOOLS 槽。
+
+    在 ``build_write_tools`` 的 5 个工具(任务/交付/资产/workspace 经介入审批)之上,
+    追加 5 个直接写工具:create/update/delete_playbook + resolve/abort_intervention。
+    """
+    from derisk_serve.playbook.api.schemas import PlaybookRequest
+    from derisk_serve.intervention.api.schemas import InterventionResolveRequest
+
+    base = build_write_tools(system_app, workspace_id, user_id, conv_uid, task_id, on_event)
+
+    def create_playbook(**kwargs):
+        svc = get_playbook_service(system_app)
+        req = PlaybookRequest(
+            workspace_id=kwargs.get("workspace_id") or workspace_id,
+            name=kwargs.get("name"),
+            declaration=_coerce_declaration(kwargs.get("declaration_dsl")),
+        )
+        entity = svc.create(req)
+        return {"playbook_id": entity.id}
+
+    def update_playbook(**kwargs):
+        svc = get_playbook_service(system_app)
+        playbook_id = int(kwargs.get("playbook_id"))
+        req = PlaybookRequest(
+            id=playbook_id,
+            workspace_id=kwargs.get("workspace_id") or workspace_id,
+            name=kwargs.get("name"),
+            declaration=_coerce_declaration(kwargs.get("declaration_dsl")),
+        )
+        entity = svc.update(req)
+        return {"playbook_id": entity.id}
+
+    def delete_playbook(**kwargs):
+        svc = get_playbook_service(system_app)
+        playbook_id = int(kwargs.get("playbook_id"))
+        svc.delete(playbook_id)
+        return {"playbook_id": playbook_id, "deleted": True}
+
+    def resolve_intervention(**kwargs):
+        svc = get_intervention_service(system_app)
+        intervention_id = int(kwargs.get("intervention_id"))
+        decision = kwargs.get("decision") or {"action": "approved"}
+        req = InterventionResolveRequest(decision=decision)
+        entity = svc.resolve(intervention_id, req)
+        return {
+            "intervention_id": entity.id,
+            "status": getattr(entity, "status", "resolved"),
+        }
+
+    def abort_intervention(**kwargs):
+        svc = get_intervention_service(system_app)
+        intervention_id = int(kwargs.get("intervention_id"))
+        entity = svc.abort(intervention_id)
+        return {
+            "intervention_id": entity.id,
+            "status": getattr(entity, "status", "aborted"),
+        }
+
+    extra_specs = [
+        ("create_playbook", "在当前空间下创建一个剧本", create_playbook),
+        ("update_playbook", "更新指定剧本的声明", update_playbook),
+        ("delete_playbook", "删除指定剧本", delete_playbook),
+        ("resolve_intervention", "批准并执行一个待介入请求", resolve_intervention),
+        ("abort_intervention", "中止一个介入请求", abort_intervention),
+    ]
+    for name, desc, fn in extra_specs:
+        base.append(FunctionTool(name=name, description=desc, func=fn, args_schema=None))
+    return base
