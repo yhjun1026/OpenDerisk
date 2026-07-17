@@ -21,6 +21,7 @@ from derisk_serve.agent.agents.controller import multi_agents
 from derisk_serve.playbook.service.service import (
     PLAYBOOK_SERVICE_COMPONENT_NAME, PlaybookService,
 )
+from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
 from derisk_serve.workspace.service.service import (
     WORKSPACE_SERVICE_COMPONENT_NAME, WorkspaceService,
 )
@@ -108,6 +109,20 @@ async def run_task(
         except Exception as e:
             logger.warning(f"task start skipped or failed: {e}")
 
+    # Assemble scene resources for the workbench path. Unlike the HTTP
+    # chat_completions endpoint (which wires SceneResourceAssembler in its
+    # pre-processing layer), run_task calls app_chat_v3 directly, so it must
+    # assemble here and forward via ext_info["dynamic_resources"]. The
+    # forwarding path: app_chat_v3(**ext_info) -> async_chat.chat(**ext_info)
+    # -> aggregation_chat(**ext_info), where ext_info["dynamic_resources"] is
+    # consumed by AgentChat (preserved/extended, never overwritten).
+    scene_resources = SceneResourceAssembler.assemble(
+        system_app=system_app,
+        workspace_id=task.workspace_id,
+        task_id=task.id,
+        conv_uid=task.conv_session_id,
+    )
+
     # Launch agent in the task's conversation session
     logger.info(
         f"[playbook runtime] starting task={task_id} conv={task.conv_session_id} "
@@ -122,6 +137,7 @@ async def run_task(
         sys_code=sys_code,
         workspace_id=task.workspace_id,
         task_id=task.id,
+        dynamic_resources=scene_resources,
     )
 
     if not agent_conv_id:
