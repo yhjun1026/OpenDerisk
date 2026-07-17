@@ -391,6 +391,32 @@ async def chat_query(
         return Result.failed(code="E0104", msg=f"查询会话失败: {str(e)}")
 
 
+def _assemble_scene_resources(ext_info, conv_uid: str):
+    """预处理:有 workspace_id 时调场景资源装配器,返回待并入 dynamic_resources 的列表。
+
+    纯函数,便于不起端点单测。仅在 ext_info 携带 workspace_id 时触发装配;
+    否则返回 [](对话链路无场景空间资源,行为与未接入时完全一致)。
+
+    注:此处刻意不直接 import derisk.component.CFG(Task 2 已确认该符号不可导入),
+    改用文件顶部已建立的 `CFG = Config()`(来自 derisk._private.config.Config),
+    与 derisk_serve/config/service/service.py:234 的 `Config().SYSTEM_APP` 同一事实来源。
+    SceneResourceAssembler.assemble 内部已捕获一切异常并降级为 [],此处不再兜底。
+    """
+    ws_id = ext_info.get("workspace_id") if ext_info else None
+    if not ws_id:
+        return []
+    from derisk_serve.workspace.scene_resource_assembler import (
+        SceneResourceAssembler,
+    )
+
+    return SceneResourceAssembler.assemble(
+        CFG.SYSTEM_APP,
+        workspace_id=int(ws_id),
+        task_id=ext_info.get("task_id"),
+        conv_uid=conv_uid,
+    )
+
+
 @router.post("/v1/chat/completions")
 async def chat_completions(
     background_tasks: BackgroundTasks,
@@ -444,6 +470,13 @@ async def chat_completions(
         dialogue.ext_info.update({"incremental": dialogue.incremental})
         dialogue.ext_info.update({"temperature": dialogue.temperature})
         dialogue.ext_info.update({"max_new_tokens": dialogue.max_new_tokens})
+
+        # 预处理:场景空间资源装配(agent 通用骨架不感知,此处为场景业务)
+        scene_res = _assemble_scene_resources(dialogue.ext_info, dialogue.conv_uid)
+        if scene_res:
+            existing_dyn = dialogue.ext_info.get("dynamic_resources") or []
+            existing_dyn.extend(scene_res)
+            dialogue.ext_info["dynamic_resources"] = existing_dyn
 
         in_message = HumanMessage.parse_chat_completion_message(
             dialogue.user_input, ignore_unknown_media=True
