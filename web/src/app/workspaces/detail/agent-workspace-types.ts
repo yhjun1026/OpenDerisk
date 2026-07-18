@@ -34,4 +34,5 @@ export interface PlaybookCommand {
 
 export interface AgentWorkspaceInputHandle {
   focus: () => void;
+  insertText: (text: string) => void;
 }

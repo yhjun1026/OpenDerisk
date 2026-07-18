@@ -7,6 +7,7 @@ import type { WorkspaceEvent } from '@/hooks/use-chat';
 import type { AgentStep } from './agent-types';
 import { AgentWorkspaceInput } from './agent-workspace-input';
 import { AgentWorkspaceRenderer } from './agent-workspace-renderer';
+import { ConversationSwitcher } from './conversation-switcher';
 import type { AgentWorkspaceInputHandle } from './agent-workspace-types';
 import { useSceneAgentChat } from './use-scene-agent-chat';
 
@@ -15,10 +16,10 @@ export interface AgentWorkspaceProps {
   appCode?: string;
   workspaceId?: number | string;
   taskId?: number | string;
-  autoFocus?: boolean;
-  onFocusHandled?: () => void;
   onStepClick?: (step: AgentStep) => void;
   onWorkspaceEvent?: (event: WorkspaceEvent) => void;
+  onConvChanged?: (convUid: string) => void;
+  inputRef?: React.Ref<AgentWorkspaceInputHandle>;
   switchingTask?: boolean;
   convLoadError?: string | null;
   retryLoadConv?: () => void;
@@ -30,16 +31,17 @@ export function AgentWorkspace({
   appCode,
   workspaceId,
   taskId,
-  autoFocus,
-  onFocusHandled,
   onStepClick,
   onWorkspaceEvent,
+  onConvChanged,
+  inputRef: inputRefProp,
   switchingTask,
   convLoadError,
   retryLoadConv,
   playbooks,
 }: AgentWorkspaceProps) {
-  const inputRef = useRef<AgentWorkspaceInputHandle>(null);
+  const inputRefInner = useRef<AgentWorkspaceInputHandle>(null);
+  const inputRef = inputRefProp ?? inputRefInner;
   const { steps, workspaceView, loading, error, lastInput, send, clearSteps, clearWorkspaceView } = useSceneAgentChat({
     convUid,
     appCode,
@@ -53,15 +55,28 @@ export function AgentWorkspace({
     clearWorkspaceView();
   }, [convUid, clearSteps, clearWorkspaceView]);
 
-  useEffect(() => {
-    if (autoFocus) {
-      inputRef.current?.focus();
-      onFocusHandled?.();
-    }
-  }, [autoFocus, onFocusHandled]);
-
   return (
     <div className="ws-agent-workspace">
+      <div className="ws-agent-workspace__header">
+        <span
+          className={`ws-agent-workspace__status${
+            loading ? ' ws-agent-workspace__status--running' : error ? ' ws-agent-workspace__status--error' : ''
+          }`}
+        />
+        <span className="ws-agent-workspace__header-title">
+          {taskId ? `任务 #${taskId} · Agent` : 'Agent 空间'}
+        </span>
+        {onConvChanged && !taskId && workspaceId && convUid && (
+          <ConversationSwitcher
+            workspaceId={Number(workspaceId)}
+            currentConvUid={convUid}
+            onChanged={onConvChanged}
+          />
+        )}
+        <span className="ws-agent-workspace__header-state">
+          {loading ? '运行中…' : error ? '出错了' : '就绪'}
+        </span>
+      </div>
       <div className="ws-agent-workspace__process">
         {error && <Alert message={error} type="error" showIcon className="ws-agent-workspace__error" />}
         {switchingTask ? (
@@ -89,11 +104,16 @@ export function AgentWorkspace({
             view={workspaceView}
             onStepClick={onStepClick ? (s) => onStepClick({
               id: s.id,
-              type: 'unknown',
+              type: s.type === 'thinking' ? 'llm' : 'tool_call',
               title: s.title,
               status: s.status === 'running' ? 'running' : s.status === 'failed' ? 'failed' : 'done',
               timestamp: Date.now(),
-              payload: { action: s.action },
+              payload: {
+                action: s.action,
+                action_input: s.action_input,
+                output: s.output,
+                step_type: s.type,
+              },
             }) : undefined}
           />
         )}

@@ -463,7 +463,7 @@ const WorkspaceHeader: React.FC<{ shareMode: ShareMode; showLeftPanel: boolean }
   }, [appInfo?.app_name]);
 
   return (
-    <div className="flex items-center px-4 h-10 flex-shrink-0 bg-[#f6f6f6] border-b border-gray-200/50">
+    <div className="flex items-center px-4 h-8 flex-shrink-0 bg-[#f6f6f6] border-b border-gray-200/50">
       <div className="flex items-center gap-2.5 flex-1">
         <div className="flex items-center gap-1.5">
           <div

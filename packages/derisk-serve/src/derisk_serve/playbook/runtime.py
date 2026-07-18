@@ -155,6 +155,8 @@ async def run_task(
     vis_final = final_state.get("vis_final") or final_state.get("user_answer") or ""
 
     # Create artifact(s) from deliverables
+    from derisk_serve.workspace.event_bus import emit_workspace_event
+
     artifact_ids: List[int] = []
     deliverables = declaration.get("deliverables") or []
     for idx, d in enumerate(deliverables):
@@ -175,6 +177,13 @@ async def run_task(
             },
         ))
         artifact_ids.append(artifact.id)
+        emit_workspace_event(task.workspace_id, "artifact_produced", {
+            "artifact_id": artifact.id,
+            "title": title,
+            "type": artifact_type,
+            "task_id": task.id,
+            "workspace_id": task.workspace_id,
+        })
 
     # Create deliveries from deliverable declarations
     delivery_ids: List[int] = []
@@ -200,6 +209,13 @@ async def run_task(
                 delivery_service.send(delivery.id)
             except Exception as e:
                 logger.warning(f"delivery send failed for {delivery.id}: {e}")
+            emit_workspace_event(task.workspace_id, "delivery_sent", {
+                "delivery_id": delivery.id,
+                "artifact_id": delivery.artifact_id,
+                "task_id": task.id,
+                "workspace_id": task.workspace_id,
+                "channel": delivery_decl.get("channel", "in_app"),
+            })
 
     # If any delivery requires review, raise an intervention and stop at awaiting_human
     requires_review = any(
@@ -209,7 +225,7 @@ async def run_task(
     )
     if requires_review:
         try:
-            intervention_service.create(InterventionRequest(
+            intervention = intervention_service.create(InterventionRequest(
                 task_id=task.id,
                 workspace_id=task.workspace_id,
                 type="review",
@@ -221,6 +237,13 @@ async def run_task(
                 },
                 context={"agent_conv_id": agent_conv_id, "artifact_ids": artifact_ids},
             ))
+            emit_workspace_event(task.workspace_id, "intervention_triggered", {
+                "intervention_id": intervention.id,
+                "task_id": task.id,
+                "workspace_id": task.workspace_id,
+                "tool": "delivery_review",
+                "requested_by": "system",
+            })
         except Exception as e:
             logger.warning(f"failed to create review intervention: {e}")
         task_service.transition(task_id, "awaiting_human")

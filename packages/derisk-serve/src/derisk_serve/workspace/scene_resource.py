@@ -34,12 +34,20 @@ def build_scene_management_tools(workspace_id: int, conv_uid: str) -> List[Funct
     无法从请求取 system_app,故走全局单例 Config().SYSTEM_APP(运行时由 SystemApp
     初始化设置,见 derisk_app.base)。工具仅在此绑定闭包,不发起服务调用;真正调用
     工具时 system_app 已就绪。
+
+    on_event 走 workspace 事件总线:工具执行产生的事件(task_created /
+    intervention_triggered)广播进该 workspace 活跃对话的 SSE 流。
     """
     from derisk._private.config import Config
+    from derisk_serve.workspace.event_bus import emit_workspace_event
+
     system_app = Config().SYSTEM_APP
     reads = build_read_tools(system_app, workspace_id)
     writes = build_scene_write_tools(
         system_app, workspace_id, user_id=None, conv_uid=conv_uid, task_id=None,
+        on_event=lambda event_type, payload: emit_workspace_event(
+            workspace_id, event_type, payload
+        ),
     )
     return reads + writes
 

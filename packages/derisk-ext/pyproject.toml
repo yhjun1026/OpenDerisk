@@ -60,7 +60,10 @@ datasource_postgres = [
     "psycopg2-binary",
 ]
 datasource_oracle = [
-    "oracledb>=1.4.0",
+    # Pin <4: python-oracledb 4.x thick mode requires Oracle Client >= 19.1,
+    # which breaks deployments still using Instant Client 11.2 (needed for
+    # connecting to Oracle 11g and earlier database servers).
+    "oracledb>=1.4.0,<4",
 ]
 
 datasource_duckdb = [

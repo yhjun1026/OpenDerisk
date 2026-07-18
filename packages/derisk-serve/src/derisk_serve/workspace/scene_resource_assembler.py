@@ -31,6 +31,24 @@ _TASK = "serve_task_service"
 _PLAYBOOK = "serve_playbook_service"
 
 
+def _workspace_service(system_app):
+    from derisk_serve.workspace.service.service import WorkspaceService
+
+    return system_app.get_component(_WORKSPACE, WorkspaceService)
+
+
+def _task_service(system_app):
+    from derisk_serve.task.service.service import TaskService
+
+    return system_app.get_component(_TASK, TaskService)
+
+
+def _playbook_service(system_app):
+    from derisk_serve.playbook.service.service import PlaybookService
+
+    return system_app.get_component(_PLAYBOOK, PlaybookService)
+
+
 class SceneResourceAssembler:
     """场景资源装配器:chat 前预处理,产出 List[AgentResource]。
 
@@ -58,7 +76,7 @@ class SceneResourceAssembler:
         # Coerce workspace_name to str defensively; production Workspace.name
         # is already str, so this is a no-op there and protects the JSON
         # serializer in to_agent_resource against unexpected object types.
-        ws_service = system_app.get_component(_WORKSPACE, None)
+        ws_service = _workspace_service(system_app)
         ws = ws_service.get_by_id(workspace_id) if ws_service else None
         if not ws:
             return []
@@ -70,11 +88,11 @@ class SceneResourceAssembler:
 
     @staticmethod
     def _assemble_workbench(system_app, workspace_id, task_id):
-        task_service = system_app.get_component(_TASK, None)
+        task_service = _task_service(system_app)
         task = task_service.get_by_id(task_id) if task_service else None
         if not task or not task.playbook_id:
             return []
-        playbook_service = system_app.get_component(_PLAYBOOK, None)
+        playbook_service = _playbook_service(system_app)
         pb = playbook_service.get_by_id(task.playbook_id) if playbook_service else None
         if not pb:
             return []

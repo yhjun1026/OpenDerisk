@@ -20,6 +20,7 @@ import DThinkCard from './DThinkCard';
 import RefsCard from './RefsCard';
 import ThinkCard from './ThinkCard';
 import VisAgentPlanCard from './VisAgentPlanCard';
+import VisAgentPlanGroupCard from './VisAgentPlanGroupCard';
 import VisContentCard from './VisContentCard';
 import VisDAttach from './VisDAttach';
 import VisDAttachList from './VisDAttachList';
@@ -271,6 +272,20 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       );
     } catch (e) {
       return <VisParseError content={content} error={e} componentName="d-agent-plan" />;
+    }
+  },
+  // 连续同工具步骤的聚合卡片,由 groupConsecutivePlanCards 在渲染前生成
+  'd-agent-plan-group': ({ children }) => {
+    const content = String(children);
+    try {
+      const data = parseFirstJson(content);
+      return (
+        <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-agent-plan-group" />}>
+          <VisAgentPlanGroupCard data={data} />
+        </ErrorBoundary>
+      );
+    } catch (e) {
+      return <VisParseError content={content} error={e} componentName="d-agent-plan-group" />;
     }
   },
   'd-planning-space': ({ children }) => {

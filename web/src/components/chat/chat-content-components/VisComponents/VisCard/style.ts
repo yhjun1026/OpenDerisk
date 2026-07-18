@@ -35,8 +35,12 @@ export const VisCardStyles = styled.div`
 
   /* react-markdown 把每个自定义代码块(manus-left-panel 等)外层套一个 <pre>。
      让其内联、去 padding/background,避免块级 <pre> 默认间距撑出空白 —— 对齐参考项目
-     :where(pre){display:inline;padding-left:0} 的效果。 */
-  :where(pre) {
+     :where(pre){display:inline;padding-left:0} 的效果。
+     注意:markdown 包裹层的 <pre> 是不带 class 的原生节点;组件内部自己渲染的 <pre>
+     (如 SqlQueryRenderer/TerminalRenderer 的代码块)都带有 Tailwind class。
+     用 :not([class]) 把 reset 限定在前者,避免把组件内的代码块 <pre> 打成 inline
+     (inline pre 的 background/padding 会按行片段绘制,造成行与行互相遮挡)。 */
+  :where(pre):not([class]) {
     display: inline;
     padding-left: 0;
     margin: 0;

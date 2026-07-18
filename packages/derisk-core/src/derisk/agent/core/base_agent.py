@@ -712,12 +712,57 @@ class ConversableAgent(Role, Agent):
             await self._inject_default_tools(sandbox_enabled)
             logger.info("[system_tool_injection] Using default tools")
 
+        # 注入 capability_pack 声明的资源工具(如 workspace_scene 场景管理工具)。
+        # function_calling_params 首轮还没有 _last_snapshot,资源工具必须先进
+        # available_system_tools,声明面(LLM 可见)与执行面(Route A 直调)才一致。
+        await self._inject_capability_declared_tools()
+
         # 根据绑定资源注入知识和 Agent 系统工具
         await self._inject_resource_based_tools()
 
         logger.info(
             f"[system_tool_injection] Total tools injected: {len(self.available_system_tools)}"
         )
+
+    async def _inject_capability_declared_tools(self) -> None:
+        """把 capability_pack 各 Capability declare 的 TOOLS Contribution 注入
+        available_system_tools(重名不覆盖)。
+
+        背景:react_master 的 function_calling_params 在 _last_snapshot 构建之前
+        走 fallback 路径(available_system_tools + ToolPack),快照只在此后生效;
+        capability(如 workspace_scene)声明的工具若不先进 available_system_tools,
+        首轮 LLM 永远看不到它们。
+        """
+        import inspect
+
+        from derisk.core.interface.resource.bundle import Slot
+
+        pack = getattr(self, "capability_pack", None)
+        subs = getattr(pack, "sub_resources", None) if pack is not None else None
+        if not subs:
+            return
+        injected = 0
+        for sub in subs:
+            try:
+                contribs = sub.declare(getattr(sub, "_config", None))
+                if inspect.isawaitable(contribs):
+                    contribs = await contribs
+                for c in contribs or []:
+                    if getattr(c, "slot", None) != Slot.TOOLS:
+                        continue
+                    tool = getattr(c, "content", None)
+                    name = getattr(tool, "name", None)
+                    if name and name not in self.available_system_tools:
+                        self.available_system_tools[name] = tool
+                        injected += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    f"[capability_tools] declare failed for {type(sub).__name__}: {e}"
+                )
+        if injected:
+            logger.info(
+                f"[capability_tools] Injected {injected} tools from capability_pack"
+            )
 
     def _setup_tool_manager_load_callback(self, tool_manager):
         """设置 tool_manager 的加载回调"""

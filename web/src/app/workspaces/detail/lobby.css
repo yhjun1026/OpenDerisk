@@ -1,68 +1,109 @@
 /* 空间大厅样式 — BEM .ws-lobby-* */
 .ws-lobby {
   display: flex;
-  gap: 20px;
-  padding: 16px 20px;
+  flex-direction: column;
+  height: 100%;
   min-height: 0;
-  align-items: flex-start;
 }
 
-.ws-lobby__main {
-  flex: 1;
-  min-width: 0;
+.ws-lobby__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
-.ws-lobby__rail {
-  width: 280px;
-  flex-shrink: 0;
-  position: sticky;
-  top: 16px;
+/* 四宫格:宽屏 2 列,窄屏自动落 1 列 */
+.ws-lobby__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 14px;
+  align-items: start;
 }
 
 .ws-lobby__section {
-  border: 1px solid var(--ws-border, #e5e7eb);
-  border-radius: 8px;
-  background: var(--ws-bg, #fff);
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius, 12px);
+  background: var(--ws-surface);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .ws-lobby__section-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--ws-border, #e5e7eb);
+  gap: 7px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--ws-border-subtle, var(--ws-border));
+  min-width: 0;
 }
 
-.ws-lobby__section-head h3 {
-  margin: 0;
-  font-size: 14px;
+.ws-lobby__section-icon {
+  color: var(--ws-accent);
+  font-size: 13px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ws-lobby__section-title {
+  font-size: 13px;
   font-weight: 600;
-  color: var(--ws-text, #111827);
+  color: var(--ws-ink);
+  white-space: nowrap;
 }
 
-.ws-lobby__task-list {
+.ws-lobby__section-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: var(--ws-mono);
+  color: var(--ws-accent);
+  background: var(--ws-accent-light);
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+.ws-lobby__section-sub {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ws-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-lobby__section-body {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* 任务卡 */
 .ws-lobby__task-card {
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius-sm, 8px);
+  padding: 10px 12px;
   cursor: pointer;
+  transition: border-color var(--ws-transition), box-shadow var(--ws-transition);
 }
 
-.ws-lobby__task-card .ant-card-body {
-  padding: 12px 14px;
+.ws-lobby__task-card:hover {
+  border-color: var(--ws-accent);
+  box-shadow: 0 3px 10px rgba(var(--ws-accent-rgb), 0.1);
 }
 
 .ws-lobby__task-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--ws-text, #111827);
-  margin-bottom: 8px;
+  color: var(--ws-ink);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ws-lobby__task-meta {
@@ -70,61 +111,56 @@
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--ws-text-secondary, #6b7280);
+  color: var(--ws-ink-2);
 }
 
-.ws-lobby__hosted-grid {
-  padding: 12px 14px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.ws-lobby__hosted-card .ant-card-body {
-  padding: 12px 14px;
+/* 栖居交付物 */
+.ws-lobby__hosted-card {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  align-items: flex-start;
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius-sm, 8px);
+  padding: 8px 12px;
 }
 
-.ws-lobby__delivery-list {
-  padding: 8px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.ws-lobby__hosted-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ws-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* 最近交付 */
 .ws-lobby__delivery-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: var(--ws-text, #111827);
-  padding: 6px 0;
+  font-size: 12.5px;
+  color: var(--ws-ink);
+  padding: 4px 0;
+}
+
+.ws-lobby__delivery-channel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ws-lobby__delivery-status {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--ws-text-secondary, #6b7280);
+  font-size: 11px;
+  color: var(--ws-ink-3);
+  flex-shrink: 0;
 }
 
-.ws-lobby__section-head-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ws-lobby__section-sub {
-  font-size: 12px;
-  color: var(--ws-text-secondary, #6b7280);
-  font-weight: 400;
-}
-
+/* 快捷发起 */
 .ws-lobby__quick {
-  padding: 12px 14px;
-  display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -137,6 +173,7 @@
   align-items: flex-start;
   gap: 2px;
   text-align: left;
+  border-radius: var(--ws-radius-sm, 8px);
 }
 
 .ws-lobby__quick-name {
@@ -146,34 +183,60 @@
 
 .ws-lobby__quick-desc {
   font-size: 12px;
-  color: var(--ws-text-secondary, #6b7280);
+  color: var(--ws-ink-3);
   font-weight: 400;
 }
 
-.ws-lobby__input {
-  position: sticky;
-  bottom: 0;
-  padding: 12px 14px;
-  border: 1px solid var(--ws-border, #e5e7eb);
-  border-radius: 8px;
-  background: var(--ws-bg, #fff);
-  z-index: 10;
+/* 空态 */
+.ws-lobby__empty {
+  padding: 22px 12px;
+  text-align: center;
 }
 
+.ws-lobby__empty-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ws-ink-2);
+  margin-bottom: 3px;
+}
+
+.ws-lobby__empty-hint {
+  font-size: 11.5px;
+  color: var(--ws-ink-3);
+  line-height: 1.5;
+}
+
+/* GrowthCard 横向紧凑条 */
+.ws-lobby .ws-growth-card {
+  border-radius: var(--ws-radius, 12px);
+}
+
+.ws-lobby .ws-growth-card .ant-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+}
+
+.ws-lobby .ws-growth-card .ant-statistic {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ws-lobby .ws-growth-card__trend {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ws-ink-2);
+}
+
+/* 兼容:其它模块引用的通用空态 */
 .ws-empty {
   padding: 24px 0;
   text-align: center;
   font-size: 13px;
-  color: var(--ws-text-secondary, #6b7280);
-}
-
-@media (max-width: 900px) {
-  .ws-lobby {
-    flex-direction: column;
-  }
-
-  .ws-lobby__rail {
-    width: 100%;
-    position: static;
-  }
+  color: var(--ws-ink-2);
 }

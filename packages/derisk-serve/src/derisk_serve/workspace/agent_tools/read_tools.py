@@ -152,9 +152,12 @@ def _task_list_filter(workspace_id: int):
         )
 
 
-def _list_tasks(system_app, workspace_id: int):
+def _list_tasks(system_app, workspace_id: int, status: str = None):
     svc = get_task_service(system_app)
-    items = svc.list_tasks(_task_list_filter(workspace_id)) or []
+    list_filter = _task_list_filter(workspace_id)
+    if status:
+        list_filter.status = status
+    items = svc.list_tasks(list_filter) or []
     return _to_jsonable(items)
 
 
@@ -247,28 +250,50 @@ def build_read_tools(system_app, workspace_id: int) -> List[FunctionTool]:
 
     Caller decides which subset to register for a given agent mode.
     """
+    from derisk.agent.resource.tool.base import ToolParameter
+
+    def _p(name, type_, desc, required=False):
+        return ToolParameter(name=name, type=type_, description=desc, required=required)
+
+    # (name, desc, fn, args)
     specs = [
-        ("list_tasks", "列出当前空间下的所有任务", _list_tasks),
-        ("get_task_info", "查询指定任务的详情", _get_task_info),
-        ("list_artifacts", "列出空间下（可选指定任务）的交付物", _list_artifacts),
-        ("list_deliveries", "列出空间下最近的投递记录", _list_deliveries),
-        ("list_assets", "列出空间下沉淀的 Asset", _list_assets),
-        ("get_workspace_memory", "读取空间记忆", _get_workspace_memory),
-        ("list_workspace_members", "列出空间成员", _list_workspace_members),
-        ("list_playbooks", "列出空间下的剧本", _list_playbooks),
-        ("get_playbook_detail", "查询剧本详情", _get_playbook_detail),
-        ("list_interventions", "列出空间下（可选指定任务）的人工介入记录", _list_interventions),
+        ("list_tasks", "列出当前空间下的所有任务", _list_tasks, {
+            "status": _p("status", "string", "按状态过滤,如 running/awaiting_human/delivered/failed"),
+        }),
+        ("get_task_info", "查询指定任务的详情", _get_task_info, {
+            "task_id": _p("task_id", "integer", "任务 ID", required=True),
+        }),
+        ("list_artifacts", "列出空间下（可选指定任务）的交付物", _list_artifacts, {
+            "task_id": _p("task_id", "integer", "任务 ID,不传则列出空间全部"),
+        }),
+        ("list_deliveries", "列出空间下最近的投递记录", _list_deliveries, {}),
+        ("list_assets", "列出空间下沉淀的 Asset", _list_assets, {}),
+        ("get_workspace_memory", "读取空间记忆", _get_workspace_memory, {}),
+        ("list_workspace_members", "列出空间成员", _list_workspace_members, {}),
+        ("list_playbooks", "列出空间下的剧本", _list_playbooks, {}),
+        ("get_playbook_detail", "查询剧本详情", _get_playbook_detail, {
+            "playbook_id": _p("playbook_id", "integer", "剧本 ID", required=True),
+        }),
+        ("list_interventions", "列出空间下（可选指定任务）的人工介入记录", _list_interventions, {
+            "task_id": _p("task_id", "integer", "任务 ID,不传则列出空间全部"),
+        }),
     ]
     tools: List[FunctionTool] = []
-    for name, desc, fn in specs:
+    for name, desc, fn, tool_args in specs:
 
-        def make_tool(fn=fn, name=name, desc=desc):
+        def make_tool(fn=fn, name=name, desc=desc, tool_args=tool_args):
+            import inspect as _inspect
+
+            _fn_params = set(_inspect.signature(fn).parameters)
+
             def _wrapped(**kwargs):
-                kwargs["system_app"] = system_app
-                return fn(**kwargs)
+                # 执行框架会注入 agent_id/conv_id/agent/context 等系统参数,
+                # 只透传工具真实声明的参数,其余丢弃
+                accepted = {k: v for k, v in kwargs.items() if k in _fn_params}
+                return fn(system_app, workspace_id, **accepted)
 
             _wrapped.__name__ = name
-            return FunctionTool(name, _wrapped, description=desc)
+            return FunctionTool(name, _wrapped, description=desc, args=tool_args)
 
         tools.append(make_tool())
     return tools

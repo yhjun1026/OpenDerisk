@@ -55,7 +55,13 @@ export const AgentWorkspaceInput = forwardRef<AgentWorkspaceInputHandle, AgentWo
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    useImperativeHandle(ref, () => ({ focus: () => textareaRef.current?.focus() }));
+    useImperativeHandle(ref, () => ({
+      focus: () => textareaRef.current?.focus(),
+      insertText: (t: string) => {
+        setText((prev) => (prev.trim() ? `${prev} ${t}` : t));
+        textareaRef.current?.focus();
+      },
+    }));
 
     useRequest(async () => {
       const [, data] = await apiInterceptors(getModelList());

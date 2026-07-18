@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import useChat from '@/hooks/use-chat';
 import type { WorkspaceEvent } from '@/hooks/use-chat';
+import { queryChatStatus } from '@/client/api';
 import type { AgentStep } from './agent-types';
 import { parseAgentSteps } from './parse-agent-steps';
 import { parseWorkspaceView } from './parse-workspace-view';
@@ -74,6 +75,28 @@ export function useSceneAgentChat({
   }, []);
 
   const clearWorkspaceView = useCallback(() => setWorkspaceView(EMPTY_WORKSPACE_VIEW), []);
+
+  // 历史恢复:重开已有会话时,拉取 vis_final 还原步骤与总结。
+  // query_chat 后端按 session_id 兜底取最新一轮 agent 会话,
+  // 未产生过对话的会话返回空视图,天然幂等。
+  useEffect(() => {
+    if (!convUid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await queryChatStatus(convUid);
+        const parsed = parseSceneAgentWorkspaceString(res?.data?.data?.vis_final);
+        if (!cancelled && parsed && Array.isArray(parsed.execution)) {
+          setWorkspaceView((prev) => parseWorkspaceView(parsed, prev));
+        }
+      } catch {
+        // 历史恢复失败不阻断新对话
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [convUid]);
 
   const send = useCallback(
     (payload: SceneAgentSendPayload) => {

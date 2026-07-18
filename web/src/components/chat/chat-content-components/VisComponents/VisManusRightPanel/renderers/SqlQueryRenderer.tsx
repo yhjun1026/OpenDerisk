@@ -2,10 +2,11 @@
 
 import React, { FC, useMemo, useState } from 'react';
 import { Table, Pagination, Tooltip, Button } from 'antd';
-import { CopyOutlined, CheckOutlined, DownloadOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { CopyOutlined, CheckOutlined, DownloadOutlined, DatabaseOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { ManusExecutionOutput } from '@/types/manus';
-import classNames from 'classnames';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface SqlQueryData {
   sql: string;
@@ -27,17 +28,6 @@ interface SqlQueryData {
 interface IProps {
   outputs: ManusExecutionOutput[];
 }
-
-const DB_TYPE_COLORS: Record<string, string> = {
-  sqlite: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-  mysql: 'bg-blue-50 text-blue-600 border-blue-200',
-  postgresql: 'bg-indigo-50 text-indigo-600 border-indigo-200',
-  postgres: 'bg-indigo-50 text-indigo-600 border-indigo-200',
-  oracle: 'bg-orange-50 text-orange-600 border-orange-200',
-  mssql: 'bg-red-50 text-red-600 border-red-200',
-  sqlserver: 'bg-red-50 text-red-600 border-red-200',
-  duckdb: 'bg-yellow-50 text-yellow-600 border-yellow-200',
-};
 
 const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
   const sqlData = useMemo<SqlQueryData | null>(() => {
@@ -63,22 +53,27 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
   const tableColumns: ColumnsType<any> = useMemo(() => {
     const cols = sqlData?.columns;
     if (!cols || cols.length === 0) return [];
-    return cols.map((col) => ({
-      title: col,
-      dataIndex: col,
-      key: col,
-      ellipsis: true,
-      render: (value: any) => {
-        if (value === null || value === undefined) {
-          return <span className="text-gray-400 italic text-xs">NULL</span>;
-        }
-        if (typeof value === 'object') {
-          return <code className="text-xs bg-gray-50 px-1 rounded">{JSON.stringify(value)}</code>;
-        }
-        return <span className="text-xs">{String(value)}</span>;
-      },
-    }));
-  }, [sqlData?.columns]);
+    const firstRow = sqlData?.rows?.[0];
+    return cols.map((col, colIndex) => {
+      const numeric = typeof firstRow?.[colIndex] === 'number';
+      return {
+        title: col,
+        dataIndex: col,
+        key: col,
+        ellipsis: true,
+        ...(numeric ? { align: 'right' as const } : {}),
+        render: (value: any) => {
+          if (value === null || value === undefined) {
+            return <span className="text-gray-400 italic text-xs">NULL</span>;
+          }
+          if (typeof value === 'object') {
+            return <code className="text-xs bg-gray-50 px-1 rounded">{JSON.stringify(value)}</code>;
+          }
+          return <span className="text-xs">{String(value)}</span>;
+        },
+      };
+    });
+  }, [sqlData?.columns, sqlData?.rows]);
 
   // Build table data
   const tableData = useMemo(() => {
@@ -110,7 +105,6 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
     db_type,
     dialect,
     columns,
-    rows,
     total_rows,
     total_pages,
     page_size,
@@ -118,8 +112,6 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
     csv_export_reason,
     raw_result,
   } = sqlData;
-
-  const dbTypeColor = DB_TYPE_COLORS[db_type?.toLowerCase()] || 'bg-gray-50 text-gray-600 border-gray-200';
 
   const handleCopySql = async () => {
     try {
@@ -140,7 +132,6 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
           dbType={db_type}
           dbName={db_name}
           dialect={dialect}
-          dbTypeColor={dbTypeColor}
           sql={sql}
           copied={copied}
           onCopy={handleCopySql}
@@ -163,17 +154,27 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
         dbType={db_type}
         dbName={db_name}
         dialect={dialect}
-        dbTypeColor={dbTypeColor}
         sql={sql}
         copied={copied}
         onCopy={handleCopySql}
       />
 
       {/* Results */}
-      <div className="flex-1 overflow-auto px-4 pb-4">
-        {/* Row count + CSV link */}
-        <div className="flex items-center justify-between py-2">
-          <span className="text-xs text-gray-500">
+      <div className="flex-1 overflow-auto px-4 pb-4 pt-3">
+        {/* Table */}
+        <Table
+          dataSource={tableData}
+          columns={tableColumns}
+          rowKey="_key"
+          pagination={false}
+          size="small"
+          scroll={{ x: 'max-content' }}
+          className="tabular-nums text-sm [&_.ant-table-thead>tr>th]:bg-gray-50 [&_.ant-table-thead>tr>th]:text-xs [&_.ant-table-thead>tr>th]:font-semibold [&_.ant-table-thead>tr>th]:text-gray-600 [&_.ant-table-tbody>tr>td]:border-gray-100 [&_.ant-table-tbody>tr:nth-child(even)>td]:bg-gray-50/40 [&_.ant-table-tbody>tr:hover>td]:!bg-blue-50/40"
+        />
+
+        {/* Footer: row count + CSV link */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-1">
+          <span className="text-[11px] text-gray-400 tabular-nums">
             共 {total_rows} 行
             {total_pages > 1 && ` · 第 ${currentPage}/${total_pages} 页`}
           </span>
@@ -191,17 +192,6 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
             </Tooltip>
           )}
         </div>
-
-        {/* Table */}
-        <Table
-          dataSource={tableData}
-          columns={tableColumns}
-          rowKey="_key"
-          pagination={false}
-          size="small"
-          scroll={{ x: 'max-content' }}
-          className="text-sm [&_.ant-table-thead>tr>th]:bg-gray-50 [&_.ant-table-thead>tr>th]:text-xs [&_.ant-table-thead>tr>th]:font-semibold [&_.ant-table-thead>tr>th]:text-gray-600"
-        />
 
         {/* Pagination */}
         {total_pages > 1 && (
@@ -222,16 +212,15 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
   );
 };
 
-/** SQL Header bar — matches the screenshot layout */
+/** SQL Header bar — badges follow a single neutral scale; only the copy action is interactive */
 const SqlHeader: FC<{
   dbType: string;
   dbName: string;
   dialect?: string;
-  dbTypeColor: string;
   sql: string;
   copied: boolean;
   onCopy: () => void;
-}> = ({ dbType, dbName, dialect, dbTypeColor, sql, copied, onCopy }) => (
+}> = ({ dbType, dbName, dialect, sql, copied, onCopy }) => (
   <div className="border-b border-gray-100">
     {/* Top bar: SQL Query label + badges + Copy */}
     <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50/80">
@@ -241,17 +230,15 @@ const SqlHeader: FC<{
         <span className="text-[11px] text-gray-400 flex-shrink-0">
           {(dialect || dbType)?.toUpperCase()}
         </span>
-        <span
-          className={classNames(
-            'text-[10px] font-medium px-1.5 py-0.5 rounded border flex-shrink-0',
-            dbTypeColor,
-          )}
-        >
+        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 truncate max-w-[220px]">
           {dbName}
         </span>
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-200 flex-shrink-0">
-          READ ONLY
-        </span>
+        <Tooltip title="只读查询，不会修改数据">
+          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-200 flex-shrink-0">
+            <LockOutlined className="text-[9px]" />
+            READ ONLY
+          </span>
+        </Tooltip>
       </div>
       <Tooltip title={copied ? '已复制' : '复制 SQL'}>
         <Button
@@ -266,10 +253,18 @@ const SqlHeader: FC<{
       </Tooltip>
     </div>
 
-    {/* SQL code area */}
-    <pre className="px-4 py-3 bg-slate-900 text-[13px] text-slate-100 overflow-x-auto max-h-40 leading-relaxed">
-      <code>{sql}</code>
-    </pre>
+    {/* SQL code area — syntax highlighted; className keeps VisCard's pre reset away */}
+    <div className="overflow-hidden rounded-lg">
+      {/* @ts-expect-error react-syntax-highlighter 类型与 React 18 不完全匹配 */}
+      <SyntaxHighlighter
+        language="sql"
+        style={oneDark}
+        className="manus-sql-code"
+        customStyle={{ margin: 0, padding: '12px 16px', fontSize: 13, maxHeight: 160, overflow: 'auto', borderRadius: 8 }}
+      >
+        {sql}
+      </SyntaxHighlighter>
+    </div>
   </div>
 );
 

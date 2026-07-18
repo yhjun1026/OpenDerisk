@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import { Avatar, Button, Tooltip } from 'antd';
 import { ee, EVENTS } from '@/utils/event-emitter';
+import { groupConsecutivePlanCards } from '@/utils/group-agent-plan-cards';
 
 const StatusMap: Record<string, string> = {
   todo: '待执行',
@@ -92,26 +93,51 @@ const getTaskIcon = (taskType: string): string => {
  * Map tool names to specific Ant Design icons for visual differentiation.
  * Returns a React node if a match is found, null otherwise (falls back to image icon).
  */
-const toolNameIconMap: Array<{ keywords: string[]; icon: React.ReactNode; label: string }> = [
-  { keywords: ['skill_read', 'skill_exec', 'skill_list'], icon: <CodeOutlined style={{ fontSize: 13, color: '#8b5cf6' }} />, label: '技能' },
-  { keywords: ['sql', 'database', 'db_', 'mysql', 'postgres', 'sqlite', 'query', 'table_spec', 'table_info', 'schema', 'get_table'], icon: <DatabaseOutlined style={{ fontSize: 13, color: '#1677ff' }} />, label: 'SQL' },
-  { keywords: ['shell', 'bash', 'terminal', 'command', 'exec_command', 'ssh'], icon: <CodeOutlined style={{ fontSize: 13, color: '#52c41a' }} />, label: '终端' },
-  { keywords: ['browser', 'web', 'http', 'url', 'crawl', 'scrape', 'fetch_url'], icon: <GlobalOutlined style={{ fontSize: 13, color: '#722ed1' }} />, label: '浏览器' },
-  { keywords: ['file', 'read_file', 'write_file', 'write', 'read', 'upload', 'download', 'document', 'csv', 'excel', 'pdf', 'save', 'mkdir', 'copy', 'move', 'rename', 'delete_file'], icon: <FileTextOutlined style={{ fontSize: 13, color: '#fa8c16' }} />, label: '文件' },
-  { keywords: ['api', 'rest', 'graphql', 'endpoint'], icon: <ApiOutlined style={{ fontSize: 13, color: '#13c2c2' }} />, label: 'API' },
-  { keywords: ['search', 'retrieve', 'lookup', 'find'], icon: <SearchOutlined style={{ fontSize: 13, color: '#eb2f96' }} />, label: '搜索' },
-  { keywords: ['cloud', 'deploy', 'server', 'container', 'docker'], icon: <CloudOutlined style={{ fontSize: 13, color: '#2f54eb' }} />, label: '云服务' },
+const toolNameIconMap: Array<{ keywords: string[]; icon: React.ReactNode; color: string; label: string }> = [
+  { keywords: ['skill_read', 'skill_exec', 'skill_list'], icon: <CodeOutlined />, color: '#8b5cf6', label: '技能' },
+  { keywords: ['sql', 'database', 'db_', 'mysql', 'postgres', 'sqlite', 'query', 'table_spec', 'table_info', 'schema', 'get_table'], icon: <DatabaseOutlined />, color: '#1677ff', label: 'SQL' },
+  { keywords: ['shell', 'bash', 'terminal', 'command', 'exec_command', 'ssh'], icon: <CodeOutlined />, color: '#52c41a', label: '终端' },
+  { keywords: ['browser', 'web', 'http', 'url', 'crawl', 'scrape', 'fetch_url'], icon: <GlobalOutlined />, color: '#722ed1', label: '浏览器' },
+  { keywords: ['file', 'read_file', 'write_file', 'write', 'read', 'upload', 'download', 'document', 'csv', 'excel', 'pdf', 'save', 'mkdir', 'copy', 'move', 'rename', 'delete_file'], icon: <FileTextOutlined />, color: '#fa8c16', label: '文件' },
+  { keywords: ['api', 'rest', 'graphql', 'endpoint'], icon: <ApiOutlined />, color: '#13c2c2', label: 'API' },
+  { keywords: ['search', 'retrieve', 'lookup', 'find'], icon: <SearchOutlined />, color: '#eb2f96', label: '搜索' },
+  { keywords: ['cloud', 'deploy', 'server', 'container', 'docker'], icon: <CloudOutlined />, color: '#2f54eb', label: '云服务' },
 ];
 
-const getToolNameIcon = (toolName?: string, title?: string): React.ReactNode | null => {
+export const getToolNameIcon = (toolName?: string, title?: string): { icon: React.ReactNode; color: string; label: string } | null => {
   if (!toolName && !title) return null;
   const text = `${toolName || ''} ${title || ''}`.toLowerCase();
   for (const entry of toolNameIconMap) {
     if (entry.keywords.some((kw) => text.includes(kw))) {
-      return entry.icon;
+      return entry;
     }
   }
   return null;
+};
+
+/**
+ * Format raw tool-call args (usually a JSON string) into a concise, readable
+ * summary for the task row — raw JSON with braces/quotes is noise in the UI.
+ */
+export const formatArgsSummary = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('{')) return trimmed;
+  let values: string[] = [];
+  try {
+    const obj = JSON.parse(trimmed);
+    values = Object.values(obj)
+      .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
+      .map(String);
+  } catch {
+    // Truncated JSON (streaming) — pull out the complete "key": "value" pairs
+    values = [...trimmed.matchAll(/"[^"]+"\s*:\s*"([^"]*)"/g)].map((m) => m[1]);
+  }
+  const parts = values.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  const short = parts.filter((s) => s.length <= 40);
+  const first = short.length > 0 ? short[0] : `${parts[0].slice(0, 40)}…`;
+  const second = short.length > 1 ? ` · ${short[1]}` : '';
+  return first + second;
 };
 
 const getTaskLabel = (taskType: string): string => {
@@ -221,7 +247,8 @@ const VisAgentPlanCard: React.FC<IProps> = ({ otherComponents, data }) => {
           components={{ ...codeComponents, ...(otherComponents ?? {}) }}
           {...markdownPlugins}
         >
-          {String(data.markdown)}
+          {/* 嵌套 markdown 里相邻的同工具步骤同样做聚合(纯展示层变换) */}
+          {groupConsecutivePlanCards(String(data.markdown))}
         </GPTVis>
       </div>
     );
@@ -269,20 +296,25 @@ const VisAgentPlanCard: React.FC<IProps> = ({ otherComponents, data }) => {
                      <FlagFilled style={{ color: '#1677ff', fontSize: 14 }} />
                   </div>
                 ) : (() => {
-                  const toolIcon = getToolNameIcon(data?.tool_name as string, data?.title as string);
-                  return toolIcon ? (
-                    <Tooltip title={getTaskLabel(String(data?.task_type))}>
-                      <span className="task-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {toolIcon}
+                  const toolMeta = getToolNameIcon(data?.tool_name as string, data?.title as string);
+                  return toolMeta ? (
+                    <Tooltip title={toolMeta.label}>
+                      <span
+                        className="task-icon-chip"
+                        style={{ backgroundColor: `${toolMeta.color}14`, color: toolMeta.color }}
+                      >
+                        {React.cloneElement(toolMeta.icon as React.ReactElement, { style: { fontSize: 11 } })}
                       </span>
                     </Tooltip>
                   ) : (
                     <Tooltip title={getTaskLabel(String(data?.task_type))}>
-                      <img
-                        className="task-icon"
-                        src={getTaskIcon(String(data?.task_type))}
-                        alt={getTaskLabel(String(data?.task_type))}
-                      />
+                      <span className="task-icon-chip task-icon-chip-default">
+                        <img
+                          className="task-icon"
+                          src={getTaskIcon(String(data?.task_type))}
+                          alt={getTaskLabel(String(data?.task_type))}
+                        />
+                      </span>
                     </Tooltip>
                   );
                 })()
@@ -302,8 +334,11 @@ const VisAgentPlanCard: React.FC<IProps> = ({ otherComponents, data }) => {
                       }}
                     >
                       {isTask && data?.description != null ? (
-                        <span className="title-text-ellipsis task-title-description-line" title={`${data?.title ?? '未命名任务'} ${String(data.description)}`}>
-                          {String(data?.title ?? '未命名任务')} {String(data.description)}
+                        <span className="task-title-line" title={`${data?.title ?? '未命名任务'} ${String(data.description)}`}>
+                          <span className="task-title-name">{String(data?.title ?? '未命名任务')}</span>
+                          {formatArgsSummary(String(data.description)) && (
+                            <span className="task-args-summary">{formatArgsSummary(String(data.description))}</span>
+                          )}
                         </span>
                       ) : (
                         <span className="title-text-ellipsis">

@@ -1,10 +1,13 @@
 .ws-scene-shell {
+  --ws-rail-w: 260px;
+  --ws-agent-w: 380px;
   display: grid;
-  grid-template-columns: 280px 1fr 420px;
-  gap: 16px;
+  grid-template-columns: var(--ws-rail-w) minmax(0, 1fr) var(--ws-agent-w);
+  gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .ws-scene-shell__rail,
@@ -17,6 +20,72 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+/* 宽屏加大两侧栏 */
+@media (min-width: 1600px) {
+  .ws-scene-shell {
+    --ws-rail-w: 300px;
+    --ws-agent-w: 440px;
+  }
+}
+
+/* 窄屏切换 tab(默认隐藏) */
+.ws-scene-shell__mobile-tabs {
+  display: none;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-border);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.ws-scene-shell__mobile-tab {
+  flex: 1;
+  padding: 6px 0;
+  text-align: center;
+  font-size: 12px;
+  border-radius: 999px;
+  color: var(--ws-ink-2);
+  cursor: pointer;
+  transition: all var(--ws-transition);
+  user-select: none;
+}
+
+.ws-scene-shell__mobile-tab--on {
+  background: var(--ws-accent-light);
+  color: var(--ws-accent);
+  font-weight: 600;
+}
+
+/* rail 抽屉开关(默认隐藏,抽屉档显示) */
+.ws-scene-shell__rail-toggle {
+  display: none;
+  position: absolute;
+  z-index: 40;
+  top: 12px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-border);
+  box-shadow: var(--ws-shadow-sm);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ws-ink-2);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  transition: left 0.25s ease, color var(--ws-transition), border-color var(--ws-transition);
+}
+
+.ws-scene-shell__rail-toggle:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
 }
 
 .ws-scene-shell__space {
@@ -83,140 +152,10 @@
   resize: none;
 }
 
-.ws-agent-process-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ws-agent-process-header {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--ws-ink);
-  margin-bottom: 4px;
-}
-
-.ws-agent-process-empty {
-  font-size: 12px;
-  color: var(--ws-ink-3);
-  padding: 24px 0;
-  text-align: center;
-}
-
-.ws-agent-step-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ws-agent-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-bg);
-  font-size: 12px;
-  color: var(--ws-ink);
-  cursor: default;
-}
-
-.ws-agent-step[role='button'] {
-  cursor: pointer;
-}
-
-.ws-agent-step[role='button']:hover {
-  background: var(--ws-accent-light);
-}
-
-.ws-agent-step--running {
-  background: rgba(var(--ws-accent-rgb), 0.08);
-}
-
-.ws-agent-step-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-}
-
-.ws-agent-step-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ws-ink-3);
-}
-
 .ws-scene-task-rail {
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-
-.ws-scene-task-rail__header {
-  padding: 12px 14px;
-  font-weight: 600;
-  font-size: 13px;
-  border-bottom: 1px solid var(--ws-border);
-}
-
-.ws-scene-task-rail__search {
-  margin: 10px 12px;
-}
-
-.ws-scene-task-rail__list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 12px 12px;
-}
-
-.ws-scene-task-rail__empty {
-  font-size: 12px;
-  color: var(--ws-ink-3);
-  text-align: center;
-  padding: 24px 0;
-}
-
-.ws-scene-task-rail__item {
-  padding: 10px 12px;
-  border-radius: var(--ws-radius-sm);
-  border: 1px solid var(--ws-border);
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all var(--ws-transition);
-}
-
-.ws-scene-task-rail__item:hover,
-.ws-scene-task-rail__item--active {
-  border-color: var(--ws-accent);
-  background: var(--ws-accent-light);
-}
-
-.ws-scene-task-rail__item-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.ws-scene-task-rail__time {
-  font-size: 11px;
-  color: var(--ws-ink-3);
-}
-
-.ws-scene-task-rail__title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--ws-ink);
-  line-height: 1.4;
-  margin-bottom: 4px;
-}
-
-.ws-scene-task-rail__enter {
-  padding: 0;
-  font-size: 12px;
 }
 
 .ws-scene-space {
@@ -230,37 +169,179 @@
 }
 
 .ws-scene-space__header {
-  padding: 12px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--ws-border);
   position: sticky;
   top: 0;
   background: var(--ws-surface);
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-scene-space__header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-ink);
 }
 
 .ws-scene-space__body {
   flex: 1;
   padding: 14px;
   overflow-y: auto;
+  min-height: 0;
 }
 
-@media (max-width: 1280px) {
-  .ws-scene-shell {
-    grid-template-columns: 240px 1fr 360px;
-  }
+/* === 场景空间预览面板(步骤/文件/实体) === */
+.ws-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-@media (max-width: 1024px) {
-  .ws-scene-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
-  }
-  .ws-scene-shell__rail {
-    max-height: 240px;
-  }
-  .ws-scene-shell__agent {
-    max-height: 420px;
-  }
+.ws-preview__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ws-preview__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ws-ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-preview__section {
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius-sm);
+  overflow: hidden;
+}
+
+.ws-preview__section-title {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ws-ink-2);
+  background: var(--ws-bg);
+  border-bottom: 1px solid var(--ws-border-subtle);
+}
+
+.ws-preview__json {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--ws-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ws-ink-2);
+  background: var(--ws-surface);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.ws-preview__markdown {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--ws-ink);
+  line-height: 1.7;
+  overflow-x: auto;
+}
+
+.ws-preview__fields {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius-sm);
+  overflow: hidden;
+}
+
+.ws-preview__field {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--ws-border-subtle);
+}
+
+.ws-preview__field:last-child {
+  border-bottom: none;
+}
+
+.ws-preview__field--block {
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-preview__field-key {
+  flex-shrink: 0;
+  min-width: 96px;
+  color: var(--ws-ink-3);
+  font-family: var(--ws-mono);
+  font-size: 11.5px;
+}
+
+.ws-preview__field-value {
+  color: var(--ws-ink);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.ws-preview__empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ws-ink-3);
+}
+
+/* Agent 面板头部(状态条) */
+.ws-agent-workspace__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ws-border);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.ws-agent-workspace__status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ws-success);
+}
+
+.ws-agent-workspace__status--running {
+  background: var(--ws-accent);
+  box-shadow: 0 0 0 3px rgba(var(--ws-accent-rgb), 0.14);
+  animation: ws-rail-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-agent-workspace__status--error {
+  background: var(--ws-danger);
+}
+
+.ws-agent-workspace__header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-agent-workspace__header-state {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ws-ink-3);
+  flex-shrink: 0;
 }
 
 /* === Agent workspace renderer (scene agent 右侧步骤/文本展示) === */
@@ -539,3 +620,77 @@
 .ws-rail-tm { color: var(--ws-ink-3); font-family: var(--ws-mono); font-size: 9.5px; }
 .ws-rail-enter { margin-left: auto; color: var(--ws-accent); font-weight: 600; font-size: 10.5px; cursor: pointer; }
 .ws-rail-card:hover .ws-rail-enter { text-decoration: underline; }
+
+/* === 响应式断点(置于文件末尾,确保覆盖上文同优先级基础规则) === */
+
+/* 中屏(900–1279px): rail 收为悬浮抽屉,主区两列 */
+@media (max-width: 1279px) and (min-width: 900px) {
+  .ws-scene-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  }
+  .ws-scene-shell__rail {
+    position: absolute;
+    z-index: 30;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(300px, 85%);
+    box-shadow: var(--ws-shadow-md);
+    transition: transform 0.25s ease;
+  }
+  .ws-scene-shell--rail-closed .ws-scene-shell__rail {
+    transform: translateX(-110%);
+    box-shadow: none;
+    pointer-events: none;
+  }
+  .ws-scene-shell__rail-toggle {
+    display: inline-flex;
+  }
+  .ws-scene-shell:not(.ws-scene-shell--rail-closed) .ws-scene-shell__rail-toggle {
+    left: calc(min(300px, 85%) + 6px);
+  }
+}
+
+/* 小屏(<900px): 单列 + 顶部 tab 切换 */
+@media (max-width: 899px) {
+  .ws-scene-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .ws-scene-shell__mobile-tabs {
+    display: flex;
+  }
+  .ws-scene-shell__rail,
+  .ws-scene-shell__space,
+  .ws-scene-shell__agent {
+    display: none;
+    grid-row: 2;
+    position: static;
+    width: auto;
+    transform: none;
+  }
+  .ws-scene-shell[data-pane='rail'] .ws-scene-shell__rail,
+  .ws-scene-shell[data-pane='space'] .ws-scene-shell__space,
+  .ws-scene-shell[data-pane='agent'] .ws-scene-shell__agent {
+    display: flex;
+  }
+  .ws-scene-shell__rail-toggle {
+    display: none;
+  }
+}
+
+/* html 交付物沙箱预览 */
+.ws-preview__html {
+  width: 100%;
+  min-height: 420px;
+  border: none;
+  background: #fff;
+}
+
+.ws-preview__kv {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius-sm);
+  overflow: hidden;
+}

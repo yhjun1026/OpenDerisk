@@ -11,6 +11,7 @@ import type { AgentStep, DetailContext } from './agent-types';
 import { AgentWorkspace } from './agent-workspace';
 import { SceneSpace } from './scene-space';
 import { SceneTaskRail } from './scene-task-rail';
+import type { AgentWorkspaceInputHandle } from './agent-workspace-types';
 
 /** 判断当前任务列表里是否有活跃任务(running 等会变化的状态),决定是否开轮询。 */
 export function hasActiveTask(tasks: any[]): boolean {
@@ -25,6 +26,7 @@ interface SceneWorkspaceShellProps {
   workspaceConvUid: string;
   appCode: string;
   onRefreshLists?: () => void;
+  onConvChanged?: (convUid: string) => void;
   convLoadError?: string | null;
   retryLoadConv?: () => void;
 }
@@ -36,6 +38,7 @@ export function SceneWorkspaceShell({
   workspaceConvUid,
   appCode,
   onRefreshLists,
+  onConvChanged,
   convLoadError,
   retryLoadConv,
 }: SceneWorkspaceShellProps) {
@@ -45,9 +48,29 @@ export function SceneWorkspaceShell({
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [activeTask, setActiveTask] = useState<any>(null);
   const [taskConvUid, setTaskConvUid] = useState<string>('');
-  const [focusAgentInput, setFocusAgentInput] = useState(false);
   const [switchingTask, setSwitchingTask] = useState(false);
+  // rail 抽屉(中屏)与单列 tab(小屏)状态
+  const [railOpen, setRailOpen] = useState(true);
+  const [mobilePane, setMobilePane] = useState<'rail' | 'space' | 'agent'>('space');
   const prevActiveTaskId = useRef<number | null>(null);
+  const agentInputRef = useRef<AgentWorkspaceInputHandle>(null);
+
+  // 双向联动:把场景内容(任务)引用进 Agent 输入框
+  const handleReference = (task: any) => {
+    const title = task?.title || `task_${task?.id}`;
+    agentInputRef.current?.insertText(`@任务#${task.id}「${title}」`);
+    setMobilePane('agent');
+  };
+
+  // 中屏(900–1279px)默认收起左 rail 为抽屉;小屏默认展示场景空间
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 1279px)');
+    const apply = () => setRailOpen(!mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   const { data: playbooks } = useRequest(async () => {
     if (!workspaceId) return [];
@@ -116,24 +139,28 @@ export function SceneWorkspaceShell({
   };
 
   const handleStepClick = (step: AgentStep) => {
-    if (step.type === 'tool_call') {
+    if (step.type === 'tool_call' || step.type === 'llm') {
       setPreviewItem(step);
       setDetailContext('tool-result');
+      setMobilePane('space');
     } else if (step.payload?.file_id || step.payload?.file_name) {
       setPreviewItem(step);
       setDetailContext('file-preview');
+      setMobilePane('space');
     } else if (step.payload?.task_id || step.payload?.asset_id) {
       setPreviewItem(step);
       setDetailContext('entity-card');
+      setMobilePane('space');
     }
   };
 
   const handleWorkspaceEvent = (event: WorkspaceEvent) => {
     switch (event.type) {
       case 'artifact_produced':
-        if (event.payload?.file_id) {
+        onRefreshLists?.();
+        if (event.payload?.file_id || event.payload?.artifact_id) {
           setPreviewItem(event);
-          setDetailContext('file-preview');
+          setDetailContext(event.payload?.file_id ? 'file-preview' : 'entity-card');
         }
         break;
       case 'task_created':
@@ -145,6 +172,7 @@ export function SceneWorkspaceShell({
         setDetailContext('entity-card');
         break;
       case 'intervention_triggered':
+        onRefreshLists?.();
         if (event.payload?.task_id) {
           const task = tasks.find((t) => t.id === event.payload.task_id);
           if (task) {
@@ -171,7 +199,31 @@ export function SceneWorkspaceShell({
   const rightTaskId = activeTaskId ? activeTaskId : undefined;
 
   return (
-    <div className="ws-scene-shell">
+    <div
+      className={`ws-scene-shell${railOpen ? '' : ' ws-scene-shell--rail-closed'}`}
+      data-pane={mobilePane}
+    >
+      <div className="ws-scene-shell__mobile-tabs" role="tablist">
+        {([['rail', '任务'], ['space', '空间'], ['agent', 'Agent']] as const).map(([key, label]) => (
+          <span
+            key={key}
+            role="tab"
+            aria-selected={mobilePane === key}
+            className={`ws-scene-shell__mobile-tab${mobilePane === key ? ' ws-scene-shell__mobile-tab--on' : ''}`}
+            onClick={() => setMobilePane(key)}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="ws-scene-shell__rail-toggle"
+        aria-label={railOpen ? '收起任务栏' : '展开任务栏'}
+        onClick={() => setRailOpen((v) => !v)}
+      >
+        {railOpen ? '‹' : '›'}
+      </button>
       <div className="ws-scene-shell__rail">
         <SceneTaskRail
           tasks={tasks}
@@ -179,8 +231,16 @@ export function SceneWorkspaceShell({
           activeTaskId={activeTaskId}
           disabled={switchingTask}
           playbooks={playbooks}
-          onPreview={handlePreview}
-          onEnterConversation={handleEnterConversation}
+          onPreview={(item, kind) => {
+            handlePreview(item, kind);
+            setMobilePane('space');
+            if (window.matchMedia('(max-width: 1279px)').matches) setRailOpen(false);
+          }}
+          onEnterConversation={(taskId) => {
+            handleEnterConversation(taskId);
+            setMobilePane('agent');
+          }}
+          onReference={handleReference}
         />
       </div>
       <div className="ws-scene-shell__space">
@@ -191,7 +251,6 @@ export function SceneWorkspaceShell({
           workspaceId={workspaceId}
           workspaceCode={workspace?.workspace_code}
           onBack={handleBackToDashboard}
-          onFocusAgentInput={() => setFocusAgentInput(true)}
           onSelectTask={(taskId) => {
             const task = tasks.find((t) => t.id === taskId);
             if (task) handlePreview(task, 'task');
@@ -210,10 +269,10 @@ export function SceneWorkspaceShell({
           appCode={appCode}
           workspaceId={workspaceId}
           taskId={rightTaskId}
-          autoFocus={focusAgentInput}
-          onFocusHandled={() => setFocusAgentInput(false)}
           onStepClick={handleStepClick}
           onWorkspaceEvent={handleWorkspaceEvent}
+          onConvChanged={onConvChanged}
+          inputRef={agentInputRef}
           switchingTask={switchingTask}
           convLoadError={convLoadError}
           retryLoadConv={retryLoadConv}

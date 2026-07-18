@@ -1708,7 +1708,7 @@ requires-dist = [
     { name = "neo4j", marker = "extra == 'graph-rag'" },
     { name = "networkx", marker = "extra == 'graph-rag'" },
     { name = "onnxruntime", marker = "extra == 'storage-chromadb'", specifier = ">=1.14.1,<=1.18.1" },
-    { name = "oracledb", marker = "extra == 'datasource-oracle'", specifier = ">=1.4.0" },
+    { name = "oracledb", marker = "extra == 'datasource-oracle'", specifier = ">=1.4.0,<4" },
     { name = "oss2", marker = "extra == 'storage-oss2'", specifier = "==2.18.4" },
     { name = "pdfplumber", marker = "extra == 'rag'" },
     { name = "prometheus-client", marker = "extra == 'prometheus'", specifier = ">=0.20.0" },

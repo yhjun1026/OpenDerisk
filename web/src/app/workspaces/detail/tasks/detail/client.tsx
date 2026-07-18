@@ -2,7 +2,7 @@
 
 import {
   apiInterceptors, getTaskInfo, listArtifacts, listDeliveries,
-  listInterventions, listTaskAssetLinks, closeTask, startTask,
+  listInterventions, listTaskAssetLinks, closeTask, startTask, createAsset,
 } from '@/client/api';
 import {
   Button, Card, Descriptions, Empty, Form, Input, Modal, Spin,
@@ -72,8 +72,25 @@ export default function TaskDetailPage() {
 
   const handleClose = async () => {
     try {
-      await distillForm.validateFields();
+      const values = await distillForm.validateFields();
       setClosing(true);
+      // 先把蒸馏结果沉淀为空间 Asset,再关闭任务(服务端强制 distill 后才可关闭)
+      const [errAsset] = await apiInterceptors(createAsset({
+        workspace_id: workspaceId,
+        type: values.asset_type || 'historical_artifact',
+        name: values.asset_name,
+        description: values.summary,
+        scope: 'workspace',
+        content_text: values.summary,
+        source_task_id: taskId,
+        is_published: true,
+        created_by: 'reviewer',
+      }));
+      if (errAsset) {
+        setClosing(false);
+        message.error(errAsset.message);
+        return;
+      }
       const [err] = await apiInterceptors(closeTask({
         task_id: taskId,
         distill_completed: true,

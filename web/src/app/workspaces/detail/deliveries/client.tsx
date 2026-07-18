@@ -7,15 +7,18 @@ import {
   listDeliveries,
   listAssets,
   listTasks,
+  sendDelivery,
 } from '@/client/api';
 import {
-  Button, Card, Empty, Spin, Table, Tabs, Tag, Tooltip, Modal, Descriptions,
+  Button, Card, Empty, Spin, Table, Tabs, Tag, Tooltip, Modal, Descriptions, message,
 } from 'antd';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GPTVis } from '@antv/gpt-vis';
+import markdownComponents, { markdownPlugins, preprocessLaTeX } from '@/components/chat/chat-content-components/config';
 import {
   FileTextOutlined,
   SendOutlined,
@@ -27,6 +30,36 @@ import {
 
 const TAB_KEYS = ['artifacts', 'management', 'deliveries', 'archive'] as const;
 type TabKey = typeof TAB_KEYS[number];
+
+function isHtmlContent(text: string): boolean {
+  const head = text.trimStart().slice(0, 200).toLowerCase();
+  return head.startsWith('<!doctype') || head.startsWith('<html');
+}
+
+/** 交付物内容渲染:html → 沙箱 iframe;markdown → GPTVis;空 → 占位提示。 */
+function ArtifactContent({ text }: { text: string }) {
+  if (!text.trim()) {
+    return <Empty description="(no content stored; see content_ref for reference)" />;
+  }
+  if (isHtmlContent(text)) {
+    return (
+      <iframe
+        sandbox="allow-same-origin"
+        srcDoc={text}
+        title="artifact preview"
+        style={{ width: '100%', minHeight: 480, border: '1px solid #f0f0f0', borderRadius: 8 }}
+      />
+    );
+  }
+  return (
+    <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+      {/* @ts-ignore rehypePlugins type mismatch is pre-existing repo-wide */}
+      <GPTVis components={markdownComponents} {...markdownPlugins}>
+        {preprocessLaTeX(text)}
+      </GPTVis>
+    </div>
+  );
+}
 
 interface ArtifactItem {
   id: number;
@@ -86,11 +119,21 @@ export default function DeliveriesPage() {
     return err ? [] : res || [];
   }, { refreshDeps: [workspaceId] });
 
-  const { data: deliveries, loading: deliveriesLoading } = useRequest(async () => {
+  const { data: deliveries, loading: deliveriesLoading, refresh: refreshDeliveries } = useRequest(async () => {
     if (!workspaceId) return [];
     const [err, res] = await apiInterceptors(listDeliveries({ workspace_id: workspaceId, limit: 200 }));
     return err ? [] : res || [];
   }, { refreshDeps: [workspaceId] });
+
+  const handleResend = async (deliveryId: number) => {
+    const [err] = await apiInterceptors(sendDelivery(deliveryId));
+    if (err) {
+      message.error('投递失败,请稍后重试');
+      return;
+    }
+    message.success('已重新投递');
+    refreshDeliveries();
+  };
 
   const { data: assets, loading: assetsLoading } = useRequest(async () => {
     if (!workspaceId) return [];
@@ -186,6 +229,16 @@ export default function DeliveriesPage() {
     { title: 'Artifact', dataIndex: 'artifact_id', width: 90 },
     { title: 'Task', dataIndex: 'task_id', width: 80 },
     { title: t('deliveries.sent_at') || 'Sent At', dataIndex: 'sent_at', width: 180 },
+    {
+      title: '',
+      key: 'actions',
+      width: 100,
+      render: (_: any, r: DeliveryItem) => (
+        <Button size="small" icon={<SendOutlined />} onClick={() => handleResend(r.id)}>
+          {t('deliveries.resend') || '重发'}
+        </Button>
+      ),
+    },
   ];
 
   const archiveColumns = [
@@ -410,9 +463,7 @@ export default function DeliveriesPage() {
               <Descriptions.Item label="Created">{activeArtifact.gmt_created}</Descriptions.Item>
             </Descriptions>
             <h3 className="text-sm font-medium mt-4">Content</h3>
-            <pre className="text-xs bg-gray-50 p-3 max-h-96 overflow-auto whitespace-pre-wrap rounded">
-              {activeArtifact.content_text || activeArtifact.content_ref || '(no content stored; see content_ref for reference)'}
-            </pre>
+            <ArtifactContent text={activeArtifact.content_text || activeArtifact.content_ref || ''} />
             <h3 className="text-sm font-medium mt-4">Provenance</h3>
             <pre className="text-xs bg-gray-50 p-3 max-h-40 overflow-auto rounded">
               {JSON.stringify(activeArtifact.provenance || {}, null, 2)}

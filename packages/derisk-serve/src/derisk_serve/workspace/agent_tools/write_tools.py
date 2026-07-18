@@ -12,6 +12,12 @@ from derisk_serve.workspace.agent_tools.read_tools import (
 WorkspaceEventCallback = Callable[[str, dict], None]
 
 
+def _p(name, type_, desc, required=False):
+    from derisk.agent.resource.tool.base import ToolParameter
+
+    return ToolParameter(name=name, type=type_, description=desc, required=required)
+
+
 def _make_intervention(
     system_app,
     *,
@@ -21,6 +27,7 @@ def _make_intervention(
     user_id: Optional[str],
     conv_uid: str,
     task_id: Optional[int],
+    on_event: Optional[WorkspaceEventCallback] = None,
 ) -> dict:
     svc = get_intervention_service(system_app)
     request = InterventionRequest(
@@ -31,6 +38,14 @@ def _make_intervention(
         question={"tool": tool_name, "args": args},
     )
     entity = svc.create(request=request)
+    if on_event:
+        on_event("intervention_triggered", {
+            "intervention_id": entity.id,
+            "task_id": task_id,
+            "workspace_id": workspace_id,
+            "tool": tool_name,
+            "requested_by": request.requested_by,
+        })
     return {"intervention_id": entity.id, "status": "awaiting_human"}
 
 
@@ -75,6 +90,7 @@ def build_write_tools(
             user_id=user_id,
             conv_uid=conv_uid,
             task_id=task_id,
+            on_event=on_event,
         )
 
     def _make_publish_asset_tool(**kwargs):
@@ -86,6 +102,7 @@ def build_write_tools(
             user_id=user_id,
             conv_uid=conv_uid,
             task_id=task_id,
+            on_event=on_event,
         )
 
     def _make_create_delivery_tool(**kwargs):
@@ -97,6 +114,7 @@ def build_write_tools(
             user_id=user_id,
             conv_uid=conv_uid,
             task_id=task_id,
+            on_event=on_event,
         )
 
     def _make_update_workspace_tool(**kwargs):
@@ -108,18 +126,35 @@ def build_write_tools(
             user_id=user_id,
             conv_uid=conv_uid,
             task_id=task_id,
+            on_event=on_event,
         )
 
     specs = [
-        ("start_task", "在当前空间下发起一个任务", start_task),
-        ("close_task", "关闭指定任务", _make_close_task_tool),
-        ("publish_asset", "将一个交付物沉淀为空间级 Asset", _make_publish_asset_tool),
-        ("create_delivery", "创建一条投递记录", _make_create_delivery_tool),
-        ("update_workspace", "更新空间基本信息", _make_update_workspace_tool),
+        ("start_task", "在当前空间下发起一个任务", start_task, {
+            "playbook_id": _p("playbook_id", "integer", "剧本 ID,不传则为 ad-hoc 任务"),
+            "title": _p("title", "string", "任务标题"),
+            "description": _p("description", "string", "任务目标描述"),
+        }),
+        ("close_task", "关闭指定任务", _make_close_task_tool, {
+            "task_id": _p("task_id", "integer", "要关闭的任务 ID", required=True),
+        }),
+        ("publish_asset", "将一个交付物沉淀为空间级 Asset", _make_publish_asset_tool, {
+            "artifact_id": _p("artifact_id", "integer", "交付物 ID", required=True),
+            "name": _p("name", "string", "Asset 名称"),
+        }),
+        ("create_delivery", "创建一条投递记录", _make_create_delivery_tool, {
+            "artifact_id": _p("artifact_id", "integer", "交付物 ID", required=True),
+            "channel": _p("channel", "string", "投递渠道,如 in_app/email"),
+            "target": _p("target", "string", "投递目标"),
+        }),
+        ("update_workspace", "更新空间基本信息", _make_update_workspace_tool, {
+            "name": _p("name", "string", "空间名称"),
+            "description": _p("description", "string", "空间描述"),
+        }),
     ]
     tools: List[FunctionTool] = []
-    for name, desc, fn in specs:
-        tools.append(FunctionTool(name=name, description=desc, func=fn, args_schema=None))
+    for name, desc, fn, tool_args in specs:
+        tools.append(FunctionTool(name=name, description=desc, func=fn, args=tool_args))
     return tools
 
 
@@ -213,12 +248,26 @@ def build_scene_write_tools(
         }
 
     extra_specs = [
-        ("create_playbook", "在当前空间下创建一个剧本", create_playbook),
-        ("update_playbook", "更新指定剧本的声明", update_playbook),
-        ("delete_playbook", "删除指定剧本", delete_playbook),
-        ("resolve_intervention", "批准一个待介入请求(记录决策并流转状态)", resolve_intervention),
-        ("abort_intervention", "中止一个介入请求", abort_intervention),
+        ("create_playbook", "在当前空间下创建一个剧本", create_playbook, {
+            "name": _p("name", "string", "剧本名称", required=True),
+            "declaration_dsl": _p("declaration_dsl", "string", "剧本声明 DSL(JSON 字符串)"),
+        }),
+        ("update_playbook", "更新指定剧本的声明", update_playbook, {
+            "playbook_id": _p("playbook_id", "integer", "剧本 ID", required=True),
+            "name": _p("name", "string", "剧本名称"),
+            "declaration_dsl": _p("declaration_dsl", "string", "剧本声明 DSL(JSON 字符串)"),
+        }),
+        ("delete_playbook", "删除指定剧本", delete_playbook, {
+            "playbook_id": _p("playbook_id", "integer", "剧本 ID", required=True),
+        }),
+        ("resolve_intervention", "批准一个待介入请求(记录决策并流转状态)", resolve_intervention, {
+            "intervention_id": _p("intervention_id", "integer", "介入 ID", required=True),
+            "decision": _p("decision", "string", '决策 JSON,如 {"action":"approved"}'),
+        }),
+        ("abort_intervention", "中止一个介入请求", abort_intervention, {
+            "intervention_id": _p("intervention_id", "integer", "介入 ID", required=True),
+        }),
     ]
-    for name, desc, fn in extra_specs:
-        base.append(FunctionTool(name=name, description=desc, func=fn, args_schema=None))
+    for name, desc, fn, tool_args in extra_specs:
+        base.append(FunctionTool(name=name, description=desc, func=fn, args=tool_args))
     return base

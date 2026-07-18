@@ -1062,6 +1062,12 @@ class AgentChat(BaseComponent, ABC):
         if ext_info.get("system_prompt"):
             system_prompt_parts.append(ext_info["system_prompt"])
         workspace_event_queue: asyncio.Queue = asyncio.Queue()
+        # 注册到 workspace 事件总线,scene 写工具/run_task 产生的事件经此 drain 进 SSE
+        _ws_id_for_bus = ext_info.get("workspace_id")
+        if _ws_id_for_bus:
+            from derisk_serve.workspace.event_bus import register_workspace_queue
+
+            register_workspace_queue(int(_ws_id_for_bus), workspace_event_queue)
         _inject_workspace_context(
             system_app=self.system_app,
             workspace_id=ext_info.get("workspace_id"),
@@ -1430,6 +1436,14 @@ class AgentChat(BaseComponent, ABC):
             yield task, f"data:{error_content}\n\n", agent_conv_id
             yield task, _format_vis_msg("[DONE]"), agent_conv_id
         finally:
+            if _ws_id_for_bus:
+                from derisk_serve.workspace.event_bus import (
+                    unregister_workspace_queue,
+                )
+
+                unregister_workspace_queue(
+                    int(_ws_id_for_bus), workspace_event_queue
+                )
             digest(
                 CHAT_LOGGER,
                 "CHAT_DONE",
@@ -3349,7 +3363,17 @@ class AgentChat(BaseComponent, ABC):
                 self.gpts_conversations.get_by_conv_id(conv_id)
             )
             if not gpts_conversation:
+                # 兼容前端传入 conversation_session_id（非 agent conv_id）的场景：
+                # 历史会话轮询用的是 URL 上的 conv_uid（即 session_id），
+                # 此处按 session 取最新一轮 agent 会话
+                session_convs = await self.gpts_conversations.get_by_session_id_asc(
+                    conv_id
+                )
+                if session_convs:
+                    gpts_conversation = session_convs[-1]
+            if not gpts_conversation:
                 return None
+            conv_id = gpts_conversation.conv_id
             is_final = False
             if gpts_conversation.state in [Status.COMPLETE.value, Status.FAILED.value]:
                 is_final = True

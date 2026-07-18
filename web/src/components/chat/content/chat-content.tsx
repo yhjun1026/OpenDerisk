@@ -6,6 +6,7 @@ import { ChatContentContext } from "@/contexts";
 import { CompactChatContext } from "@/contexts/chat-content-context";
 import { IChatDialogueMessageSchema } from "@/types/chat";
 import { STORAGE_USERINFO_KEY } from "@/utils/constants/storage";
+import { groupConsecutivePlanCards } from "@/utils/group-agent-plan-cards";
 import {
   CheckOutlined,
   ClockCircleOutlined,
@@ -257,12 +258,15 @@ const ChatContent: React.FC<{
           });
           pw = pw.replace(/\n{3,}/g, '\n\n');
           pw = pw.replace(/__MANUS_CODE_BLOCK_(\d+)__/g, (_, index) => codeBlocks[parseInt(index)]);
+          // 把相邻的同工具步骤围栏聚合成一个分组卡片(纯展示层变换,
+          // 不影响上游 VisParser 的 uid 增量合并)。
+          pw = groupConsecutivePlanCards(pw);
           return pw;
         }
         if (parsed?.vis) {
           const visData = typeof parsed.vis === 'string' ? JSON.parse(parsed.vis) : parsed.vis;
           if ('planning_window' in visData) {
-            return visData.planning_window || '';
+            return groupConsecutivePlanCards(visData.planning_window || '');
           }
         }
       } catch {

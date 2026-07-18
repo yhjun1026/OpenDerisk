@@ -168,6 +168,7 @@ export default function WorkspaceDetailPage() {
           workspaceConvUid={convUid}
           appCode={appCode}
           onRefreshLists={handleRefreshLists}
+          onConvChanged={setConvUid}
           convLoadError={convLoadError}
           retryLoadConv={retryLoadConv}
         />

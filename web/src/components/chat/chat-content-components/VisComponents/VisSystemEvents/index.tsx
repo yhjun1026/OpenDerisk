@@ -231,12 +231,6 @@ export const VisSystemEvents: FC<VisSystemEventsProps> = ({ data }) => {
               }}
             />
           )}
-
-          {total_count > 0 && (
-            <span style={{ fontSize: '12px', color: '#9ca3af', flexShrink: 0 }}>
-              ({total_count})
-            </span>
-          )}
         </div>
 
         {/* 展开的事件列表 - 固定高度，最多6行 */}

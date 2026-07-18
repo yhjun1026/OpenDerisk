@@ -128,6 +128,7 @@ class SceneActivateRequest(BaseModel):
 
     session_id: str = Field(..., description="会话 ID")
     agent_id: str = Field(..., description="Agent ID")
+    scene_id: Optional[str] = Field(None, description="场景 ID,不传则取 agent_id")
 
 
 class SceneSwitchRequest(BaseModel):
@@ -667,7 +668,7 @@ async def activate_scene(request: SceneActivateRequest):
         }
 
     _sessions_db[session_id]["current_scene"] = {
-        "scene_id": request.agent_id,  # 简化示例
+        "scene_id": request.scene_id or request.agent_id,
         "activated_at": datetime.now(),
     }
 

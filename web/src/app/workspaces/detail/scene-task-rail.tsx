@@ -78,6 +78,7 @@ export interface SceneTaskRailProps {
   playbooks?: { playbook_id: number; playbook_name: string }[];
   onPreview: (item: any, kind: 'task' | 'intervention') => void;
   onEnterConversation: (taskId: number) => void;
+  onReference?: (task: any) => void;
 }
 
 export function SceneTaskRail({
@@ -88,6 +89,7 @@ export function SceneTaskRail({
   playbooks,
   onPreview,
   onEnterConversation,
+  onReference,
 }: SceneTaskRailProps) {
   const [filter, setFilter] = useState('');
   const [tab, setTab] = useState<TaskTabKey>('all');
@@ -215,6 +217,17 @@ export function SceneTaskRail({
               <div className="ws-rail-foot">
                 <span className="ws-rail-src">{isTask ? `${t.triggered_by || '手动'} · ${t.type || 'adhoc'}` : '人工 · 介入'}</span>
                 <span className="ws-rail-tm">{dayjs(it.updatedAt).format('MM-DD HH:mm')}</span>
+                {isTask && (
+                  <span
+                    className="ws-rail-enter"
+                    role="button"
+                    tabIndex={disabled ? -1 : 0}
+                    onClick={(e) => { e.stopPropagation(); if (!disabled) onReference?.(t); }}
+                    onKeyDown={(e) => { if (!disabled && e.key === 'Enter') { e.preventDefault(); onReference?.(t); } }}
+                  >
+                    引用
+                  </span>
+                )}
                 {isTask && (
                   <span
                     className="ws-rail-enter"

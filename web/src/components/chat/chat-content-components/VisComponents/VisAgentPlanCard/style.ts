@@ -252,21 +252,37 @@ export const VisAgentPlanCardWrap = styled.div`
   .header-task {
     width: fit-content;
     max-width: 85%;
-    background: rgba(255, 255, 255, 0.6);
-    border: 1px solid rgba(226, 232, 240, 0.5);
-    border-radius: 16px;
-    padding: 3px 10px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    border-radius: 10px;
+    padding: 3px 10px 3px 4px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
     transition: all 0.15s ease;
     cursor: pointer;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.8);
+      background: #ffffff;
+      border-color: rgba(203, 213, 225, 0.9);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
     }
 
     .task-icon {
-      width: 13px;
-      height: 13px;
-      margin-right: 4px;
+      width: 12px;
+      height: 12px;
+    }
+
+    .task-icon-chip {
+      width: 19px;
+      height: 19px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .task-icon-chip-default {
+      background: #f1f5f9;
     }
 
     .title-task-with-markdown {
@@ -288,14 +304,33 @@ export const VisAgentPlanCardWrap = styled.div`
       max-width: 100%;
     }
 
-    .task-title-description-line {
-      display: block;
+    .task-title-line {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .task-title-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: #334155;
+      flex-shrink: 0;
+      max-width: 45%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: 100%;
-      color: #64748b;
+    }
+
+    .task-args-summary {
       font-size: 11px;
+      color: #94a3b8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
     }
   }
 

@@ -7,8 +7,8 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   GlobalOutlined,
-  CaretDownOutlined,
-  CaretUpOutlined,
+  DownOutlined,
+  UpOutlined,
   FileSearchOutlined,
   EditOutlined,
   ConsoleSqlOutlined,
@@ -24,6 +24,8 @@ import {
   EyeOutlined,
   FilePdfOutlined,
   PrinterOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import { Tooltip, Dropdown, message, Modal } from 'antd';
 import type { MenuProps } from 'antd';
@@ -192,7 +194,7 @@ const TabItem: FC<{
   <button
     onClick={onClick}
     className={classNames(
-      'relative flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap',
+      'relative flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium transition-colors whitespace-nowrap',
       active
         ? 'text-gray-900'
         : 'text-gray-400 hover:text-gray-600'
@@ -803,6 +805,25 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
   const displayStep = selectedStep?.active_step ?? active_step;
   const displayOutputs = selectedStep?.outputs ?? outputs;
 
+  // Step navigation: steps_map keys follow execution order (insertion order)
+  const stepKeys = useMemo(() => Object.keys(steps_map || {}), [steps_map]);
+  const currentStepIndex = useMemo(() => {
+    if (!displayStep) return -1;
+    return stepKeys.findIndex((k) => steps_map?.[k]?.active_step?.id === displayStep.id);
+  }, [stepKeys, steps_map, displayStep]);
+
+  /** Navigate prev/next — reuses the CLICK_FOLDER routing (lazy-loading fetch included) */
+  const handleNavigateStep = (dir: -1 | 1) => {
+    const base = currentStepIndex >= 0 ? currentStepIndex : stepKeys.length - 1;
+    const next = base + dir;
+    if (next < 0 || next >= stepKeys.length) return;
+    const convId =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('conv_uid') || ''
+        : '';
+    ee.emit(EVENTS.CLICK_FOLDER, { uid: stepKeys[next], conv_id: convId });
+  };
+
   // Auto-switch to deliverable or summary tab when task completes
   useEffect(() => {
     if (panel_view === 'deliverable' && hasDeliverables) {
@@ -1129,9 +1150,38 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Step prev/next navigation */}
+                  {stepKeys.length > 1 && (
+                    <div
+                      className="flex items-center gap-0.5 mr-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        className="w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition-colors"
+                        disabled={currentStepIndex <= 0}
+                        onClick={() => handleNavigateStep(-1)}
+                      >
+                        <LeftOutlined className="text-[9px]" />
+                      </button>
+                      <span className="text-[10px] text-gray-400 tabular-nums min-w-[28px] text-center">
+                        {currentStepIndex >= 0 ? currentStepIndex + 1 : stepKeys.length}/{stepKeys.length}
+                      </span>
+                      <button
+                        className="w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition-colors"
+                        disabled={currentStepIndex < 0 || currentStepIndex >= stepKeys.length - 1}
+                        onClick={() => handleNavigateStep(1)}
+                      >
+                        <RightOutlined className="text-[9px]" />
+                      </button>
+                    </div>
+                  )}
                   <StatusBadge status={displayStep.status} isRunning={!selectedStep && is_running} />
-                  <span className="text-gray-300 text-[10px]">
-                    {inputCollapsed ? <CaretDownOutlined /> : <CaretUpOutlined />}
+                  <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+                    {inputCollapsed ? (
+                      <>展开 <DownOutlined className="text-[8px]" /></>
+                    ) : (
+                      <>收起 <UpOutlined className="text-[8px]" /></>
+                    )}
                   </span>
                 </div>
               </div>

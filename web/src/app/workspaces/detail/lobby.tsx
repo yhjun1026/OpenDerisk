@@ -1,8 +1,13 @@
 'use client';
 
-import { Card, Button, Tag, message } from 'antd';
+import { Button, Tag, message } from 'antd';
 import { useRequest } from 'ahooks';
-import Link from 'next/link';
+import {
+  ThunderboltOutlined,
+  CloudServerOutlined,
+  SendOutlined,
+  RocketOutlined,
+} from '@ant-design/icons';
 import {
   apiInterceptors,
   createTask,
@@ -11,7 +16,6 @@ import {
   listDeliveries,
   listPlaybooks,
 } from '@/client/api';
-import { LobbyChatInput } from './lobby-chat-input';
 import { GrowthCard } from './growth-card';
 import './lobby.css';
 
@@ -19,14 +23,41 @@ export interface LobbyProps {
   workspaceId: number;
   workspaceCode: string;
   onSelectTask: (taskId: number) => void;
-  onSendFirstMessage: (text: string) => void;
+}
+
+function SectionHead({
+  icon,
+  title,
+  count,
+  sub,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count?: number;
+  sub?: string;
+}) {
+  return (
+    <div className="ws-lobby__section-head">
+      <span className="ws-lobby__section-icon">{icon}</span>
+      <span className="ws-lobby__section-title">{title}</span>
+      {typeof count === 'number' && <span className="ws-lobby__section-count">{count}</span>}
+      {sub && <span className="ws-lobby__section-sub">{sub}</span>}
+    </div>
+  );
+}
+
+function EmptyState({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="ws-lobby__empty">
+      <div className="ws-lobby__empty-title">{title}</div>
+      {hint && <div className="ws-lobby__empty-hint">{hint}</div>}
+    </div>
+  );
 }
 
 export function Lobby({
   workspaceId,
-  workspaceCode,
   onSelectTask,
-  onSendFirstMessage,
 }: LobbyProps) {
   const handleQuickStart = async (playbookId: number) => {
     const [err, task] = await apiInterceptors(
@@ -64,119 +95,100 @@ export function Lobby({
 
   const runningTasks = (tasks || []).slice(0, 5);
   const recentDeliveries = (deliveries || []).slice(0, 3);
-  const hostedArtifacts = (artifacts || [])
-    .filter((a: any) => a.hosting_status === 'running')
-    .slice(0, 4);
+  const recentArtifacts = (artifacts || []).slice(0, 4);
 
   return (
     <div className="ws-lobby">
-      <div className="ws-lobby__main">
-        {/* 进行中任务 */}
-        <section className="ws-lobby__section">
-          <div className="ws-lobby__section-head">
-            <h3>进行中任务 ({runningTasks.length})</h3>
-          </div>
-          <div className="ws-lobby__task-list">
-            {runningTasks.length === 0 && <div className="ws-empty">暂无进行中任务</div>}
-            {runningTasks.map((t: any) => (
-              <Card
-                key={t.id}
-                size="small"
-                className="ws-lobby__task-card"
-                hoverable
-                onClick={() => onSelectTask(t.id)}
-              >
-                <div className="ws-lobby__task-title">{t.title}</div>
-                <div className="ws-lobby__task-meta">
-                  <Tag color="blue">{t.status}</Tag>
-                  <span>{t.triggered_by}</span>
+      <div className="ws-lobby__scroll">
+        {/* 空间成长概览(横向紧凑条) */}
+        <GrowthCard workspaceId={workspaceId} />
+
+        <div className="ws-lobby__grid">
+          {/* 进行中任务 */}
+          <section className="ws-lobby__section">
+            <SectionHead icon={<ThunderboltOutlined />} title="进行中任务" count={runningTasks.length} />
+            <div className="ws-lobby__section-body">
+              {runningTasks.length === 0 && (
+                <EmptyState title="暂无进行中任务" hint="在下方输入指令,或从快捷发起选择一个剧本" />
+              )}
+              {runningTasks.map((t: any) => (
+                <div
+                  key={t.id}
+                  className="ws-lobby__task-card"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectTask(t.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectTask(t.id); }}
+                >
+                  <div className="ws-lobby__task-title">{t.title}</div>
+                  <div className="ws-lobby__task-meta">
+                    <Tag color="blue">{t.status}</Tag>
+                    <span>{t.triggered_by}</span>
+                  </div>
                 </div>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        {/* 栖居的交付物 */}
-        <section className="ws-lobby__section">
-          <div className="ws-lobby__section-head">
-            <h3>栖居的交付物 ({hostedArtifacts.length})</h3>
-          </div>
-          <div className="ws-lobby__hosted-grid">
-            {hostedArtifacts.length === 0 && (
-              <div className="ws-empty">暂无在运行的交付物</div>
-            )}
-            {hostedArtifacts.map((a: any) => (
-              <Card key={a.id} size="small" className="ws-lobby__hosted-card">
-                <div>{a.title}</div>
-                <Tag color="green">running</Tag>
-                <Button size="small" type="link">打开</Button>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        {/* 最近交付 */}
-        <section className="ws-lobby__section">
-          <div className="ws-lobby__section-head">
-            <h3>最近交付 ({recentDeliveries.length})</h3>
-          </div>
-          <div className="ws-lobby__delivery-list">
-            {recentDeliveries.map((d: any) => (
-              <div key={d.id} className="ws-lobby__delivery-item">
-                <Tag>{d.category}</Tag>
-                <span>{d.channel}</span>
-                <span className="ws-lobby__delivery-status">{d.status}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 快捷发起 */}
-        <section className="ws-lobby__section">
-          <div className="ws-lobby__section-head">
-            <div className="ws-lobby__section-head-text">
-              <h3>快捷发起</h3>
-              <span className="ws-lobby__section-sub">选择一个剧本，快速发起一个任务</span>
+              ))}
             </div>
-          </div>
-          <div className="ws-lobby__quick">
-            {(playbooks || []).slice(0, 4).map((p: any) => (
-              <Button
-                key={p.id}
-                className="ws-lobby__quick-btn"
-                onClick={() => handleQuickStart(p.id)}
-              >
-                <span className="ws-lobby__quick-name">发起: {p.name}</span>
-                {(p.scenario_type || p.task_type) && (
-                  <span className="ws-lobby__quick-desc">{p.scenario_type || p.task_type}</span>
-                )}
-              </Button>
-            ))}
-            {(playbooks || []).length === 0 && (
-              <div className="ws-empty">
-                空间还没有剧本。去
-                <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`}>
-                  剧本管理
-                </Link>
-                创建一个，或直接在底部输入框下指令。
-              </div>
-            )}
-          </div>
-        </section>
+          </section>
 
-        {/* 输入框常驻底部 */}
-        <div className="ws-lobby__input">
-          <LobbyChatInput
-            placeholder="发起新任务..."
-            onSend={onSendFirstMessage}
-          />
+          {/* 最近产出 */}
+          <section className="ws-lobby__section">
+            <SectionHead icon={<CloudServerOutlined />} title="最近产出" count={recentArtifacts.length} />
+            <div className="ws-lobby__section-body">
+              {recentArtifacts.length === 0 && (
+                <EmptyState title="暂无产出物" hint="任务产出的报告、数据集会沉淀在这里" />
+              )}
+              {recentArtifacts.map((a: any) => (
+                <div key={a.id} className="ws-lobby__hosted-card">
+                  <span className="ws-lobby__hosted-title">{a.title || `artifact_${a.id}`}</span>
+                  <Tag color="blue">{a.type}</Tag>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 最近交付 */}
+          <section className="ws-lobby__section">
+            <SectionHead icon={<SendOutlined />} title="最近交付" count={recentDeliveries.length} />
+            <div className="ws-lobby__section-body">
+              {recentDeliveries.length === 0 && (
+                <EmptyState title="暂无交付记录" hint="交付物发送后会记录在这里" />
+              )}
+              {recentDeliveries.map((d: any) => (
+                <div key={d.id} className="ws-lobby__delivery-item">
+                  <Tag>{d.category}</Tag>
+                  <span className="ws-lobby__delivery-channel">{d.channel}</span>
+                  <span className="ws-lobby__delivery-status">{d.status}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 快捷发起 */}
+          <section className="ws-lobby__section">
+            <SectionHead icon={<RocketOutlined />} title="快捷发起" sub="选择剧本,一键发起任务" />
+            <div className="ws-lobby__section-body ws-lobby__quick">
+              {(playbooks || []).slice(0, 4).map((p: any) => (
+                <Button
+                  key={p.id}
+                  className="ws-lobby__quick-btn"
+                  onClick={() => handleQuickStart(p.id)}
+                >
+                  <span className="ws-lobby__quick-name">发起: {p.name}</span>
+                  {(p.scenario_type || p.task_type) && (
+                    <span className="ws-lobby__quick-desc">{p.scenario_type || p.task_type}</span>
+                  )}
+                </Button>
+              ))}
+              {(playbooks || []).length === 0 && (
+                <EmptyState
+                  title="空间还没有剧本"
+                  hint="去剧本管理创建一个,或直接在底部输入框下指令"
+                />
+              )}
+            </div>
+          </section>
         </div>
       </div>
-
-      {/* 侧栏：成长卡 */}
-      <aside className="ws-lobby__rail">
-        <GrowthCard workspaceId={workspaceId} />
-      </aside>
     </div>
   );
 }

@@ -1852,56 +1852,6 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
 
   return (
     <div className="w-full relative">
-      {/* 浮动操作按钮 - 右上角 */}
-      {showFloatingActions && history.length > 0 && (
-        <div className="absolute -top-14 right-0 flex items-center gap-1 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-100 dark:border-gray-700 px-2 py-1 z-20">
-          <Tooltip title={t('stop_replying', '暂停生成')} placement="top">
-            <button
-              onClick={handleStop}
-              disabled={!canAbort}
-              className={classNames(
-                'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                canAbort
-                  ? 'hover:bg-red-50 text-gray-600 hover:text-red-500 cursor-pointer'
-                  : 'text-gray-300 cursor-not-allowed'
-              )}
-            >
-              <PauseCircleOutlined className="text-lg" />
-            </button>
-          </Tooltip>
-
-          <Tooltip title={t('answer_again', '重新生成')} placement="top">
-            <button
-              onClick={handleRetry}
-              disabled={replyLoading || history.length === 0}
-              className={classNames(
-                'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                !replyLoading && history.length > 0
-                  ? 'hover:bg-indigo-50 text-gray-600 hover:text-indigo-500 cursor-pointer'
-                  : 'text-gray-300 cursor-not-allowed'
-              )}
-            >
-              <RedoOutlined className="text-lg" />
-            </button>
-          </Tooltip>
-
-          <Tooltip title={t('erase_memory', '清空对话')} placement="top">
-            <button
-              onClick={handleClear}
-              disabled={history.length === 0}
-              className={classNames(
-                'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                history.length > 0
-                  ? 'hover:bg-orange-50 text-gray-600 hover:text-orange-500 cursor-pointer'
-                  : 'text-gray-300 cursor-not-allowed'
-              )}
-            >
-              <ClearOutlined className="text-lg" />
-            </button>
-          </Tooltip>
-        </div>
-      )}
-
       {/* 主输入框 - 首页样式 */}
       <div
         className={classNames(
@@ -2013,8 +1963,56 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
             </Popover>
           </div>
 
-          {/* 右侧：发送按钮 */}
+          {/* 右侧：会话操作(暂停/重试/清空) + 发送按钮 */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {showFloatingActions && history.length > 0 && (
+              <div className="flex items-center gap-0.5 mr-1">
+                <Tooltip title={t('stop_replying', '暂停生成')} placement="top">
+                  <button
+                    onClick={handleStop}
+                    disabled={!canAbort}
+                    className={classNames(
+                      'w-7 h-7 rounded-full flex items-center justify-center transition-all',
+                      canAbort
+                        ? 'hover:bg-red-50 text-gray-400 hover:text-red-500 cursor-pointer'
+                        : 'text-gray-300 cursor-not-allowed'
+                    )}
+                  >
+                    <PauseCircleOutlined className="text-base" />
+                  </button>
+                </Tooltip>
+
+                <Tooltip title={t('answer_again', '重新生成')} placement="top">
+                  <button
+                    onClick={handleRetry}
+                    disabled={replyLoading || history.length === 0}
+                    className={classNames(
+                      'w-7 h-7 rounded-full flex items-center justify-center transition-all',
+                      !replyLoading && history.length > 0
+                        ? 'hover:bg-indigo-50 text-gray-400 hover:text-indigo-500 cursor-pointer'
+                        : 'text-gray-300 cursor-not-allowed'
+                    )}
+                  >
+                    <RedoOutlined className="text-base" />
+                  </button>
+                </Tooltip>
+
+                <Tooltip title={t('erase_memory', '清空对话')} placement="top">
+                  <button
+                    onClick={handleClear}
+                    disabled={history.length === 0}
+                    className={classNames(
+                      'w-7 h-7 rounded-full flex items-center justify-center transition-all',
+                      history.length > 0
+                        ? 'hover:bg-orange-50 text-gray-400 hover:text-orange-500 cursor-pointer'
+                        : 'text-gray-300 cursor-not-allowed'
+                    )}
+                  >
+                    <ClearOutlined className="text-base" />
+                  </button>
+                </Tooltip>
+              </div>
+            )}
             <Button
               type="primary"
               shape="circle"
