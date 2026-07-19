@@ -61,15 +61,20 @@ cp "$DB" "$WORK/original.db"
 [ -f "$DB-shm" ] && cp "$DB-shm" "$WORK/original.db-shm" || true
 ok "原文件已备份: $DB.prerecover_$TS (就地留底,方便回滚)"
 
-# 2. .recover 页级抽取;失败则 .dump 兜底
+# 2. .recover 页级抽取
+#    关键:.recover 遇到坏页会返回非零退出码,但仍会输出已恢复的数据(这是正常行为!)。
+#    只要产出了 SQL 就必须保留 -- 绝不能因非零退出而丢弃改用 .dump(.dump 遇坏页即停,抢救率远差)。
 info "[2/6] 执行 .recover 抽取数据"
 RECOVER_LOG="$WORK/recover.log"
-if ! sqlite3 "$WORK/original.db" ".recover" > "$WORK/recovered.sql" 2> "$RECOVER_LOG"; then
-    warn ".recover 非零退出(见 $RECOVER_LOG),改用 .dump 兜底"
-    sqlite3 "$WORK/original.db" ".dump" > "$WORK/recovered.sql" 2>> "$RECOVER_LOG" || true
-fi
+sqlite3 "$WORK/original.db" ".recover" > "$WORK/recovered.sql" 2> "$RECOVER_LOG" || true
 LINES="$(wc -l < "$WORK/recovered.sql" | xargs)"
-ok "抽取 SQL 行数: $LINES"
+if [ "$LINES" -lt 5 ]; then
+    warn ".recover 几乎无输出(仅 $LINES 行),改用 .dump 兜底"
+    sqlite3 "$WORK/original.db" ".dump" > "$WORK/recovered.sql" 2>> "$RECOVER_LOG" || true
+    LINES="$(wc -l < "$WORK/recovered.sql" | xargs)"
+else
+    ok "抽取 SQL 行数: $LINES (.recover 对坏库返回非零属正常,已保留全部输出)"
+fi
 # grep -c 无匹配时会打印 0 并返回非零,用 || true 避免 set -e 退出;空值兜底为 0
 ERRCNT="$(grep -ci 'error\|malformed' "$RECOVER_LOG" 2>/dev/null || true)"
 ERRCNT="${ERRCNT:-0}"
@@ -111,7 +116,21 @@ done <<< "$TABLES"
 LAF="$(sqlite3 "$NEWDB" "SELECT count(*) FROM lost_and_found;" 2>/dev/null || echo 0)"
 echo ""
 info "lost_and_found(.recover 无法归类的孤儿行): $LAF"
-[ "$LAF" -gt 0 ] && warn "建议人工查看 lost_and_found 表,把能识别的行手动归位"
+if [ "$LAF" -gt 0 ]; then
+    warn "schema 页损坏导致数据无法归位到原表,全部进了 lost_and_found(数据未丢,需后续归位)"
+    info "按 rootpgno 分组(每个 rootpgno 通常对应一张原表),用于后续把数据归回正确表:"
+    sqlite3 -header -column "$NEWDB" \
+      "SELECT rootpgno, nfield, count(*) AS rows FROM lost_and_found GROUP BY rootpgno, nfield ORDER BY rootpgno;" 2>/dev/null || true
+    echo ""
+    # 动态取 lost_and_found 实际存在的数据列(前 5 个),避免写死 cN 导致列不存在报错
+    DATA_COLS="$(sqlite3 "$NEWDB" \
+      "SELECT group_concat(name, ', ') FROM (SELECT name FROM pragma_table_info('lost_and_found') WHERE name LIKE 'c%' ORDER BY CAST(substr(name,2) AS INTEGER) LIMIT 5);" 2>/dev/null || true)"
+    if [ -n "$DATA_COLS" ]; then
+        info "抽样查看每个 rootpgno 的数据形态(帮助识别是哪张表):"
+        sqlite3 -header -column "$NEWDB" \
+          "SELECT rootpgno, nfield, $DATA_COLS FROM lost_and_found GROUP BY rootpgno ORDER BY rootpgno LIMIT 50;" 2>/dev/null || true
+    fi
+fi
 
 # 6. 输出替换指引(绝不自动覆盖)
 printf "\n${BOLD}${GREEN}==== 恢复完成 ====${NC}\n"
