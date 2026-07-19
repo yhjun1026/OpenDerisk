@@ -2026,7 +2026,7 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
               disabled={(!userInput.trim() && !(resourceValue && parseResourceValue(resourceValue)?.length > 0)) || replyLoading}
             >
               {replyLoading ? (
-                <Spin indicator={<LoadingOutlined className="text-white text-sm" spin />} />
+                <LoadingOutlined className="text-white text-base" spin />
               ) : (
                 <ArrowUpOutlined className="text-white text-base" />
               )}

@@ -142,8 +142,22 @@ export const getDbLearnStatus = (id: string | number) => {
 export const getDbSpec = (id: string | number) => {
   return GET<null, DbSpecResponse | null>(`/api/v2/serve/datasources/${id}/spec`);
 };
-export const getDbTables = (id: string | number) => {
-  return GET<null, TableSpecSummary[]>(`/api/v2/serve/datasources/${id}/tables`);
+export interface GetDbTablesParams {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+}
+
+export interface GetDbTablesResponse {
+  items: TableSpecSummary[];
+  total: number;
+}
+
+export const getDbTables = (id: string | number, params?: GetDbTablesParams) => {
+  return GET<GetDbTablesParams, GetDbTablesResponse>(
+    `/api/v2/serve/datasources/${id}/tables`,
+    params,
+  );
 };
 export const getDbTableDetail = (id: string | number, tableName: string) => {
   return GET<null, TableSpecDetail | null>(

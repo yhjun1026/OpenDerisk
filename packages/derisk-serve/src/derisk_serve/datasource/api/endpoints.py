@@ -23,6 +23,7 @@ from derisk_serve.datasource.api.schemas import (
     SupportedFileType,
     TableDataPreviewResponse,
     TableSpecDetailResponse,
+    TableSpecSummaryPageResponse,
     TableSpecSummaryResponse,
 )
 from derisk_serve.datasource.config import SERVE_SERVICE_COMPONENT_NAME, ServeConfig
@@ -414,27 +415,28 @@ async def get_db_spec(
 @router.get(
     "/datasources/{datasource_id}/tables",
     dependencies=[Depends(check_api_key)],
-    response_model=Result[List[TableSpecSummaryResponse]],
+    response_model=Result[TableSpecSummaryPageResponse],
 )
 async def get_table_specs(
     datasource_id: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=200, description="Page size"),
+    keyword: Optional[str] = Query(None, description="Filter by table name or comment"),
     service: Service = Depends(get_service),
-) -> Result[List[TableSpecSummaryResponse]]:
-    """Get all table spec summaries for a datasource."""
-    results = service.get_all_table_specs(datasource_id)
-    summaries = []
-    for r in results:
-        columns = r.get("columns", [])
-        summaries.append(
-            TableSpecSummaryResponse(
-                table_name=r.get("table_name", ""),
-                table_comment=r.get("table_comment"),
-                row_count=r.get("row_count"),
-                column_count=len(columns) if columns else 0,
-                group_name=r.get("group_name"),
-            )
-        )
-    return Result.succ(summaries)
+) -> Result[TableSpecSummaryPageResponse]:
+    """Get paginated table spec summaries for a datasource."""
+    result = service.get_table_specs_page(
+        datasource_id,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+    )
+    summaries = [
+        TableSpecSummaryResponse(**item) for item in result["items"]
+    ]
+    return Result.succ(
+        TableSpecSummaryPageResponse(items=summaries, total=result["total"])
+    )
 
 
 @router.get(

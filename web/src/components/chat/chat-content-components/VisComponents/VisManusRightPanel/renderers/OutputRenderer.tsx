@@ -19,7 +19,7 @@ const CodeBlock: FC<{ content: string; language?: string }> = ({
     <div className="flex items-center justify-between px-3 py-1.5 bg-slate-800 text-xs text-slate-400">
       <span>{language}</span>
     </div>
-    <pre className="p-3 text-sm text-slate-100 overflow-x-auto">
+    <pre className="p-3 text-sm text-slate-100 overflow-x-auto whitespace-pre">
       <code>{content}</code>
     </pre>
   </div>
@@ -69,7 +69,7 @@ const TextOutput: FC<{ content: string }> = ({ content }) => {
   }
   // Plain text → terminal style
   return (
-    <div className="rounded-lg bg-slate-900 p-3 font-mono text-sm text-green-400 overflow-x-auto whitespace-pre-wrap">
+    <div className="rounded-lg bg-slate-900 p-3 font-mono text-sm text-green-400 overflow-x-auto whitespace-pre">
       {content}
     </div>
   );

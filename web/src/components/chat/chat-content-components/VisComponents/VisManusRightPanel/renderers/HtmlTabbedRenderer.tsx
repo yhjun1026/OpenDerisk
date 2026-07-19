@@ -60,7 +60,7 @@ const HtmlTabbedRenderer: FC<IProps> = ({ outputs, title }) => {
             label: '源码',
             children: (
               <div className="rounded-lg overflow-hidden border border-slate-200 mb-3">
-                <pre className="p-3 bg-slate-900 text-sm text-slate-100 overflow-auto max-h-[450px]">
+                <pre className="p-3 bg-slate-900 text-sm text-slate-100 overflow-auto whitespace-pre max-h-[450px]">
                   <code>{codeContent || htmlContent}</code>
                 </pre>
               </div>

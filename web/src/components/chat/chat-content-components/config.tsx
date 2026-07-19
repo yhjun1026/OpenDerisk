@@ -296,13 +296,32 @@ export const codeComponents = {
       const { context, matchValues } = matchCustomeTagValues(content);
       const match = /language-(.+)/.exec(className || '');
 
-      // 优化逻辑：只对有 lang 且不是 mermaid 的代码块使用 CodePreview，否则原样渲染
-      const shouldUseCodePreview = lang && (!match || (match && match[1] !== 'mermaid'));
+      // Inline code spans keep their compact style
+      if ((props as { inline?: boolean }).inline) {
+        return (
+          <>
+            <code {...props} style={style} className='p-1 mx-1 rounded bg-theme-light dark:bg-theme-dark text-sm'>
+              {children}
+            </code>
+            <GPTVis
+              components={markdownComponents}
+              rehypePlugins={[rehypeRaw, rehypeKatex]}
+              // @ts-ignore
+              remarkPlugins={[remarkGfm, remarkMath, remarkMermaidPlugin]}
+            >
+              {matchValues.join('\n')}
+            </GPTVis>
+          </>
+        );
+      }
+
+      // 优化逻辑：代码块统一使用 CodePreview（mermaid 仍保持原样渲染给 remark-mermaid 处理）
+      const shouldUseCodePreview = !match || match[1] !== 'mermaid';
 
       return (
         <>
           {shouldUseCodePreview ? (
-            <CodePreview code={context} language={lang || 'javascript'} />
+            <CodePreview code={context} language={lang || 'text'} />
           ) : (
             <code {...props} style={style} className='p-1 mx-1 rounded bg-theme-light dark:bg-theme-dark text-sm'>
               {children}
@@ -380,7 +399,7 @@ export const basicComponents: { [key: string]: (props: any) => React.ReactNode }
     return <p>{children}</p>;
   },
   pre({ children }) {
-    return <pre style={{ margin: 0, padding: 0 }}>{children}</pre>;
+    return <pre className='whitespace-pre' style={{ margin: 0, padding: 0 }}>{children}</pre>;
   },
   a({ children, href }) {
     return (

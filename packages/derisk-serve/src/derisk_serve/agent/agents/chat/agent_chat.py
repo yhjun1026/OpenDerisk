@@ -1322,13 +1322,43 @@ class AgentChat(BaseComponent, ABC):
                 ).decode("utf-8")
                 yield task, f"data:{metadata_content}\n\n", agent_conv_id
 
-                async for chunk in self._chat_messages(agent_conv_id, task):
-                    # Drain workspace events before yielding each message chunk
+                # SSE heartbeat: if the agent is still running but no output has
+                # been produced for 30 seconds, send an SSE comment every 10 seconds
+                # to keep the TCP connection alive. SSE comments are ignored by the
+                # browser's EventSource parser.
+                HEARTBEAT_INTERVAL_MS = 30 * 1000
+                HEARTBEAT_TIMEOUT_S = 10
+
+                chat_iter = self._chat_messages(agent_conv_id, task)
+                last_chunk_time = current_ms()
+
+                while True:
+                    # Drain workspace events before waiting for the next chunk (and
+                    # on every heartbeat cycle) so they are not delayed.
                     while not workspace_event_queue.empty():
                         event_type, payload = workspace_event_queue.get_nowait()
                         formatted = format_workspace_event(event_type, payload)
                         if formatted:
                             yield task, formatted, agent_conv_id
+
+                    try:
+                        chunk = await asyncio.wait_for(
+                            chat_iter.__anext__(), timeout=HEARTBEAT_TIMEOUT_S
+                        )
+                    except StopAsyncIteration:
+                        break
+                    except asyncio.TimeoutError:
+                        now = current_ms()
+                        if (
+                            task
+                            and not task.done()
+                            and now - last_chunk_time >= HEARTBEAT_INTERVAL_MS
+                        ):
+                            yield task, ": heartbeat\n\n", agent_conv_id
+                            last_chunk_time = now
+                        continue
+
+                    last_chunk_time = current_ms()
                     if chunk and len(chunk) > 0:
                         try:
                             content = orjson.dumps({"vis": chunk}).decode("utf-8")

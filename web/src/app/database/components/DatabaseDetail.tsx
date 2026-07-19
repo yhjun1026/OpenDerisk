@@ -57,6 +57,7 @@ import {
   Drawer,
   Empty,
   Form,
+  Input,
   Modal,
   Popover,
   Progress,
@@ -105,6 +106,8 @@ export default function DatabaseDetail({
   const [editSensitiveModalOpen, setEditSensitiveModalOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<SensitiveColumnConfig | null>(null);
   const [batchMaskingModalOpen, setBatchMaskingModalOpen] = useState(false);
+  const [tableSearchKeyword, setTableSearchKeyword] = useState('');
+  const [tablePagination, setTablePagination] = useState({ current: 1, pageSize: 20 });
   const [addForm] = Form.useForm();
   const [editForm] = Form.useForm();
 
@@ -119,16 +122,32 @@ export default function DatabaseDetail({
     return res as DbSpecResponse | null;
   });
 
-  // Fetch table specs
+  // Fetch table specs (server-side paginated + searchable)
   const {
-    data: tableSpecs,
+    data: tableSpecsResult,
     loading: tablesLoading,
     refresh: refreshTables,
-  } = useRequest(async () => {
-    const [err, res] = await apiInterceptors(getDbTables(datasourceId));
-    if (err) return [];
-    return (res || []) as TableSpecSummary[];
-  });
+  } = useRequest(
+    async () => {
+      const [err, res] = await apiInterceptors(
+        getDbTables(datasourceId, {
+          page: tablePagination.current,
+          page_size: tablePagination.pageSize,
+          keyword: tableSearchKeyword || undefined,
+        }),
+      );
+      if (err) return { items: [], total: 0 };
+      return res || { items: [], total: 0 };
+    },
+    {
+      refreshDeps: [
+        datasourceId,
+        tablePagination.current,
+        tablePagination.pageSize,
+        tableSearchKeyword,
+      ],
+    },
+  );
 
   // Fetch learning status
   const {
@@ -1386,7 +1405,7 @@ export default function DatabaseDetail({
             ),
             children: (
               <div>
-                <Space className="mb-4">
+                <Space className="mb-4" wrap>
                   <Button
                     icon={<SafetyCertificateOutlined />}
                     onClick={() => setBatchMaskingModalOpen(true)}
@@ -1394,16 +1413,43 @@ export default function DatabaseDetail({
                   >
                     Batch Masking
                   </Button>
+                  <Input
+                    placeholder="Search by name or comment..."
+                    prefix={<SearchOutlined />}
+                    allowClear
+                    value={tableSearchKeyword}
+                    onChange={(e) => {
+                      setTableSearchKeyword(e.target.value);
+                      setTablePagination((prev) => ({ ...prev, current: 1 }));
+                    }}
+                    style={{ width: 280 }}
+                    size="small"
+                  />
                 </Space>
                 <Table
                   columns={tableColumns}
-                  dataSource={tableSpecs}
+                  dataSource={tableSpecsResult?.items || []}
                   rowKey="table_name"
                   loading={tablesLoading}
                   size="small"
-                  pagination={{ pageSize: 20 }}
+                  pagination={{
+                    current: tablePagination.current,
+                    pageSize: tablePagination.pageSize,
+                    total: tableSpecsResult?.total || 0,
+                    showSizeChanger: true,
+                    pageSizeOptions: [10, 20, 50, 100],
+                    showTotal: (total) => `Total ${total} tables`,
+                    onChange: (current, pageSize) =>
+                      setTablePagination({
+                        current:
+                          pageSize !== tablePagination.pageSize ? 1 : current,
+                        pageSize: pageSize || 20,
+                      }),
+                  }}
                   locale={{
-                    emptyText: (
+                    emptyText: tableSearchKeyword ? (
+                      <Empty description="No tables match your search." />
+                    ) : (
                       <Empty description="No table specs. Run schema learning first." />
                     ),
                   }}

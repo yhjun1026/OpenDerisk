@@ -142,6 +142,40 @@ class TableSpecDao(BaseDao):
         """Get all table specs for a datasource."""
         return self.get_list({"datasource_id": datasource_id})
 
+    def get_page_by_datasource(
+        self,
+        datasource_id: int,
+        keyword: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """Get a page of table specs for a datasource with optional keyword search.
+
+        Searches both table_name and table_comment with a LIKE match.
+        """
+        from sqlalchemy import or_
+
+        with self.session(commit=False) as session:
+            query = session.query(TableSpecEntity).filter(
+                TableSpecEntity.datasource_id == datasource_id
+            )
+            if keyword:
+                like_pattern = f"%{keyword}%"
+                query = query.filter(
+                    or_(
+                        TableSpecEntity.table_name.like(like_pattern),
+                        TableSpecEntity.table_comment.like(like_pattern),
+                    )
+                )
+            total = query.count()
+            entities = (
+                query.offset((page - 1) * page_size).limit(page_size).all()
+            )
+            return {
+                "items": [self.to_response(e) for e in entities],
+                "total": total,
+            }
+
     def upsert(
         self, datasource_id: int, table_name: str, data: Dict[str, Any]
     ) -> Dict[str, Any]:

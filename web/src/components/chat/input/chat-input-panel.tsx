@@ -1,6 +1,6 @@
 import { ChatContentContext } from "@/contexts";
 import { LoadingOutlined } from '@ant-design/icons';
-import { Button, Input, Spin, message } from 'antd';
+import { Button, Input, message } from 'antd';
 import classNames from 'classnames';
 import { useSearchParams } from 'next/navigation';
 import React, { memo, useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
@@ -223,7 +223,7 @@ const ChatInputPanel: React.FC<{ ctrl: AbortController }> = ({ ctrl }) => {
           }}
         >
           {replyLoading ? (
-            <Spin spinning={replyLoading} indicator={<LoadingOutlined className='text-white' />} />
+            <LoadingOutlined className='text-white text-base' spin />
           ) : (
             t('sent')
           )}

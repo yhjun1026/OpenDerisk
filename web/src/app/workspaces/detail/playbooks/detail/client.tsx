@@ -1,23 +1,53 @@
 'use client';
 
 import { apiInterceptors, getPlaybookInfo, updatePlaybook, validatePlaybook, listPlaybookVersions, fireTrigger, createTrigger, getWorkspaceInfo } from '@/client/api';
-import { Button, Card, Input, message, Spin, Tabs, Tag } from 'antd';
+import { Button, Card, Input, App, Modal, Spin, Tabs, Tag } from 'antd';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import VisualEditor from './visual-editor';
+import type { PlaybookDeclaration } from './visual-editor/types';
 
 const { TextArea } = Input;
+
+function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+  const result: any = { ...target };
+  for (const key of Object.keys(source) as Array<keyof T>) {
+    const srcVal = source[key];
+    const tgtVal = target[key];
+    if (
+      srcVal !== null &&
+      typeof srcVal === 'object' &&
+      !Array.isArray(srcVal) &&
+      tgtVal !== null &&
+      typeof tgtVal === 'object' &&
+      !Array.isArray(tgtVal)
+    ) {
+      result[key] = deepMerge(tgtVal as any, srcVal as any);
+    } else if (srcVal !== undefined) {
+      result[key] = srcVal;
+    }
+  }
+  return result;
+}
 
 export default function PlaybookEditorPage() {
   const searchParams = useSearchParams();
   const workspaceCode = searchParams?.get('id') || '';
   const playbookId = Number(searchParams?.get('playbook_id'));
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [dsl, setDsl] = useState('');
   const [saving, setSaving] = useState(false);
   const [firing, setFiring] = useState(false);
+  const [activeTab, setActiveTab] = useState('visual');
+  const [metaName, setMetaName] = useState('');
+  const [metaScenarioType, setMetaScenarioType] = useState('');
+  const [metaTaskType, setMetaTaskType] = useState('');
+  const [fireModalOpen, setFireModalOpen] = useState(false);
+  const [fireIntent, setFireIntent] = useState('');
 
   const { data: ws } = useRequest(async () => {
     if (!workspaceCode) return null;
@@ -35,7 +65,42 @@ export default function PlaybookEditorPage() {
     if (playbook?.declaration) {
       setDsl(JSON.stringify(playbook.declaration, null, 2));
     }
+    if (playbook?.name) setMetaName(playbook.name);
+    if (playbook?.scenario_type) setMetaScenarioType(playbook.scenario_type);
+    if (playbook?.task_type) setMetaTaskType(playbook.task_type);
+    const defaultIntent = playbook?.declaration?.text_content?.goal || playbook?.declaration?.text_content?.workflow || '请按剧本定义执行本次任务';
+    setFireIntent(defaultIntent);
   }, [playbook]);
+
+  const declaration = useMemo<PlaybookDeclaration>(() => {
+    try {
+      return JSON.parse(dsl) as PlaybookDeclaration;
+    } catch {
+      return {} as PlaybookDeclaration;
+    }
+  }, [dsl]);
+
+  const invalidJsonInfo = useMemo(() => {
+    try {
+      JSON.parse(dsl);
+      return null;
+    } catch (e: any) {
+      return e?.message || 'Invalid JSON';
+    }
+  }, [dsl]);
+
+  const handleDeclarationChange = useCallback(
+    (partial: Partial<PlaybookDeclaration>) => {
+      try {
+        const current = JSON.parse(dsl) as PlaybookDeclaration;
+        const updated = deepMerge(current, partial);
+        setDsl(JSON.stringify(updated, null, 2));
+      } catch {
+        // If current JSON is invalid, ignore visual editor changes until fixed.
+      }
+    },
+    [dsl],
+  );
 
   const { data: versions } = useRequest(async () => {
     if (!playbookId) return [];
@@ -50,9 +115,9 @@ export default function PlaybookEditorPage() {
       const [err] = await apiInterceptors(updatePlaybook({
         id: playbookId,
         workspace_id: playbook?.workspace_id,
-        name: playbook?.name,
-        scenario_type: playbook?.scenario_type,
-        task_type: playbook?.task_type,
+        name: metaName || playbook?.name,
+        scenario_type: metaScenarioType || playbook?.scenario_type,
+        task_type: metaTaskType || playbook?.task_type,
         trigger: playbook?.trigger,
         declaration: parsed,
         is_active: playbook?.is_active,
@@ -76,10 +141,13 @@ export default function PlaybookEditorPage() {
     }
   };
 
-  const handleFire = async () => {
+  const handleFire = () => {
+    setFireModalOpen(true);
+  };
+
+  const handleConfirmFire = async () => {
     if (!ws?.id) return;
     setFiring(true);
-    // Create a manual trigger for this playbook + fire it
     const [err1, trigRes] = await apiInterceptors(createTrigger({
       workspace_id: ws.id,
       type: 'manual',
@@ -96,9 +164,13 @@ export default function PlaybookEditorPage() {
     const [err2, fireRes] = await apiInterceptors(fireTrigger({
       workspace_id: ws.id,
       trigger_id: trigRes.id,
-      payload: { fired_from: 'playbook_editor' },
+      payload: {
+        fired_from: 'playbook_editor',
+        intent: fireIntent,
+      },
     }));
     setFiring(false);
+    setFireModalOpen(false);
     if (err2) { message.error(err2.message); return; }
     message.success(`Task #${fireRes?.task_id} created`);
   };
@@ -107,7 +179,7 @@ export default function PlaybookEditorPage() {
   if (!playbook) return <div className="p-6">Playbook not found</div>;
 
   return (
-    <div className="p-6">
+    <div className="p-6 h-full overflow-auto">
       <div className="flex justify-between items-center mb-4">
         <div>
           <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`}>
@@ -126,7 +198,29 @@ export default function PlaybookEditorPage() {
       </div>
 
       <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
+          {
+            key: 'visual',
+            label: t('playbooks.visual_editor') || 'Visual Editor',
+            children: (
+              <Card>
+                <VisualEditor
+                  declaration={declaration}
+                  onDeclarationChange={handleDeclarationChange}
+                  metaName={metaName}
+                  onMetaNameChange={setMetaName}
+                  metaScenarioType={metaScenarioType}
+                  onMetaScenarioTypeChange={setMetaScenarioType}
+                  metaTaskType={metaTaskType}
+                  onMetaTaskTypeChange={setMetaTaskType}
+                  invalidJson={!!invalidJsonInfo}
+                  invalidJsonMessage={invalidJsonInfo || undefined}
+                />
+              </Card>
+            ),
+          },
           {
             key: 'editor',
             label: t('playbooks.editor') || 'Declaration DSL (JSON)',
@@ -154,6 +248,28 @@ export default function PlaybookEditorPage() {
           },
         ]}
       />
+
+      <Modal
+        title={t('playbooks.fire') || 'Fire Task'}
+        open={fireModalOpen}
+        onCancel={() => setFireModalOpen(false)}
+        onOk={handleConfirmFire}
+        confirmLoading={firing}
+        okText={t('playbooks.fire') || 'Fire'}
+        width={600}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">
+            {t('playbooks.fire_intent_hint') || '请输入本次任务的执行意图或补充指令，将作为 task_input 传入剧本运行时。'}
+          </p>
+          <TextArea
+            value={fireIntent}
+            onChange={(e) => setFireIntent(e.target.value)}
+            autoSize={{ minRows: 4, maxRows: 10 }}
+            placeholder={t('playbooks.fire_intent_placeholder') || '例如：请生成本周数据运营周报，重点关注核心指标趋势。'}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -48,6 +48,34 @@ class DbSpecService:
         """Get all table specs for a datasource."""
         return self._table_spec_dao.get_all_by_datasource(datasource_id)
 
+    def get_table_specs_page(
+        self,
+        datasource_id: int,
+        keyword: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """Get a paginated and optionally filtered list of table specs."""
+        result = self._table_spec_dao.get_page_by_datasource(
+            datasource_id,
+            keyword=keyword,
+            page=page,
+            page_size=page_size,
+        )
+        summaries = []
+        for r in result["items"]:
+            columns = r.get("columns", [])
+            summaries.append(
+                {
+                    "table_name": r.get("table_name", ""),
+                    "table_comment": r.get("table_comment"),
+                    "row_count": r.get("row_count"),
+                    "column_count": len(columns) if columns else 0,
+                    "group_name": r.get("group_name"),
+                }
+            )
+        return {"items": summaries, "total": result["total"]}
+
     def has_spec(self, datasource_id: int) -> bool:
         """Check if a datasource has a ready spec."""
         spec = self._db_spec_dao.get_by_datasource_id(datasource_id)

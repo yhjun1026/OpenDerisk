@@ -64,7 +64,7 @@ const SkillScriptRenderer: FC<IProps> = ({
           <div className="px-3 py-1.5 bg-slate-100 text-[10px] font-medium text-slate-500 uppercase tracking-wider border-b border-slate-200">
             Script
           </div>
-          <pre className="flex-1 p-3 bg-slate-900 text-sm text-slate-100 overflow-auto">
+          <pre className="flex-1 p-3 bg-slate-900 text-sm text-slate-100 overflow-auto whitespace-pre">
             <code>{codeContent || '// Loading...'}</code>
           </pre>
         </div>

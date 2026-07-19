@@ -161,7 +161,7 @@ export const STEP_TYPE_CONFIG: Record<
   { icon: string; color: string; label: string }
 > = {
   read: { icon: '📖', color: '#10b981', label: '读取' },
-  edit: { icon: '✏️', color: '#f59e0b', label: '编辑' },
+  edit: { icon: '📄', color: '#f59e0b', label: '编辑' },
   write: { icon: '📝', color: '#3b82f6', label: '写入' },
   bash: { icon: '💻', color: '#8b5cf6', label: '终端' },
   grep: { icon: '🔍', color: '#06b6d4', label: '搜索' },

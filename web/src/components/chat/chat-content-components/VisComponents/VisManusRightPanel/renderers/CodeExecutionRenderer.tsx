@@ -94,7 +94,7 @@ const CodeResultCard: FC<{
         <div className="sticky top-0 z-10 bg-slate-100 px-3 py-1 text-[10px] font-medium text-slate-500 uppercase tracking-wider border-b border-slate-200">
           {language}
         </div>
-        <pre className="p-3 bg-slate-900 text-sm text-slate-100 overflow-x-auto">
+        <pre className="p-3 bg-slate-900 text-sm text-slate-100 overflow-x-auto whitespace-pre">
           <code>{code.replace(/^```\w*\n?|```$/g, '')}</code>
         </pre>
       </div>

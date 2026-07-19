@@ -204,7 +204,7 @@ const CodeBody: FC<{ content: string; language: string; fileName?: string }> = (
       <CodeOutlined />
       <span>{fileName || language}</span>
     </div>
-    <pre className="p-3 bg-slate-900 text-sm text-slate-100 overflow-x-auto max-h-[600px] overflow-y-auto">
+    <pre className="p-3 bg-slate-900 text-sm text-slate-100 overflow-x-auto whitespace-pre max-h-[600px] overflow-y-auto">
       <code>{content}</code>
     </pre>
   </div>

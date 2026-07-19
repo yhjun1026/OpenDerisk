@@ -473,6 +473,21 @@ class Service(
         """Get all table specs for a datasource."""
         return self.spec_service.get_all_table_specs(int(datasource_id))
 
+    def get_table_specs_page(
+        self,
+        datasource_id: str,
+        keyword: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """Get paginated table specs for a datasource with optional keyword search."""
+        return self.spec_service.get_table_specs_page(
+            int(datasource_id),
+            keyword=keyword,
+            page=page,
+            page_size=page_size,
+        )
+
     def get_table_spec(
         self, datasource_id: str, table_name: str
     ) -> Optional[Dict[str, Any]]:

@@ -176,6 +176,15 @@ class TableSpecSummaryResponse(BaseModel):
     group_name: Optional[str] = Field(None, description="Group name")
 
 
+class TableSpecSummaryPageResponse(BaseModel):
+    """Paginated summary response for table specs."""
+
+    items: List[TableSpecSummaryResponse] = Field(
+        default_factory=list, description="List of table spec summaries"
+    )
+    total: int = Field(0, description="Total number of matching tables")
+
+
 class TableSpecDetailResponse(BaseModel):
     """Detailed response for a single table spec."""
 

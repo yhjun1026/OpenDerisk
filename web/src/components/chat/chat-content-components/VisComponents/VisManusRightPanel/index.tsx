@@ -68,7 +68,7 @@ interface IProps {
 const getStepTypeIcon = (type: ManusStepType) => {
   const map: Record<string, React.ReactNode> = {
     read: <FileSearchOutlined className="text-emerald-500" />,
-    edit: <EditOutlined className="text-amber-500" />,
+    edit: <FileTextOutlined className="text-amber-500" />,
     write: <EditOutlined className="text-amber-500" />,
     bash: <ConsoleSqlOutlined className="text-purple-500" />,
     grep: <SearchOutlined className="text-cyan-500" />,
@@ -477,7 +477,7 @@ const DeliverableContentView: FC<{ file: ManusDeliverableFile }> = ({ file }) =>
             <div className="flex items-center px-3 py-1.5 bg-slate-800 text-xs text-slate-400">
               <span>{file_name}</span>
             </div>
-            <pre className="p-3 text-sm text-slate-100 overflow-x-auto max-h-[600px] overflow-y-auto">
+            <pre className="p-3 text-sm text-slate-100 overflow-x-auto whitespace-pre max-h-[600px] overflow-y-auto">
               <code>{displayContent}</code>
             </pre>
           </div>

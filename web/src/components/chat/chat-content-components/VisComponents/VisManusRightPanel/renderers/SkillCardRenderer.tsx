@@ -180,7 +180,7 @@ const ExpandedView: FC<{
               <div className="px-3 py-1.5 bg-slate-100 border-b border-slate-200 text-xs text-slate-500">
                 {selectedFile.name}
               </div>
-              <pre className="flex-1 p-3 bg-slate-900 text-sm text-slate-100 overflow-auto">
+              <pre className="flex-1 p-3 bg-slate-900 text-sm text-slate-100 overflow-auto whitespace-pre">
                 <code>
                   {selectedFile.content || '// Content loading...'}
                 </code>

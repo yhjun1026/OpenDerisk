@@ -13,6 +13,19 @@ const CodeBlock: any = (markdownComponents as any).code;
  * 删除的围栏随 key 消失而卸载,顺序变化由 React 按 key 移动。
  */
 const FenceBlock = memo(function FenceBlock({ lang, body }: { lang?: string; body: string }) {
+  // Check if markdownComponents has a direct component for this language tag
+  // (e.g. manus-left-panel, manus-right-panel from visComponentsRender spread).
+  // Using the direct component bypasses the withDefaultChartCode HOC indirection
+  // and ensures the same rendering path as normal GPTVis markdown parsing.
+  if (lang && (markdownComponents as any)[lang]) {
+    const LangComponent = (markdownComponents as any)[lang];
+    return (
+      <div className="vis-fence-segment">
+        <LangComponent>{body}</LangComponent>
+      </div>
+    );
+  }
+
   if (!CodeBlock) {
     return <pre className="text-xs overflow-auto">{body}</pre>;
   }
