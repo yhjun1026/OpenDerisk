@@ -780,6 +780,36 @@ class ShortTermMemory(Memory, Generic[T]):
         """Read memory fragments by observation."""
         return self._fragments
 
+    def list(
+        self,
+        session_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        message_id: Optional[str] = None,
+        metadata_filters: Optional[Any] = None,
+    ) -> List[T]:
+        """List in-memory fragments, optionally filtered by id attributes.
+
+        Minimal implementation backing ``AgentMemory.list`` — the Memory ABC
+        does not define ``list``, and ShortTermMemory previously had none,
+        so ``AgentMemory.list()`` raised AttributeError. ``metadata_filters``
+        is accepted for interface compatibility but ignored (no metadata
+        index in the in-memory buffer).
+        """
+        fragments = list(self._fragments)
+        if session_id is not None:
+            fragments = [
+                f for f in fragments if getattr(f, "session_id", None) == session_id
+            ]
+        if agent_id is not None:
+            fragments = [
+                f for f in fragments if getattr(f, "agent_id", None) == agent_id
+            ]
+        if message_id is not None:
+            fragments = [
+                f for f in fragments if getattr(f, "message_id", None) == message_id
+            ]
+        return fragments
+
     @mutable
     async def transfer_to_long_term(
         self, memory_fragment: T
@@ -791,10 +821,12 @@ class ShortTermMemory(Memory, Generic[T]):
         """
         if len(self._fragments) > self._buffer_size:
             overflow_cnt = len(self._fragments) - self._buffer_size
+            # Transfer the oldest memories to long-term memory (capture the
+            # overflow slice BEFORE truncating, otherwise we would grab the
+            # newest fragments from the already-truncated list).
+            overflow_fragments = self._fragments[:overflow_cnt]
             # Just keep the most recent memories in short-term memory
             self._fragments = self._fragments[overflow_cnt:]
-            # Transfer the oldest memories to long-term memory
-            overflow_fragments = self._fragments[:overflow_cnt]
             insights = await self.get_insights(overflow_fragments)
             return DiscardedMemoryFragments(overflow_fragments, insights)
         else:

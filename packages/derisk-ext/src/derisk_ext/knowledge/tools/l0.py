@@ -80,7 +80,11 @@ class VerbatSearchTool(KnowledgeToolBase):
 
     @classmethod
     def tool_description(cls) -> str:
-        return "Search L0 verbats by keyword. Optional extract_mode filter."
+        return (
+            "Search L0 verbats. mode: keyword (default) | semantic | hybrid. "
+            "semantic/hybrid require the space's embed_verbats enabled. "
+            "Optional extract_mode filter."
+        )
 
     def _define_own_parameters(self) -> Dict[str, Any]:
         return {
@@ -90,6 +94,11 @@ class VerbatSearchTool(KnowledgeToolBase):
                 "extract_mode": {
                     "type": "string",
                     "enum": _EXTRACT_MODE_VALUES,
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["keyword", "semantic", "hybrid"],
+                    "default": "keyword",
                 },
                 "limit": {"type": "integer", "default": 10},
             },
@@ -105,6 +114,7 @@ class VerbatSearchTool(KnowledgeToolBase):
                 args["query"],
                 extract_mode=args.get("extract_mode"),
                 limit=args.get("limit", 10),
+                mode=args.get("mode", "keyword"),
             )
             return self.ok(
                 [

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import SpacePage from '@/components/knowledge-vault/SpacePage';
 import type { View } from '@/components/knowledge-vault/SpaceContext';
 
-const VALID_VIEWS: View[] = ['raw', 'wiki', 'graph', 'schema', 'lint', 'settings'];
+const VALID_VIEWS: View[] = ['raw', 'wiki', 'graph', 'schema', 'lint', 'settings', 'usage', 'memory'];
 
 export default function KnowledgeVaultSpaceRoutePage() {
   const router = useRouter();

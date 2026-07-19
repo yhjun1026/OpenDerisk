@@ -132,6 +132,7 @@ def default_memory_hooks(
                 kind=HookKind.FUNCTION,
                 function_name=_MEMORY_PREFETCH_FN_NAME,
                 blocking=False,
+                timeout=8,  # hermes 对齐：记忆 hook 8s 熔断，不拖垮主对话
             ),
             priority=190,
         ),
@@ -147,6 +148,7 @@ def default_memory_hooks(
                 kind=HookKind.FUNCTION,
                 function_name=_MEMORY_WRITE_TURN_FN_NAME,
                 blocking=False,
+                timeout=8,
             ),
             priority=200,
         ),
@@ -162,6 +164,7 @@ def default_memory_hooks(
                 kind=HookKind.AGENT,
                 agent_name=_MEMORY_REFLECT_AGENT_NAME,
                 blocking=False,
+                timeout=120,  # LLM 反思需要更长窗口，仍有界
             ),
             priority=210,
         ),
@@ -176,6 +179,7 @@ def default_memory_hooks(
                 kind=HookKind.AGENT,
                 agent_name=_MEMORY_CURATE_AGENT_NAME,
                 blocking=False,
+                timeout=120,
             ),
             priority=220,
         ),
@@ -220,7 +224,13 @@ async def memory_prefetch_function(
         )
         return {"action": "continue"}
 
-    query = event.get("user_prompt") or ""
+    user_prompt = event.get("user_prompt") or ""
+    final_answer = event.get("final_answer") or ""
+    # 轮末预热：用本轮完整问答对作为预取查询。下一轮用户问什么未知，
+    # 但追问通常围绕本轮问答展开，问答对比单纯 user_prompt 更能预测
+    # 检索方向。当前轮的记忆注入不走这里——react_master_agent 消费
+    # prefetch 失败时有同步 fallback（retrieve_relevant_memories）。
+    query = "\n".join(p for p in (user_prompt, final_answer) if p)
     if not query:
         return {"action": "continue"}
 

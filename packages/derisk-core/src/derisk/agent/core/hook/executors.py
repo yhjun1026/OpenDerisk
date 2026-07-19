@@ -317,12 +317,22 @@ class AgentHookExecutor(BaseHookExecutor):
             )
             return HookDecision.cont()
         try:
-            reply = await dispatcher(
-                agent_name=endpoint.agent_name,
-                app_code=endpoint.agent_app_code,
-                event=event.to_dict(),
+            reply = await asyncio.wait_for(
+                dispatcher(
+                    agent_name=endpoint.agent_name,
+                    app_code=endpoint.agent_app_code,
+                    event=event.to_dict(),
+                    timeout=endpoint.timeout,
+                ),
                 timeout=endpoint.timeout,
             )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "AgentHook dispatcher timed out after %ss (agent=%s)",
+                endpoint.timeout,
+                endpoint.agent_name,
+            )
+            return _on_error(endpoint, "timeout")
         except Exception as e:
             logger.warning("AgentHook dispatcher failed: %s", e)
             return _on_error(endpoint, f"agent error: {e}")
@@ -395,7 +405,17 @@ class FunctionHookExecutor(BaseHookExecutor):
             )
             return _on_error(endpoint, f"function {name} not registered")
         try:
-            reply = await fn(event.to_dict(), runtime or {})
+            reply = await asyncio.wait_for(
+                fn(event.to_dict(), runtime or {}),
+                timeout=endpoint.timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "FunctionHookExecutor: function %s timed out after %ss",
+                name,
+                endpoint.timeout,
+            )
+            return _on_error(endpoint, "timeout")
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "FunctionHookExecutor: function %s raised: %s", name, e

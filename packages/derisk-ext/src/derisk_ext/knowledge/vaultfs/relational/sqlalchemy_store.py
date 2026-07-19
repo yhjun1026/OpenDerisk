@@ -802,7 +802,7 @@ class SQLAlchemyRelationalStore:
                     INSERT INTO edges
                       (id, space_id, subject, predicate, object, valid_from, valid_to,
                        source_document_id, source_verbat_id, weight, created_at)
-                    VALUES (:id, :sid, :sub, :pred, :obj, :vf, NULL, :sdid, :svid, :w, :ca)
+                    VALUES (:id, :sid, :sub, :pred, :obj, :vf, :vt, :sdid, :svid, :w, :ca)
                     """
                 ),
                 {
@@ -812,6 +812,7 @@ class SQLAlchemyRelationalStore:
                     "pred": e.predicate,
                     "obj": e.object,
                     "vf": e.valid_from.isoformat() if e.valid_from else None,
+                    "vt": e.valid_to.isoformat() if e.valid_to else None,
                     "sdid": e.source_document_id,
                     "svid": e.source_verbat_id,
                     "w": e.weight,

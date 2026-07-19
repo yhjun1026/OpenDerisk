@@ -6,12 +6,14 @@
 import { DELETE, GET, PATCH, POST, PUT } from '../index';
 import type {
   CreateSpaceRequest,
+  CurateReport,
   DocHit,
   DocMeta,
   DocRead,
   EdgeOut,
   IngestJobListResponse,
   LintResponse,
+  LlmUsageSummary,
   RawFileCreateRequest,
   RawFileEditRequest,
   SchemaMdResponse,
@@ -24,6 +26,8 @@ import type {
   UploadResponse,
   VerbatFull,
   VerbatListResponse,
+  VerbatSearchMode,
+  VerbatSearchResponse,
 } from '@/types/knowledge-vault';
 
 const BASE = '/api/v1/serve/knowledge';
@@ -80,6 +84,17 @@ export const listVerbats = (slug: string, limit = 100, offset = 0) =>
 
 export const getVerbat = (slug: string, verbatId: string) =>
   GET<null, VerbatFull>(`${BASE}/spaces/${slug}/verbats/${verbatId}`);
+
+export const searchVerbats = (
+  slug: string,
+  q: string,
+  mode: VerbatSearchMode = 'keyword',
+  limit = 10,
+) =>
+  GET<{ q: string; mode: VerbatSearchMode; limit: number }, VerbatSearchResponse>(
+    `${BASE}/spaces/${slug}/verbats/search`,
+    { q, mode, limit },
+  );
 
 export const deleteVerbat = (slug: string, verbatId: string) =>
   DELETE<null, { ok: boolean }>(`${BASE}/spaces/${slug}/verbats/${verbatId}`);
@@ -142,6 +157,16 @@ export const listIngestJobs = (slug: string, limit = 50) =>
     `${BASE}/spaces/${slug}/ingest-jobs`,
     { limit },
   );
+
+// ----- LLM usage ledger -----
+
+export const llmUsageSummary = (slug: string) =>
+  GET<null, LlmUsageSummary>(`${BASE}/spaces/${slug}/llm-usage/summary`);
+
+// ----- memory space: tier3 curate report -----
+
+export const getCurateReport = (slug: string) =>
+  GET<null, CurateReport>(`${BASE}/spaces/${slug}/memory/curate-report`);
 
 // ----- wiki (L1) -----
 
@@ -219,8 +244,11 @@ export const writeSchemaMd = (slug: string, content: string) =>
 
 // ----- lint -----
 
-export const lintSpace = (slug: string) =>
-  GET<null, LintResponse>(`${BASE}/spaces/${slug}/lint`);
+export const lintSpace = (slug: string, path?: string) =>
+  GET<{ path?: string }, LintResponse>(
+    `${BASE}/spaces/${slug}/lint`,
+    path ? { path } : undefined,
+  );
 
 // ----- embedder identity -----
 

@@ -1,6 +1,6 @@
 import type { WorkspaceExecutionStep, WorkspaceView } from './agent-workspace-types';
 
-const VALID_TYPES = ['tool_call', 'thinking', 'artifact', 'delivery'];
+const VALID_TYPES = ['tool_call', 'thinking', 'artifact', 'delivery', 'user'];
 const VALID_STATUS = ['running', 'done', 'failed'];
 
 function normalizeStep(raw: unknown): WorkspaceExecutionStep | null {
@@ -14,6 +14,7 @@ function normalizeStep(raw: unknown): WorkspaceExecutionStep | null {
     type,
     title: r.title,
     status,
+    ts: typeof r.ts === 'string' ? r.ts : null,
     action: typeof r.action === 'string' ? r.action : null,
     action_input: r.action_input && typeof r.action_input === 'object' ? (r.action_input as Record<string, unknown>) : null,
     output: typeof r.output === 'string' ? r.output : null,
@@ -36,10 +37,13 @@ export function parseWorkspaceView(chunk: unknown, prev: WorkspaceView | null): 
     execution.push(existing ? { ...existing, ...step } : step);
     prevById.delete(step.id);
   }
-  // 保留 prev 中未被本 chunk 覆盖的旧步骤(已完成的)
+  // 保留 prev 中未被本 chunk 覆盖的旧步骤(前轮 agent conv 的步骤)
   for (const leftover of prevById.values()) {
     execution.push(leftover);
   }
+  // 跨轮次合并按时间戳交错(用户消息/工具/回复按真实时序排列);
+  // 无 ts 的排后,保持相对稳定
+  execution.sort((a, b) => (a.ts || '￿').localeCompare(b.ts || '￿'));
 
   const planning = c.planning && typeof c.planning === 'object'
     ? (c.planning as WorkspaceView['planning'])

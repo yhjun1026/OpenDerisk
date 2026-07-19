@@ -75,12 +75,6 @@ def _import_community_summary_knowledge_graph() -> Tuple[Type, Type]:
     return CommunitySummaryKnowledgeGraph, CommunitySummaryKnowledgeGraphConfig
 
 
-def _import_openspg() -> Tuple[Type, Type]:
-    from derisk_ext.storage.knowledge_graph.open_spg import OpenSPG, OpenSPGConfig
-
-    return OpenSPG, OpenSPGConfig
-
-
 def _import_full_text() -> Tuple[Type, Type]:
     from derisk_ext.storage.full_text.elasticsearch import (
         ElasticDocumentStore,
@@ -107,8 +101,6 @@ def _select_rag_storage(name: str) -> Tuple[Type, Type]:
         return _import_builtin_knowledge_graph()
     elif name == "CommunitySummaryKnowledgeGraph":
         return _import_community_summary_knowledge_graph()
-    elif name == "OpenSPG":
-        return _import_openspg()
     elif name == "FullText":
         return _import_full_text()
     else:
@@ -153,7 +145,7 @@ __vector_store__ = [
     "ElasticSearch",
 ]
 
-__knowledge_graph__ = ["KnowledgeGraph", "CommunitySummaryKnowledgeGraph", "OpenSPG"]
+__knowledge_graph__ = ["KnowledgeGraph", "CommunitySummaryKnowledgeGraph"]
 
 __document_store__ = ["FullText"]
 

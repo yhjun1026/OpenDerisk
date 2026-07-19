@@ -211,6 +211,16 @@ class LettaMemoryStore(MemoryStoreBase):
         logger.warning("Letta does not support individual memory deletion.")
         return False
 
+    def update_memory(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Update a Letta memory entry (not supported by the Letta API)."""
+        logger.warning("Letta does not support individual memory update.")
+        return False
+
     def kg_add(
         self,
         subject: str,

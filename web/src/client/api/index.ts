@@ -1,5 +1,6 @@
 import { getUserId } from '@/utils';
 import { HEADER_USER_ID_KEY, STORAGE_USERINFO_KEY, STORAGE_USERINFO_VALID_TIME_KEY } from '@/utils/constants/index';
+import { message } from 'antd';
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 
 export type ResponseType<T = any> = {
@@ -74,6 +75,8 @@ ins.interceptors.response.use(
         const next = encodeURIComponent(path + window.location.search);
         window.location.href = `/login?next=${next}`;
       }
+    } else if (typeof window !== 'undefined' && error.response?.status === 403) {
+      message.error('没有访问该资源的权限 (403)');
     }
     return Promise.reject(error);
   },

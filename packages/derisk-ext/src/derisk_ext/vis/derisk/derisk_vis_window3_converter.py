@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from enum import Enum
 from typing import List, Optional, Dict, Union, Tuple, Any
 
@@ -149,6 +150,10 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
         self._evicted_running_items: int = 0
         # Lazy loading control
         self._enable_lazy_loading: bool = kwargs.get("enable_lazy_loading", True)
+        # 推送瘦身:explorer(agent folder)重建节流时间戳
+        self._last_explorer_build_ts: float = 0.0
+        # 推送瘦身:system_events 变更签名,未变化时跳过重复序列化推送
+        self._last_sys_events_sig: Optional[tuple] = None
 
     def system_vis_tag_map(self):
         return {
@@ -473,11 +478,21 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
                         bool(running_agents)
                         or (has_events and not has_completion_event)
                     ) and not has_completion_event
-                    system_events_vis = await self._system_events_vis_build(
-                        conv_id=conv_id,
-                        event_manager=event_manager,
-                        is_running=is_actually_running,
-                    )
+                    # 推送瘦身:事件集合(含状态)未变化时跳过重复构建,
+                    # 前端按 uid 合并保留上次的状态事件组件
+                    sys_events_sig = tuple(
+                        (e.event_id, getattr(e, "status", None)) for e in all_events
+                    ) + (("running", is_actually_running),)
+                    if sys_events_sig == self._last_sys_events_sig:
+                        system_events_vis = None
+                    else:
+                        system_events_vis = await self._system_events_vis_build(
+                            conv_id=conv_id,
+                            event_manager=event_manager,
+                            is_running=is_actually_running,
+                        )
+                        if system_events_vis:
+                            self._last_sys_events_sig = sys_events_sig
 
             if system_events_vis:
                 if planning_window:
@@ -1492,9 +1507,21 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
         file_system_folder = None
         incremental_file_items: List[FolderNode] = []
 
-        # 🔧 修复：每次都构建 agent folder，确保 explorer 始终存在
-        # 这样追问时也能正确更新 AgentFolder 数据
-        main_agent_folder = await self._build_agent_folder(main_agent=main_agent)
+        # 推送瘦身:流式 token 推送期间 explorer(agent folder)最多每秒重建一次;
+        # 其余推送只携带 items,前端按 incr 合并语义保留旧 explorer。
+        # 非流式/首次推送不受限,保证追问等场景的 explorer 正确性。
+        skip_explorer = False
+        if stream_msg is not None and not is_first_push:
+            now = time.monotonic()
+            if now - self._last_explorer_build_ts < 1.0:
+                skip_explorer = True
+            else:
+                self._last_explorer_build_ts = now
+
+        if not skip_explorer:
+            # 🔧 修复：每次都构建 agent folder，确保 explorer 始终存在
+            # 这样追问时也能正确更新 AgentFolder 数据
+            main_agent_folder = await self._build_agent_folder(main_agent=main_agent)
 
         if is_first_push:
             logger.info("构建vis_window3空间，进行首次资源管理器刷新!")
@@ -1937,7 +1964,10 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
             conv_id: str = main_agent.agent_context.conv_id
         user_message: Optional[GptsMessage] = messages_map.get(input_message_id)
         if not user_message:
-            logger.warning("_planning_vis_all eroor, not have user in message!")
+            # 历史轮询(query_chat)路径 messages_map 可能没有 input 消息,
+            # 降级返回空而非抛 AttributeError(此前每轮轮询都刷一条 ERROR)
+            logger.warning("_planning_vis_all error, not have user in message!")
+            return ""
 
         task_items_vis = []
 
@@ -2226,6 +2256,17 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
         elif files_view:
             all_running_view = files_view
 
+        # 终态 system-events:以 is_running=False 覆盖流式期间的运行中状态,
+        # 否则前端状态卡会一直"转圈"(AGENT_COMPLETE 事件从未产生)
+        final_sys_events = await self._final_system_events_vis(
+            messages, senders_map, main_agent_name, kwargs.get("event_manager")
+        )
+        if final_sys_events:
+            if all_plans_view:
+                all_plans_view = all_plans_view + "\n" + final_sys_events
+            else:
+                all_plans_view = final_sys_events
+
         all_vis = json.dumps(
             {
                 "planning_window": all_plans_view,
@@ -2235,6 +2276,29 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
             ensure_ascii=False,
         )
         return all_vis
+
+    async def _final_system_events_vis(
+        self, messages: List["GptsMessage"], senders_map, main_agent_name, event_manager
+    ) -> Optional[str]:
+        """终态 system-events 组件:is_running=False,用于覆盖流式期间留下的运行中状态。
+
+        流式阶段 d-system-events 以 INCR 推送,is_running 依赖 agent_complete 事件,
+        但该事件实际从未产生,导致对话结束后前端仍显示"转圈"。终态视图统一以
+        is_running=False 再推一次(同 uid INCR 合并会覆盖该字段)。
+        """
+        if not event_manager:
+            return None
+        conv_id = None
+        main_agent = senders_map.get(main_agent_name) if senders_map else None
+        if main_agent and getattr(main_agent, "agent_context", None):
+            conv_id = main_agent.agent_context.conv_id
+        elif messages:
+            conv_id = messages[0].conv_id
+        if not conv_id:
+            return None
+        return await self._system_events_vis_build(
+            conv_id=conv_id, event_manager=event_manager, is_running=False
+        )
 
     async def _system_events_vis_build(
         self,

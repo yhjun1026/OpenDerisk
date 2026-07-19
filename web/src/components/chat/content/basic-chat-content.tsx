@@ -87,7 +87,7 @@ const BasicChatContent: React.FC<BasicChatContentProps> = ({ ctrl, workspaceId }
                   );
                 }
                 return (
-                  <div key={content.key} className="mb-4">
+                  <div key={content.key} className="mb-4 [content-visibility:auto] [contain-intrinsic-size:auto_200px]">
                     <ChatContent
                       content={content}
                       onLinkClick={() => {

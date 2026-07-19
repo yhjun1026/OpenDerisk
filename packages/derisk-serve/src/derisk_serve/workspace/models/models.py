@@ -186,6 +186,9 @@ class WorkspaceConversationLinkDao(
                 session.commit()
                 if set_current:
                     self._set_current_internal(workspace_id, user_id, conv_uid)
+                # commit 后属性已 expire,session 关闭前 refresh,
+                # 否则调用方 to_response 读属性会抛 DetachedInstanceError
+                session.refresh(existing)
                 return existing
             row = WorkspaceConversationLinkEntity(
                 workspace_id=workspace_id,
@@ -201,6 +204,8 @@ class WorkspaceConversationLinkDao(
                 self._set_current_internal(workspace_id, user_id, conv_uid)
             elif user_id is not None and self.get_current(workspace_id, user_id) is None:
                 self._set_current_internal(workspace_id, user_id, conv_uid)
+            # 同 existing 分支:关闭前 refresh,避免 DetachedInstanceError
+            session.refresh(row)
             return row
         except Exception:
             session.rollback()
@@ -253,16 +258,26 @@ class WorkspaceConversationLinkDao(
     ) -> Optional[WorkspaceConversationLinkEntity]:
         session = self.get_raw_session()
         try:
-            return (
-                session.query(WorkspaceConversationLinkEntity)
-                .filter(
-                    WorkspaceConversationLinkEntity.workspace_id == workspace_id,
-                    WorkspaceConversationLinkEntity.user_id == user_id,
-                    WorkspaceConversationLinkEntity.is_current.is_(True),
-                )
-                .order_by(WorkspaceConversationLinkEntity.gmt_modified.desc())
-                .first()
+            q = session.query(WorkspaceConversationLinkEntity).filter(
+                WorkspaceConversationLinkEntity.workspace_id == workspace_id,
+                WorkspaceConversationLinkEntity.is_current.is_(True),
             )
+            if user_id is None:
+                q = q.filter(WorkspaceConversationLinkEntity.user_id.is_(None))
+            else:
+                # 兼容历史无主的 link(user_id 为 None):视为当前用户可见
+                # 注意:不能用 in_([user_id, None]),NULL 在 IN 中不匹配
+                from sqlalchemy import or_
+
+                q = q.filter(
+                    or_(
+                        WorkspaceConversationLinkEntity.user_id == user_id,
+                        WorkspaceConversationLinkEntity.user_id.is_(None),
+                    )
+                )
+            return q.order_by(
+                WorkspaceConversationLinkEntity.gmt_modified.desc()
+            ).first()
         finally:
             session.close()
 
@@ -280,6 +295,8 @@ class WorkspaceConversationLinkDao(
                 return None
             entity.title = title
             session.commit()
+            # commit 后属性过期,关闭前 refresh 防 DetachedInstanceError
+            session.refresh(entity)
             return entity
         except Exception:
             session.rollback()
@@ -307,7 +324,15 @@ class WorkspaceConversationLinkDao(
                 WorkspaceConversationLinkEntity.workspace_id == workspace_id
             )
             if user_id is not None:
-                query = query.filter(WorkspaceConversationLinkEntity.user_id == user_id)
+                # 与 get_current 一致:无主 link(user_id=None)对所有用户可见
+                from sqlalchemy import or_
+
+                query = query.filter(
+                    or_(
+                        WorkspaceConversationLinkEntity.user_id == user_id,
+                        WorkspaceConversationLinkEntity.user_id.is_(None),
+                    )
+                )
             return (
                 query.order_by(WorkspaceConversationLinkEntity.gmt_modified.desc())
                 .limit(limit)

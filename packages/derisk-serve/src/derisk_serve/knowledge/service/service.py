@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from derisk.component import BaseComponent, SystemApp
-from derisk.knowledge.types import Space, new_space_id
+from derisk.knowledge.types import Space, Visibility, new_space_id
 
 from derisk_ext.knowledge.extractors.registry_init import register_builtin_extractors
 from derisk_ext.knowledge.resource import set_vault_factory
@@ -97,6 +97,12 @@ class Service(BaseComponent):
                 self._extractors_registered = True
             except Exception as e:
                 logger.warning("register_builtin_extractors failed: %s", e)
+
+    @property
+    def config(self) -> ServeConfig:
+        """The serve config (datasource Service convention — used by the
+        HTTP auth layer for api_keys)."""
+        return self._serve_config
 
     @property
     def orchestrator(self) -> IngestOrchestrator:
@@ -269,12 +275,14 @@ class Service(BaseComponent):
                 system_app=self._system_app,
             )
             self._configure_embedder_hint(vault, space)
+            self._configure_reranker(vault, space)
             return vault
 
         # Local default
         root = self._local_root / space.slug
         vault = LocalVaultFS(space_id=space.id, root=root)
         self._configure_embedder_hint(vault, space)
+        self._configure_reranker(vault, space)
         return vault
 
     def _configure_embedder_hint(self, vault: Any, space: Space) -> None:
@@ -282,14 +290,33 @@ class Service(BaseComponent):
 
         Priority: space.embedder_model → ServeConfig.default_embedder_model.
         Vector ops gracefully degrade (skip) when both are empty.
+        Also propagates the space's embed_verbats flag (L0 embedding).
         """
         hint = space.embedder_model or self._serve_config.default_embedder_model
         try:
-            vault.configure_embedder_hint(hint, system_app=self._system_app)
+            vault.configure_embedder_hint(
+                hint,
+                system_app=self._system_app,
+                embed_verbats=bool(space.embed_verbats),
+            )
         except Exception as e:
             logger.warning(
                 "configure_embedder_hint failed for space %s: %s",
                 space.slug, e,
+            )
+
+    def _configure_reranker(self, vault: Any, space: Space) -> None:
+        """Mount an LLM reranker for hybrid doc search when the space sets
+        rerank_model (default off — no reranker mounted)."""
+        if not space.rerank_model:
+            return
+        try:
+            from derisk_ext.knowledge.reranker import LLMReranker
+
+            vault.configure_reranker(LLMReranker(space.rerank_model))
+        except Exception as e:
+            logger.warning(
+                "configure_reranker failed for space %s: %s", space.slug, e
             )
 
     async def get_vault(self, slug: str) -> Any:
@@ -311,6 +338,14 @@ class Service(BaseComponent):
                 name=reg.get("name") or slug,
                 description=reg.get("description") or "",
                 backend="distributed",
+                visibility=Visibility(reg.get("visibility") or "private"),
+                owner_id=reg.get("owner_id") or None,
+                default_agent_id=reg.get("default_agent_id"),
+                llm_model=reg.get("llm_model"),
+                multimodal_model=reg.get("multimodal_model"),
+                rerank_model=reg.get("rerank_model"),
+                embed_verbats=bool(reg.get("embed_verbats") or False),
+                space_type=reg.get("space_type") or "personal",
             )
         else:
             # Resolve canonical id from the per-space SQLite before building
@@ -371,6 +406,19 @@ class Service(BaseComponent):
                         default_agent_id=r["default_agent_id"],
                         llm_model=r["llm_model"],
                         multimodal_model=r["multimodal_model"],
+                        visibility=Visibility(r["visibility"] or "private"),
+                        owner_id=r["owner_id"] or None,
+                        rerank_model=(
+                            r["rerank_model"] if "rerank_model" in r.keys() else None
+                        ),
+                        embed_verbats=bool(
+                            r["embed_verbats"] if "embed_verbats" in r.keys() else 0
+                        ),
+                        space_type=(
+                            (r["space_type"] or "personal")
+                            if "space_type" in r.keys()
+                            else "personal"
+                        ),
                     )
                 inferred = await conn.execute_fetchall(
                     "SELECT space_id FROM verbats WHERE space_id IS NOT NULL "
@@ -420,6 +468,11 @@ class Service(BaseComponent):
     ) -> None:
         """Insert or update the `spaces` row for this space."""
         now = datetime.utcnow().isoformat()
+        visibility = (
+            space.visibility.value
+            if isinstance(space.visibility, Visibility)
+            else (space.visibility or "private")
+        )
         try:
             if is_new:
                 await vault._db.execute(
@@ -428,8 +481,8 @@ class Service(BaseComponent):
                       (id, slug, name, description, backend, embedder_model,
                        embedder_dimension, embedder_state, visibility, owner_id,
                        created_at, updated_at, default_agent_id, llm_model,
-                       multimodal_model)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', 'private', '', ?, ?, ?, ?, ?)
+                       multimodal_model, rerank_model, embed_verbats, space_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'unknown', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         space.id,
@@ -439,11 +492,16 @@ class Service(BaseComponent):
                         space.backend,
                         space.embedder_model,
                         space.embedder_dimension,
+                        visibility,
+                        space.owner_id or "",
                         now,
                         now,
                         space.default_agent_id,
                         space.llm_model,
                         space.multimodal_model,
+                        space.rerank_model,
+                        1 if space.embed_verbats else 0,
+                        space.space_type or "personal",
                     ),
                 )
             else:
@@ -451,7 +509,8 @@ class Service(BaseComponent):
                     """
                     UPDATE spaces SET
                       name=?, description=?, embedder_model=?, embedder_dimension=?,
-                      default_agent_id=?, llm_model=?, multimodal_model=?, updated_at=?
+                      default_agent_id=?, llm_model=?, multimodal_model=?,
+                      rerank_model=?, embed_verbats=?, space_type=?, updated_at=?
                     WHERE slug=?
                     """,
                     (
@@ -462,6 +521,9 @@ class Service(BaseComponent):
                         space.default_agent_id,
                         space.llm_model,
                         space.multimodal_model,
+                        space.rerank_model,
+                        1 if space.embed_verbats else 0,
+                        space.space_type or "personal",
                         now,
                         slug,
                     ),
@@ -469,6 +531,36 @@ class Service(BaseComponent):
             await vault._db.commit()
         except Exception as e:
             logger.warning("Persist space config failed for %s: %s", slug, e)
+
+    async def _persist_space_access(
+        self, slug: str, vault: LocalVaultFS, space: Space
+    ) -> None:
+        """Persist owner_id + visibility for this space (set at create time
+        from the authenticated caller)."""
+        visibility = (
+            space.visibility.value
+            if isinstance(space.visibility, Visibility)
+            else (space.visibility or "private")
+        )
+        try:
+            if space.backend == "distributed":
+                entry = self._registry_lookup(slug) or {}
+                entry["owner_id"] = space.owner_id
+                entry["visibility"] = visibility
+                self._registry_upsert(slug, entry)
+                return
+            await vault._db.execute(
+                "UPDATE spaces SET owner_id=?, visibility=?, updated_at=? WHERE slug=?",
+                (
+                    space.owner_id or "",
+                    visibility,
+                    datetime.utcnow().isoformat(),
+                    slug,
+                ),
+            )
+            await vault._db.commit()
+        except Exception as e:
+            logger.warning("Persist space access failed for %s: %s", slug, e)
 
     async def get_space_config(self, slug: str) -> Space:
         """Return the cached Space config, loading it if needed."""
@@ -484,6 +576,8 @@ class Service(BaseComponent):
         llm_model: Optional[str] = None,
         multimodal_model: Optional[str] = None,
         embedder_model: Optional[str] = None,
+        rerank_model: Optional[str] = None,
+        embed_verbats: Optional[bool] = None,
     ) -> Space:
         """Update non-None fields of the space config and persist."""
         space = await self.get_space_config(slug)
@@ -495,8 +589,28 @@ class Service(BaseComponent):
             space.multimodal_model = multimodal_model or None
         if embedder_model is not None:
             space.embedder_model = embedder_model or None
+        if rerank_model is not None:
+            space.rerank_model = rerank_model or None
+            self._configure_reranker(self._vaults[slug], space)
+        if embed_verbats is not None:
+            space.embed_verbats = embed_verbats
+            self._configure_embedder_hint(self._vaults[slug], space)
         vault = self._vaults[slug]
-        await self._persist_space_config(slug, vault, space, is_new=False)
+        if space.backend == "distributed":
+            entry = self._registry_lookup(slug) or {}
+            entry.update(
+                {
+                    "default_agent_id": space.default_agent_id,
+                    "llm_model": space.llm_model,
+                    "multimodal_model": space.multimodal_model,
+                    "embedder_model": space.embedder_model,
+                    "rerank_model": space.rerank_model,
+                    "embed_verbats": space.embed_verbats,
+                }
+            )
+            self._registry_upsert(slug, entry)
+        else:
+            await self._persist_space_config(slug, vault, space, is_new=False)
         return space
 
     async def delete_space(self, slug: str) -> None:
@@ -554,10 +668,19 @@ class Service(BaseComponent):
                                 "slug": child.name,
                                 "backend": "local",
                                 "root": str(child),
+                                "space_type": getattr(space, "space_type", "personal"),
                                 "default_agent_id": space.default_agent_id,
                                 "llm_model": space.llm_model,
                                 "multimodal_model": space.multimodal_model,
                                 "embedder_model": space.embedder_model,
+                                "visibility": (
+                                    space.visibility.value
+                                    if isinstance(space.visibility, Visibility)
+                                    else space.visibility
+                                ),
+                                "owner_id": space.owner_id,
+                                "rerank_model": space.rerank_model,
+                                "embed_verbats": space.embed_verbats,
                             }
                         )
                     except Exception as e:
@@ -573,10 +696,15 @@ class Service(BaseComponent):
                     "slug": slug,
                     "backend": "distributed",
                     "root": f"s3://{self._serve_config.distributed.s3_bucket}/{slug}",
+                    "space_type": entry.get("space_type") or "personal",
                     "default_agent_id": entry.get("default_agent_id"),
                     "llm_model": entry.get("llm_model"),
                     "multimodal_model": entry.get("multimodal_model"),
                     "embedder_model": entry.get("embedder_model"),
+                    "visibility": entry.get("visibility") or "private",
+                    "owner_id": entry.get("owner_id"),
+                    "rerank_model": entry.get("rerank_model"),
+                    "embed_verbats": bool(entry.get("embed_verbats") or False),
                 }
             )
 
@@ -591,11 +719,29 @@ class Service(BaseComponent):
         llm_model: Optional[str] = None,
         multimodal_model: Optional[str] = None,
         embedder_model: Optional[str] = None,
+        rerank_model: Optional[str] = None,
+        embed_verbats: Optional[bool] = None,
+        owner_id: Optional[str] = None,
+        visibility: Optional[str] = None,
+        space_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create a new space (local or distributed)."""
+        """Create a new space (local or distributed).
+
+        `owner_id` / `visibility` come from the authenticated caller (HTTP
+        layer); both are optional — single-machine mode leaves owner empty
+        (legacy behavior: no read filtering).
+
+        `space_type` (RFC-005): "personal" (default) | "agent_memory".
+        Agent-memory spaces get the memory schema (merged-into/supersedes/
+        about/relates-to) written into schema.md at creation.
+        """
         slug = slug.strip()
         if not slug or "/" in slug or slug.startswith("."):
             raise ValueError(f"invalid slug: {slug!r}")
+        if visibility is not None:
+            visibility = Visibility(visibility).value  # validates the value
+        if space_type is not None and space_type not in ("personal", "agent_memory"):
+            raise ValueError(f"invalid space_type: {space_type!r}")
 
         backend = backend or self._serve_config.default_backend or "local"
 
@@ -615,14 +761,33 @@ class Service(BaseComponent):
                     "llm_model": llm_model,
                     "multimodal_model": multimodal_model,
                     "embedder_model": embedder_model,
+                    "rerank_model": rerank_model,
+                    "embed_verbats": bool(embed_verbats) if embed_verbats else False,
+                    "owner_id": owner_id,
+                    "visibility": visibility or "private",
+                    "space_type": space_type or "personal",
                 },
             )
 
         vault = await self.get_vault(slug)
 
+        # RFC-005 Phase 1: apply space_type + type-specific schema.md.
+        space = self._spaces[slug]
+        if space_type is not None and space.space_type != space_type:
+            space.space_type = space_type
+            if backend == "distributed":
+                entry = self._registry_lookup(slug) or {}
+                entry["space_type"] = space_type
+                self._registry_upsert(slug, entry)
+            else:
+                await self._persist_space_config(slug, vault, space, is_new=False)
+        if space.space_type == "agent_memory":
+            await self._ensure_memory_schema(vault, space)
+
         # Apply any initial config (local spaces persist to SQLite)
         if backend != "distributed" and (
             default_agent_id or llm_model or multimodal_model or embedder_model
+            or rerank_model or embed_verbats is not None
         ):
             await self.update_space_config(
                 slug,
@@ -630,18 +795,58 @@ class Service(BaseComponent):
                 llm_model=llm_model,
                 multimodal_model=multimodal_model,
                 embedder_model=embedder_model,
+                rerank_model=rerank_model,
+                embed_verbats=embed_verbats,
             )
 
+        # Persist the caller's ownership / visibility (real owner from the
+        # auth layer instead of the legacy empty string).
         space = self._spaces[slug]
+        if owner_id is not None or visibility is not None:
+            if owner_id is not None:
+                space.owner_id = owner_id
+            if visibility is not None:
+                space.visibility = Visibility(visibility)
+            await self._persist_space_access(slug, vault, space)
+
         return {
             "slug": slug,
             "backend": backend,
             "root": str(vault.root),
+            "space_type": space.space_type,
             "default_agent_id": space.default_agent_id,
             "llm_model": space.llm_model,
             "multimodal_model": space.multimodal_model,
             "embedder_model": space.embedder_model,
+            "visibility": (
+                space.visibility.value
+                if isinstance(space.visibility, Visibility)
+                else space.visibility
+            ),
+            "owner_id": space.owner_id,
+            "rerank_model": space.rerank_model,
+            "embed_verbats": space.embed_verbats,
         }
+
+    async def _ensure_memory_schema(self, vault: Any, space: Space) -> None:
+        """Write the agent-memory schema.md when the space doesn't already
+        declare the memory predicates (idempotent; never clobbers a schema
+        that already has them, e.g. user-edited)."""
+        try:
+            from derisk.knowledge.schema import (
+                default_memory_schema_md,
+                parse_schema,
+                validate_predicate,
+            )
+
+            current = parse_schema(await vault.read_schema_md())
+            if validate_predicate(current, "supersedes") and validate_predicate(
+                current, "merged-into"
+            ):
+                return
+            await vault.write_schema_md(default_memory_schema_md(space.name or space.slug))
+        except Exception as e:
+            logger.warning("ensure memory schema failed for %s: %s", space.slug, e)
 
     async def close_all(self) -> None:
         for v in list(self._vaults.values()):

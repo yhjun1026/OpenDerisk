@@ -417,6 +417,17 @@ def _assemble_scene_resources(ext_info, conv_uid: str):
     )
 
 
+def _format_stream_error_frame(err: Exception) -> str:
+    """流式响应中途异常的兜底错误帧:保证前端收到 vis error 事件而非连接裸断,
+    已流式内容得以保留,末尾展示错误原因。"""
+
+    error_content = json.dumps(
+        {"vis": {"type": "error", "content": f"对话发生错误: {err}"}},
+        ensure_ascii=False,
+    )
+    return f"data:{error_content}\n\n"
+
+
 @router.post("/v1/chat/completions")
 async def chat_completions(
     background_tasks: BackgroundTasks,
@@ -577,16 +588,20 @@ async def chat_completions(
         if work_mode == WorkMode.QUICK:
 
             async def chat_wrapper():
-                async for chunk, agent_conv_id in multi_agents.quick_app_chat(
-                    conv_session_id=dialogue.conv_uid,
-                    user_query=in_message,
-                    chat_in_params=dialogue.chat_in_params,
-                    app_code=dialogue.app_code,
-                    user_code=dialogue.user_name,
-                    sys_code=dialogue.sys_code,
-                    **dialogue.ext_info,
-                ):
-                    yield chunk
+                try:
+                    async for chunk, agent_conv_id in multi_agents.quick_app_chat(
+                        conv_session_id=dialogue.conv_uid,
+                        user_query=in_message,
+                        chat_in_params=dialogue.chat_in_params,
+                        app_code=dialogue.app_code,
+                        user_code=dialogue.user_name,
+                        sys_code=dialogue.sys_code,
+                        **dialogue.ext_info,
+                    ):
+                        yield chunk
+                except Exception as e:
+                    logger.exception("chat stream error(quick)!")
+                    yield _format_stream_error_frame(e)
 
             return StreamingResponse(
                 chat_wrapper(),
@@ -596,18 +611,22 @@ async def chat_completions(
         elif work_mode == WorkMode.BACKGROUND:
 
             async def chat_wrapper():
-                async for chunk, agent_conv_id in multi_agents.app_chat_v2(
-                    conv_uid=dialogue.conv_uid,
-                    background_tasks=background_tasks,
-                    gpts_name=dialogue.app_code,
-                    specify_config_code=dialogue.app_config_code,
-                    user_query=in_message,
-                    user_code=dialogue.user_name,
-                    sys_code=dialogue.sys_code,
-                    chat_in_params=dialogue.chat_in_params,
-                    **dialogue.ext_info,
-                ):
-                    yield chunk
+                try:
+                    async for chunk, agent_conv_id in multi_agents.app_chat_v2(
+                        conv_uid=dialogue.conv_uid,
+                        background_tasks=background_tasks,
+                        gpts_name=dialogue.app_code,
+                        specify_config_code=dialogue.app_config_code,
+                        user_query=in_message,
+                        user_code=dialogue.user_name,
+                        sys_code=dialogue.sys_code,
+                        chat_in_params=dialogue.chat_in_params,
+                        **dialogue.ext_info,
+                    ):
+                        yield chunk
+                except Exception as e:
+                    logger.exception("chat stream error(background)!")
+                    yield _format_stream_error_frame(e)
 
             return StreamingResponse(
                 chat_wrapper(),
@@ -631,17 +650,21 @@ async def chat_completions(
         else:
 
             async def chat_wrapper():
-                async for chunk, agent_conv_id in multi_agents.app_chat(
-                    conv_uid=dialogue.conv_uid,
-                    gpts_name=dialogue.app_code,
-                    specify_config_code=dialogue.app_config_code,
-                    user_query=in_message,
-                    user_code=dialogue.user_name,
-                    sys_code=dialogue.sys_code,
-                    chat_in_params=dialogue.chat_in_params,
-                    **dialogue.ext_info,
-                ):
-                    yield chunk
+                try:
+                    async for chunk, agent_conv_id in multi_agents.app_chat(
+                        conv_uid=dialogue.conv_uid,
+                        gpts_name=dialogue.app_code,
+                        specify_config_code=dialogue.app_config_code,
+                        user_query=in_message,
+                        user_code=dialogue.user_name,
+                        sys_code=dialogue.sys_code,
+                        chat_in_params=dialogue.chat_in_params,
+                        **dialogue.ext_info,
+                    ):
+                        yield chunk
+                except Exception as e:
+                    logger.exception("chat stream error(default)!")
+                    yield _format_stream_error_frame(e)
 
             return StreamingResponse(
                 chat_wrapper(),

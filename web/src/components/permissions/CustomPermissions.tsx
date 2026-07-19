@@ -26,7 +26,8 @@ import {
   AimOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { ins as axios } from '@/client/api';
+import { apiInterceptors, ins as axios } from '@/client/api';
+import { listSpaces } from '@/client/api/knowledge-vault';
 import { permissionsService, type Role, type Permission, type PermissionDefinition } from '@/services/permissions';
 
 const { Text } = Typography;
@@ -131,8 +132,8 @@ async function loadOptionsForResourceType(
         break;
       }
       case 'knowledge': {
-        const res = await axios.get('/api/v1/knowledge/space/list');
-        resources = res.data?.data?.list || res.data?.data || [];
+        const [, spaces] = await apiInterceptors(listSpaces());
+        resources = (spaces || []).map((s) => ({ name: s.slug }));
         break;
       }
       case 'model': {

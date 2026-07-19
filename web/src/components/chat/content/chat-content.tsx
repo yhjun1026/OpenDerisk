@@ -7,6 +7,7 @@ import { CompactChatContext } from "@/contexts/chat-content-context";
 import { IChatDialogueMessageSchema } from "@/types/chat";
 import { STORAGE_USERINFO_KEY } from "@/utils/constants/storage";
 import { groupConsecutivePlanCards } from "@/utils/group-agent-plan-cards";
+import VisSegmentedMarkdown from "@/components/chat/chat-content-components/VisSegmentedMarkdown";
 import {
   CheckOutlined,
   ClockCircleOutlined,
@@ -362,6 +363,13 @@ const ChatContent: React.FC<{
                 .markdown-content-wrap:has(> pre) > pre:has(> .VisAgentPlanCardClass) + pre:has(> .VisAgentPlanCardClass) {
                   margin-top: 8px !important;
                 }
+                /* 分段渲染(VisSegmentedMarkdown)下等价的 task-task 间距 */
+                .vis-fence-segment:has(> .VisAgentPlanCardClass) + .vis-fence-segment:has(> .VisAgentPlanCardClass) {
+                  margin-top: 8px;
+                }
+                .vis-fence-segment {
+                  line-height: normal;
+                }
                 .compact-markdown-container pre {
                   padding: 0 !important;
                   margin: 0 !important;
@@ -369,15 +377,14 @@ const ChatContent: React.FC<{
                   font-size: 100% !important;
                 }
               `}} />
-              <GPTVis
+              {/* 组件级局部渲染:vis 围栏按 uid 挂载,只有变化的组件重渲染 */}
+              <VisSegmentedMarkdown
+                content={preprocessLaTeX(formatMarkdownValForAgent(_context))}
                 components={{
                   ...markdownComponents,
                   ...extraMarkdownComponents,
                 }}
-                {...markdownPlugins}
-              >
-                {preprocessLaTeX(formatMarkdownValForAgent(_context))}
-              </GPTVis>
+              />
             </CompactChatContext.Provider>
             {thinking && !context && (
               <div className='flex items-center gap-2'>

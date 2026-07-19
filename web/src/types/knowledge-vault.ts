@@ -4,6 +4,10 @@
  * Backend: derisk_serve.knowledge HTTP API at /api/v1/serve/knowledge.
  */
 
+export type SpaceVisibility = 'private' | 'shared' | 'public';
+
+export type SpaceType = 'personal' | 'agent_memory';
+
 export interface SpaceInfo {
   slug: string;
   root: string;
@@ -13,6 +17,13 @@ export interface SpaceInfo {
   llm_model?: string | null;
   multimodal_model?: string | null;
   embedder_model?: string | null;
+  // Access control (owner_id empty/null = legacy world-accessible space)
+  visibility?: SpaceVisibility | null;
+  owner_id?: string | null;
+  space_type?: SpaceType | null;
+  // v5 retrieval tuning (both default off)
+  rerank_model?: string | null;
+  embed_verbats?: boolean | null;
 }
 
 export interface UpdateSpaceRequest {
@@ -20,6 +31,8 @@ export interface UpdateSpaceRequest {
   llm_model?: string | null;
   multimodal_model?: string | null;
   embedder_model?: string | null;
+  rerank_model?: string | null;
+  embed_verbats?: boolean | null;
 }
 
 export interface CreateSpaceRequest {
@@ -29,6 +42,10 @@ export interface CreateSpaceRequest {
   llm_model?: string | null;
   multimodal_model?: string | null;
   embedder_model?: string | null;
+  rerank_model?: string | null;
+  embed_verbats?: boolean | null;
+  visibility?: SpaceVisibility | null;
+  space_type?: SpaceType | null;
 }
 
 export interface IngestJob {
@@ -41,10 +58,30 @@ export interface IngestJob {
   error?: string | null;
   started_at: string;
   finished_at?: string | null;
+  /** Token usage aggregated from the llm_call_log ledger by job_id. */
+  total_tokens: number;
+  by_task: Record<string, number>;
+  by_model: Record<string, number>;
 }
 
 export interface IngestJobListResponse {
   items: IngestJob[];
+}
+
+export type LlmUsageBucket = {
+  tokens: number;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+};
+
+export interface LlmUsageSummary {
+  total_calls: number;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  by_task: Record<string, LlmUsageBucket>;
+  by_model: Record<string, LlmUsageBucket>;
 }
 
 export interface UploadResponse {
@@ -53,8 +90,16 @@ export interface UploadResponse {
   wiki_doc_ids: string[];
 }
 
+export type LintRule =
+  | 'orphan_doc'
+  | 'broken_wikilink'
+  | 'verbat_without_wiki'
+  | 'stale_edge'
+  | 'frontmatter_missing'
+  | 'contradiction';
+
 export interface LintIssue {
-  rule: 'orphan_doc' | 'broken_wikilink' | 'verbat_without_wiki' | string;
+  rule: LintRule | string;
   severity: 'info' | 'warning' | 'error';
   path?: string | null;
   verbat_id?: string | null;
@@ -119,6 +164,8 @@ export interface VerbatOut {
   content_preview?: string | null;
   content_date?: string | null;
   filed_at?: string | null;
+  /** 记忆元数据 (author/user_id/conv_id/turn_round 等) */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface VerbatFull {
@@ -149,6 +196,23 @@ export interface RawFileEditRequest {
 
 export type DocSearchMode = 'documents' | 'semantic' | 'hybrid' | 'references';
 
+/** L0 verbat search mode (requires spaces.embed_verbats for semantic/hybrid). */
+export type VerbatSearchMode = 'keyword' | 'semantic' | 'hybrid';
+
+export interface VerbatHit {
+  verbat_id: string;
+  score: number;
+  snippet: string;
+  source_file: string;
+  extract_mode: string;
+}
+
+export interface VerbatSearchResponse {
+  hits: VerbatHit[];
+  mode: string;
+  total: number;
+}
+
 export interface DocHit {
   document_id: string;
   path: string;
@@ -169,4 +233,10 @@ export interface SearchResponse {
   hits: DocHit[];
   mode: DocSearchMode;
   total: number;
+}
+
+export interface CurateReport {
+  content: string;
+  path?: string | null;
+  timestamp?: string | null;
 }

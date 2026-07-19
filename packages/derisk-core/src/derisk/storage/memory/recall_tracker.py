@@ -4,12 +4,23 @@ This module tracks memory retrieval history to inform promotion
 decisions. Similar to OpenClaw's ShortTermRecallEntry pattern,
 it records which memories were retrieved, for what queries, and
 how often — enabling multi-component scoring for promotion.
+
+Persistence: pass ``db_path`` to keep the aggregated stats in SQLite
+(following the derisk local-storage convention), so promotion no
+longer cold-starts after every process restart. Without ``db_path``
+the tracker stays purely in-memory (previous behaviour).
 """
 
 import hashlib
+import json
+import logging
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,11 +60,146 @@ class MemoryRecallStats:
 
 
 class RecallTracker:
-    """Tracks memory retrieval history for promotion decisions."""
+    """Tracks memory retrieval history for promotion decisions.
 
-    def __init__(self):
+    Args:
+        db_path: Optional SQLite file path. When provided, the
+            per-memory stats needed by the five-component promotion
+            score (recall_count, total_score, unique query hashes,
+            recall days, last_recalled) are persisted and reloaded on
+            construction. When None, tracking is in-memory only.
+    """
+
+    def __init__(self, db_path: Optional[str] = None):
         self._entries: List[RecallEntry] = []
         self._stats: Dict[str, MemoryRecallStats] = {}
+        # memory_id -> set of query hashes (diversity component)
+        self._query_hashes: Dict[str, Set[str]] = {}
+        # memory_id -> space_id (a memory belongs to exactly one space)
+        self._space_by_memory: Dict[str, str] = {}
+        self._db_path = db_path
+        if db_path:
+            self._init_db()
+            self._load()
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def _init_db(self) -> None:
+        path = Path(self._db_path)
+        if path.parent and str(path.parent) not in ("", "."):
+            path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS recall_stats (
+                    memory_id TEXT PRIMARY KEY,
+                    space_id TEXT,
+                    recall_count INTEGER,
+                    total_score REAL,
+                    query_hashes TEXT,
+                    recall_days TEXT,
+                    last_recalled TEXT
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _load(self) -> None:
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = conn.execute("SELECT * FROM recall_stats").fetchall()
+        finally:
+            conn.close()
+        for row in rows:
+            mid = row["memory_id"]
+            last_recalled = None
+            if row["last_recalled"]:
+                try:
+                    last_recalled = datetime.fromisoformat(row["last_recalled"])
+                except ValueError:
+                    last_recalled = None
+            query_hashes = set(json.loads(row["query_hashes"] or "[]"))
+            stats = MemoryRecallStats(
+                memory_id=mid,
+                recall_count=row["recall_count"] or 0,
+                total_score=row["total_score"] or 0.0,
+                unique_queries=len(query_hashes),
+                recall_days=json.loads(row["recall_days"] or "[]"),
+                last_recalled=last_recalled,
+            )
+            self._stats[mid] = stats
+            self._query_hashes[mid] = query_hashes
+            if row["space_id"]:
+                self._space_by_memory[mid] = row["space_id"]
+        if rows:
+            logger.info(
+                "[RecallTracker] loaded %d persisted recall stats from %s",
+                len(rows),
+                self._db_path,
+            )
+
+    def _persist(self, memory_id: str) -> None:
+        if not self._db_path:
+            return
+        stats = self._stats.get(memory_id)
+        if stats is None:
+            return
+        try:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO recall_stats
+                    (memory_id, space_id, recall_count, total_score,
+                     query_hashes, recall_days, last_recalled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        memory_id,
+                        self._space_by_memory.get(memory_id),
+                        stats.recall_count,
+                        stats.total_score,
+                        json.dumps(sorted(self._query_hashes.get(memory_id, set()))),
+                        json.dumps(stats.recall_days),
+                        stats.last_recalled.isoformat()
+                        if stats.last_recalled
+                        else None,
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[RecallTracker] persist failed for %s: %s", memory_id, e)
+
+    def _delete_persisted(self, memory_ids: Optional[Set[str]] = None) -> None:
+        if not self._db_path:
+            return
+        try:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                if memory_ids is None:
+                    conn.execute("DELETE FROM recall_stats")
+                else:
+                    for mid in memory_ids:
+                        conn.execute(
+                            "DELETE FROM recall_stats WHERE memory_id = ?", (mid,)
+                        )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[RecallTracker] delete persisted rows failed: %s", e)
+
+    # ------------------------------------------------------------------
+    # Recording / queries
+    # ------------------------------------------------------------------
 
     async def record(
         self,
@@ -87,6 +233,11 @@ class RecallTracker:
             if day_str not in stats.recall_days:
                 stats.recall_days.append(day_str)
             stats.last_recalled = entry.recalled_at
+            self._space_by_memory[mem_id] = space_id
+            hashes = self._query_hashes.setdefault(mem_id, set())
+            hashes.add(entry.query_hash)
+            stats.unique_queries = len(hashes)
+            self._persist(mem_id)
 
     async def get_recall_stats(
         self,
@@ -103,10 +254,7 @@ class RecallTracker:
         return {
             mid: stats
             for mid, stats in self._stats.items()
-            if any(
-                e.space_id == space_id and mid in e.result_ids
-                for e in self._entries
-            )
+            if self._space_by_memory.get(mid) == space_id
         }
 
     async def get_top_candidates(
@@ -191,9 +339,22 @@ class RecallTracker:
         if space_id:
             before = len(self._entries)
             self._entries = [e for e in self._entries if e.space_id != space_id]
+            doomed = {
+                mid
+                for mid, sid in self._space_by_memory.items()
+                if sid == space_id
+            }
+            for mid in doomed:
+                self._stats.pop(mid, None)
+                self._query_hashes.pop(mid, None)
+                self._space_by_memory.pop(mid, None)
+            self._delete_persisted(doomed)
             return before - len(self._entries)
         else:
             count = len(self._entries)
             self._entries.clear()
             self._stats.clear()
+            self._query_hashes.clear()
+            self._space_by_memory.clear()
+            self._delete_persisted(None)
             return count

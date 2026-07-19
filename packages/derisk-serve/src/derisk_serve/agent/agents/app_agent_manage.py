@@ -43,8 +43,8 @@ class AppManager(BaseComponent, ABC):
         self.gpts_messages_dao = GptsMessagesDao()
 
         self.memory = GptsMemory(
-            plans_memory=MetaDerisksMessageMemory(),
-            message_memory=MetaDerisksPlansMemory(),
+            plans_memory=MetaDerisksPlansMemory(),
+            message_memory=MetaDerisksMessageMemory(),
         )
         self.agent_memory_map = {}
 

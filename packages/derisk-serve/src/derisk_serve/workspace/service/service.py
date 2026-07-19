@@ -382,7 +382,12 @@ class WorkspaceService(BaseService[WorkspaceEntity, WorkspaceRequest, WorkspaceR
             raise ValueError(
                 f"Conversation {conv_uid} not linked to workspace {workspace_id}"
             )
-        if user_id is not None and link.user_id != user_id:
+        # 仅当 link 有归属用户时才校验;无主 link(user_id=None)对所有用户放行
+        if (
+            user_id is not None
+            and link.user_id is not None
+            and link.user_id != user_id
+        ):
             raise ValueError(
                 f"Conversation {conv_uid} not linked to workspace {workspace_id} "
                 f"for user {user_id}"

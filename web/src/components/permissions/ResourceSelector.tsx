@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { Select, Space, Tag, Typography, Spin } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { ins as axios } from '@/client/api';
+import { apiInterceptors, ins as axios } from '@/client/api';
+import { listSpaces } from '@/client/api/knowledge-vault';
 
 const { Text } = Typography;
 
@@ -72,8 +73,8 @@ export default function ResourceSelector({
             break;
           case 'knowledge':
             {
-              const res = await axios.get('/api/v1/knowledge/space/list');
-              resources = res.data?.data?.list || res.data?.data || [];
+              const [, spaces] = await apiInterceptors(listSpaces());
+              resources = (spaces || []).map((s) => ({ name: s.slug }));
             }
             break;
           case 'model':

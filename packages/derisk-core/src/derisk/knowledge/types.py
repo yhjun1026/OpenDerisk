@@ -106,6 +106,10 @@ class Space:
     name: str
     description: str = ""
     backend: str = "local"           # "local" | "distributed"
+    # RFC-005 Phase 1: dual-form space. "personal" = human knowledge
+    # curation, "agent_memory" = per-agent memory sink (hermes 4-tier).
+    # String (not enum) to keep coupling low; drives schema.md selection.
+    space_type: str = "personal"     # "personal" | "agent_memory"
     schema_hash: Optional[str] = None
     embedder_model: Optional[str] = None
     embedder_dimension: Optional[int] = None
@@ -119,6 +123,11 @@ class Space:
     default_agent_id: Optional[str] = None
     llm_model: Optional[str] = None
     multimodal_model: Optional[str] = None
+    # v5 retrieval tuning. rerank_model: LLM rerank after hybrid RRF
+    # (None = off). embed_verbats: embed L0 verbats on write so
+    # verbat_search supports semantic/hybrid modes (default off).
+    rerank_model: Optional[str] = None
+    embed_verbats: bool = False
 
 
 @dataclass
@@ -276,6 +285,9 @@ class DocHit:
     score: float
     snippet: str
     verbats: list[VerbatId] = field(default_factory=list)  # L0 back-pointers
+    # RFC-005 Phase 3: "direct" = keyword/vector hit; "graph_expansion" =
+    # recalled via entity graph (about/relates-to), downweighted.
+    source: str = "direct"
 
 
 @dataclass
@@ -357,8 +369,9 @@ class EmbedderIdentity:
 class LintIssue:
     """One lint finding (RFC 003 §7)."""
 
-    rule: str                    # orphan_pages | stale_edges | ...
+    rule: str                    # orphan_doc | broken_wikilink | ...
     severity: Literal["info", "warning", "error"]
     path: Optional[str] = None
     edge_id: Optional[EdgeId] = None
+    verbat_id: Optional[VerbatId] = None
     message: str = ""

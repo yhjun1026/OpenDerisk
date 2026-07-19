@@ -38,6 +38,10 @@ class SceneAgentWorkspaceConverter(DeriskIncrVisManusConverter):
 
     SCENE_TAG = "scene_agent_workspace"
 
+    # opt-in:vis_messages/vis_final 的消息合并默认屏蔽 Human 消息,
+    # 本转换器需要用户消息(渲染用户气泡),故声明保留。
+    include_user_messages = True
+
     def __init__(self, paths: Optional[str] = None, **kwargs):
         super().__init__(paths, **kwargs)
         # key 前缀区分来源: tool-{action_id} / think-{message_id} / narr-{message_id}
@@ -164,20 +168,30 @@ class SceneAgentWorkspaceConverter(DeriskIncrVisManusConverter):
         ts = self._ts_str(self._report_get(report, "start_time")) or (existing[1] if existing else "")
         self._scene_items[key] = (step, ts)
 
-    def _ingest_assistant_text(self, message_id: Optional[str], content: Any, ts: Any = None) -> None:
-        """登记 assistant 文本(阶段回复/最终回答候选,最新一条进 summary)。"""
-        if not isinstance(content, str) or not content.strip():
+    def _ingest_assistant_text(
+        self, message_id: Optional[str], content: Any, ts: Any = None, append: bool = False
+    ) -> None:
+        """登记 assistant 文本(阶段回复/最终回答候选,最新一条进 summary)。
+
+        append=True 用于 LLM 流式:stream_msg.content 是增量 delta,需追加;
+        来自持久化消息的全量文本则整体替换。
+        """
+        if not isinstance(content, str) or not content:
             return
         mid = message_id or "unknown"
-        prev_ts = self._scene_narrations.get(mid, ("", ""))[1]
-        self._scene_narrations[mid] = (content.strip(), self._ts_str(ts) or prev_ts)
+        prev_text, prev_ts = self._scene_narrations.get(mid, ("", ""))
+        text = (prev_text + content) if append else content
+        self._scene_narrations[mid] = (text.strip() if not append else text, self._ts_str(ts) or prev_ts)
 
     def _ingest_thinking(self, message_id: Optional[str], thinking: Any, live: bool, ts: Any = None) -> None:
         if not isinstance(thinking, str) or not thinking.strip():
             return
         mid = message_id or "unknown"
         key = f"think-{mid}"
-        prev_ts = self._scene_items.get(key, ({}, ""))[1]
+        prev_step, prev_ts = self._scene_items.get(key, ({}, ""))
+        # 流式 thinking 同样是增量 delta,追加而非替换
+        prev_output = prev_step.get("output", "") if isinstance(prev_step, dict) else ""
+        output = (prev_output + thinking) if live else thinking.strip()
         self._scene_items[key] = ({
             "id": key,
             "type": "thinking",
@@ -185,16 +199,48 @@ class SceneAgentWorkspaceConverter(DeriskIncrVisManusConverter):
             "status": "running" if live else "done",
             "action": None,
             "action_input": None,
-            "output": thinking.strip()[:_MAX_OUTPUT_CHARS],
+            "output": output[:_MAX_OUTPUT_CHARS],
             "artifact": None,
             "vis": None,
         }, self._ts_str(ts) or prev_ts)
+
+    def _ingest_user_message(self, msg: Any) -> None:
+        """用户消息 → user 步骤(展示用户问题,气泡渲染)。"""
+        content = getattr(msg, "content", None)
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            # 多模态:拼接 text 片段
+            parts = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    parts.append(str(item.get("text") or ""))
+            text = " ".join(p for p in parts if p)
+        if not text.strip():
+            return
+        mid = getattr(msg, "message_id", None) or uuid.uuid4().hex
+        key = f"user-{mid}"
+        self._scene_items[key] = ({
+            "id": key,
+            "type": "user",
+            "title": "我",
+            "status": "done",
+            "action": None,
+            "action_input": None,
+            "output": text.strip()[:_MAX_OUTPUT_CHARS],
+            "artifact": None,
+            "vis": None,
+        }, self._ts_str(getattr(msg, "created_at", None)))
 
     def _ingest_message(self, msg: Any) -> None:
         """从一条 GptsMessage(已完成)摄取步骤 / 思考 / 回复。"""
         role = str(getattr(msg, "role", "") or "")
         sender = str(getattr(msg, "sender", "") or "")
-        if role in _HUMAN_ROLES or sender in _HUMAN_ROLES or role == "tool":
+        if role in _HUMAN_ROLES or sender in _HUMAN_ROLES:
+            self._ingest_user_message(msg)
+            return
+        if role == "tool":
             return
         message_id = getattr(msg, "message_id", None)
         ts = getattr(msg, "created_at", None)
@@ -221,7 +267,8 @@ class SceneAgentWorkspaceConverter(DeriskIncrVisManusConverter):
         if stream_msg.get("thinking"):
             self._ingest_thinking(message_id, stream_msg.get("thinking"), live=True, ts=ts)
         if stream_msg.get("content"):
-            self._ingest_assistant_text(message_id, stream_msg.get("content"), ts=ts)
+            # stream content 是增量 delta,追加
+            self._ingest_assistant_text(message_id, stream_msg.get("content"), ts=ts, append=True)
 
     def _build_planning(self, plans_map: Optional[Dict[str, Any]], messages: List[Any]) -> Optional[Dict[str, Any]]:
         if not plans_map:
@@ -278,9 +325,10 @@ class SceneAgentWorkspaceConverter(DeriskIncrVisManusConverter):
                 "vis": None,
             }, ts))
 
-        # 按时间交错排序(无 ts 的保持相对稳定,排在有 ts 的后面按插入序)
+        # 按时间交错排序(无 ts 的排后,稳定)
         execution.sort(key=lambda item: item[1] or "￿")
-        ordered_steps = [step for step, _ in execution]
+        # ts 透出给前端:跨轮次(agent conv)合并时按时间交错
+        ordered_steps = [{**step, "ts": ts or None} for step, ts in execution]
 
         return {
             "render_name": "scene_agent_workspace",

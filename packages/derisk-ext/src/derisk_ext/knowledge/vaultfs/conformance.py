@@ -57,6 +57,7 @@ async def run_conformance(vault) -> None:
         ("L1 doc_delete refuses protected files", test_doc_delete_protected),
         ("L1 doc_search documents mode", test_doc_search_documents),
         ("L1 doc_append_log appends", test_doc_append_log),
+        ("L1 doc_lint returns issues", test_doc_lint),
         # L2
         ("L2 edge_add creates edge", test_edge_add),
         ("L2 edge_invalidate keeps history", test_edge_invalidate_keeps_history),
@@ -267,6 +268,37 @@ async def test_doc_append_log(vault):
     # public wiki-file accessor so the check is backend-agnostic.
     text = await vault.read_wiki_file("log.md")
     assert "some event" in text
+
+
+async def test_doc_lint(vault):
+    """doc_lint must run on every backend (no raw-SQL shortcuts) and flag
+    at least an orphan doc + an uncited verbat for a fresh space."""
+    content = """---
+type: concept
+title: Lint Target
+created: 2026-06-23
+updated: 2026-06-23
+---
+
+An isolated page with no inbound edges.
+"""
+    await vault.doc_create(path="concepts/lint-target.md", content=content)
+    v = Verbat.create(
+        space_id=vault.space_id,
+        content="uncited raw note",
+        source_file="lint-note.md",
+        extract_mode=ExtractMode.UPLOAD,
+    )
+    vid = await vault.verbat_add(v)
+
+    issues = await vault.doc_lint()
+    assert isinstance(issues, list), "doc_lint must return a list"
+    rules = {i.rule for i in issues}
+    assert "orphan_doc" in rules, f"expected orphan_doc finding, got {rules}"
+    assert "verbat_without_wiki" in rules, (
+        f"expected verbat_without_wiki finding, got {rules}"
+    )
+    assert any(i.verbat_id == vid for i in issues)
 
 
 # ---------------------------------------------------------------------------

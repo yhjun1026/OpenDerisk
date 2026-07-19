@@ -30,7 +30,13 @@ CREATE TABLE IF NOT EXISTS spaces (
     -- v2: ingest pipeline config (RFC 004 §6). All nullable = unset.
     default_agent_id TEXT,
     llm_model TEXT,
-    multimodal_model TEXT
+    multimodal_model TEXT,
+    -- v5: retrieval tuning. rerank_model NULL = rerank off;
+    -- embed_verbats 0 = L0 verbats are not embedded (keyword-only search).
+    rerank_model TEXT,
+    embed_verbats INTEGER DEFAULT 0,
+    -- v6 (RFC-005): dual-form space. 'personal' | 'agent_memory'.
+    space_type TEXT DEFAULT 'personal'
 );
 
 -- L0 Verbatim metadata (content lives on disk under raw/)
@@ -127,6 +133,41 @@ CREATE TABLE IF NOT EXISTS embedder_identity (
     updated_at TEXT NOT NULL
 );
 
+-- LLM call ledger (RFC-005): one row per LLM call made by the ingest
+-- pipeline (extract / wiki_generate / entity_curate / ...). Powers the
+-- per-space token usage view.
+CREATE TABLE IF NOT EXISTS llm_call_log (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    job_id TEXT,
+    task_name TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    latency_ms INTEGER DEFAULT 0,
+    error_code INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_space ON llm_call_log(space_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_job ON llm_call_log(space_id, job_id);
+
+-- Ingest job ledger: one row per ingest/rebuild job (in-memory fallback
+-- path, id "ij_…"). Persisted so job history survives process restarts.
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    space_slug TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    verbat_ids TEXT,
+    wiki_doc_ids TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_jobs_space ON ingest_jobs(space_id, started_at);
+
 -- FTS5 full-text index (porter + unicode61 handles CJK reasonably; for
 -- proper CJK bigram we add a separate trigram auxiliary at query time).
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -161,6 +202,8 @@ async def init_schema(db) -> None:
     await _migrate_spaces_v2(db)
     await _migrate_chunks_hash(db)
     await _migrate_verbats_metadata(db)
+    await _migrate_spaces_v5(db)
+    await _migrate_spaces_v6(db)
     await db.commit()
 
 
@@ -231,6 +274,61 @@ async def _migrate_verbats_metadata(db) -> None:
     await db.execute("ALTER TABLE verbats ADD COLUMN metadata TEXT")
 
 
+# Columns added to `spaces` in schema v5 (retrieval tuning). Same
+# idempotent-ALTER pattern as `_SPACES_V2_COLUMNS`.
+_SPACES_V5_COLUMNS = [
+    ("rerank_model", "TEXT", None),
+    ("embed_verbats", "INTEGER", "0"),
+]
+
+
+async def _migrate_spaces_v5(db) -> None:
+    """Add v5 columns to `spaces` if missing (idempotent)."""
+    async with db.execute("PRAGMA table_info(spaces)") as cur:
+        rows = await cur.fetchall()
+    if not rows:
+        return  # table doesn't exist yet; CREATE will handle it
+    existing = {row[1] for row in rows}
+    for col, col_type, default in _SPACES_V5_COLUMNS:
+        if col in existing:
+            continue
+        default_sql = "NULL" if default is None else f"'{default}'"
+        await db.execute(
+            f"ALTER TABLE spaces ADD COLUMN {col} {col_type} DEFAULT {default_sql}"
+        )
+
+
+# Columns added to `spaces` in schema v6 (RFC-005 dual-form space).
+_SPACES_V6_COLUMNS = [
+    ("space_type", "TEXT", "personal"),
+]
+
+
+async def _migrate_spaces_v6(db) -> None:
+    """Add v6 columns to `spaces` if missing (idempotent)."""
+    async with db.execute("PRAGMA table_info(spaces)") as cur:
+        rows = await cur.fetchall()
+    if not rows:
+        return
+    existing = {row[1] for row in rows}
+    for col, col_type, default in _SPACES_V6_COLUMNS:
+        if col in existing:
+            continue
+        default_sql = "NULL" if default is None else f"'{default}'"
+        await db.execute(
+            f"ALTER TABLE spaces ADD COLUMN {col} {col_type} DEFAULT {default_sql}"
+        )
+
+
 def schema_version() -> int:
-    """Bump when SCHEMA_SQL changes; used by future migration logic."""
-    return 2
+    """Latest schema version applied by init_schema.
+
+    v1: base schema (spaces/verbats/documents/chunks/edges/FTS)
+    v2: spaces ingest pipeline config columns (default_agent_id, llm_model,
+        multimodal_model)
+    v3: verbats.metadata (记忆元数据, JSON)
+    v4: llm_call_log ledger (RFC-005)
+    v5: spaces.rerank_model / spaces.embed_verbats + ingest_jobs ledger
+    v6: spaces.space_type (RFC-005 dual-form space)
+    """
+    return 6

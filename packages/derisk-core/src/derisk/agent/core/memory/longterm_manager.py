@@ -1084,8 +1084,9 @@ class LongTermMemoryManager:
         combined_lower = combined.lower()
         has_keywords = any(kw in combined_lower for kw in self._IMPORTANCE_KEYWORDS)
 
-        # Long content is considered important
-        if len(combined) > 500 or has_keywords:
+        # 仅关键词命中才写入长期记忆。之前"长度>500 即重要"会把长对话
+        # 整段写入长期记忆，违背"只记稳定事实"的设计（见 MEMORY_GUIDANCE）。
+        if has_keywords:
             return combined
 
         return None
@@ -1133,71 +1134,6 @@ class LongTermMemoryManager:
         return await self._recall_tracker.get_top_candidates(space_id, top_k)
 
 
-async def create_long_term_memory_manager(
-    config: LongTermMemoryConfig,
-    system_app: Any,
-    processors: Optional[Dict[str, MemoryProcessor]] = None,
-    strategies: Optional[Dict[str, MemorySpaceStrategy]] = None,
-) -> Optional[LongTermMemoryManager]:
-    """Create a LongTermMemoryManager with initialized memory stores.
-
-    Args:
-        config: The configuration parsed from resource_memory
-        system_app: SystemApp instance for getting StorageManager
-        processors: Dict mapping memory_id to MemoryProcessor
-        strategies: Dict mapping memory_id to MemorySpaceStrategy
-
-    Returns:
-        LongTermMemoryManager or None if no valid memory spaces
-    """
-    if not config or not config.memories:
-        return None
-
-    from derisk.component import ComponentType
-    # TODO: rewire to new knowledge module (Task #9)
-    try:
-        from derisk_serve.rag.storage_manager import StorageManager
-    except ImportError:
-        logger.warning(
-            "StorageManager unavailable (old rag module removed); "
-            "skipping long-term memory manager init."
-        )
-        return None
-
-    try:
-        storage_manager: StorageManager = system_app.get_component(
-            ComponentType.RAG_STORAGE_MANAGER, StorageManager
-        )
-    except Exception as e:
-        logger.warning(f"StorageManager not available: {e}")
-        return None
-
-    memory_stores: Dict[str, MemoryStoreBase] = {}
-
-    for memory_item in config.memories:
-        memory_id = memory_item.get("memory_id")
-        if not memory_id:
-            continue
-
-        try:
-            memory_store = storage_manager.create_memory_store(memory_id)
-            if memory_store:
-                memory_stores[memory_id] = memory_store
-                logger.info(f"[LongTermMemory] Connected to memory space: {memory_id}")
-        except Exception as e:
-            logger.warning(f"Failed to create memory store for {memory_id}: {e}")
-
-    if not memory_stores:
-        return None
-
-    return LongTermMemoryManager(
-        config=config,
-        memory_stores=memory_stores,
-        processors=processors,
-        strategies=strategies,
-    )
-
-
 # ------------------------------------------------------------------
 # MemoryIntegrationBundle — full long-term memory stack
 # ------------------------------------------------------------------
@@ -1241,128 +1177,10 @@ class MemoryIntegrationBundle:
         )
 
 
-async def create_memory_integration_bundle(
-    config: LongTermMemoryConfig,
-    system_app: Any,
-    processor_factory: Optional[Any] = None,
-    strategy_overrides: Optional[Dict[str, MemorySpaceStrategy]] = None,
-) -> Optional[MemoryIntegrationBundle]:
-    """Create a complete memory integration bundle.
-
-    Single entry point for building the full long-term memory stack.
-    Creates all components and wires them together.
-
-    Args:
-        config: LongTermMemoryConfig from resource parsing
-        system_app: SystemApp instance for getting StorageManager
-        processor_factory: Callable(space_id) -> MemoryProcessor
-                          If None, creates default LLMMemoryProcessor
-        strategy_overrides: Pre-built MemorySpaceStrategy per space
-
-    Returns:
-        MemoryIntegrationBundle or None if no valid memory spaces
-    """
-    if not config or not config.memories:
-        return None
-
-    from derisk.component import ComponentType
-    # TODO: rewire to new knowledge module (Task #9)
-    try:
-        from derisk_serve.rag.storage_manager import StorageManager
-    except ImportError:
-        logger.warning(
-            "StorageManager unavailable (old rag module removed); "
-            "skipping memory integration bundle."
-        )
-        return None
-
-    try:
-        storage_manager: StorageManager = system_app.get_component(
-            ComponentType.RAG_STORAGE_MANAGER, StorageManager
-        )
-    except Exception as e:
-        logger.warning(f"StorageManager not available: {e}")
-        return None
-
-    memory_stores: Dict[str, MemoryStoreBase] = {}
-    processors: Dict[str, MemoryProcessor] = {}
-    strategies: Dict[str, MemorySpaceStrategy] = {}
-
-    for memory_item in config.memories:
-        memory_id = memory_item.get("memory_id")
-        if not memory_id:
-            continue
-
-        try:
-            memory_store = storage_manager.create_memory_store(memory_id)
-            if memory_store:
-                memory_stores[memory_id] = memory_store
-                logger.info(f"[MemoryBundle] Connected store: {memory_id}")
-        except Exception as e:
-            logger.warning(f"Failed to create store for {memory_id}: {e}")
-
-        # Create processor for this space
-        if processor_factory:
-            try:
-                processors[memory_id] = processor_factory(memory_id)
-                logger.info(f"[MemoryBundle] Created processor for {memory_id}")
-            except Exception as e:
-                logger.warning(f"Failed to create processor for {memory_id}: {e}")
-
-        # Create strategy for this space
-        if strategy_overrides and memory_id in strategy_overrides:
-            strategies[memory_id] = strategy_overrides[memory_id]
-        else:
-            strategies[memory_id] = MemorySpaceStrategy(
-                space_id=memory_id,
-                auto_extraction=config.auto_memory,
-                kg_extraction=config.enable_kg,
-            )
-
-    if not memory_stores:
-        return None
-
-    recall_tracker = RecallTracker()
-    hybrid_search = HybridSearchEngine()
-    lifecycle_hooks = DefaultLifecycleHooks()
-    snapshot_manager = FrozenSnapshotManager()
-    promotion_engine = MemoryPromotionEngine(
-        recall_tracker=recall_tracker,
-        promotion_threshold=0.5,
-        max_promotions_per_sweep=10,
-    )
-
-    manager = LongTermMemoryManager(
-        config=config,
-        memory_stores=memory_stores,
-        processors=processors,
-        strategies=strategies,
-        recall_tracker=recall_tracker,
-        hybrid_search_engine=hybrid_search,
-        lifecycle_hooks=lifecycle_hooks,
-        snapshot_manager=snapshot_manager,
-        promotion_engine=promotion_engine,
-    )
-
-    return MemoryIntegrationBundle(
-        config=config,
-        manager=manager,
-        processors=processors,
-        strategies=strategies,
-        recall_tracker=recall_tracker,
-        hybrid_search=hybrid_search,
-        lifecycle_hooks=lifecycle_hooks,
-        snapshot_manager=snapshot_manager,
-        promotion_engine=promotion_engine,
-    )
-
-
 __all__ = [
     "LongTermMemoryConfig",
     "LongTermMemoryManager",
     "MemoryIntegrationBundle",
-    "create_long_term_memory_manager",
-    "create_memory_integration_bundle",
 ]
 
 

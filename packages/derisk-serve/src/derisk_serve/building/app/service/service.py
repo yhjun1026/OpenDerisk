@@ -532,6 +532,7 @@ class Service(BaseService[ServeEntity, ServeRequest, ServerResponse]):
                     backend="local",
                     default_agent_id=app_code,
                     embedder_model=embedding_model,
+                    space_type="agent_memory",
                 )
             except ValueError:
                 # Slug already exists — reuse. Safe because slug is deterministic.

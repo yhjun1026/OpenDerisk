@@ -40,6 +40,7 @@ from derisk.knowledge.types import (
     EdgeId,
     EmbedderIdentity,
     EmbedderState,
+    ExtractMode,
     FtsHit,
     LintIssue,
     ReindexReport,
@@ -73,6 +74,46 @@ logger = logging.getLogger(__name__)
 
 class EmbedderMismatchError(Exception):
     """Raised when embedder identity doesn't match and force_swap=False."""
+
+
+class DocDriftError(Exception):
+    """Raised when an L1 doc on disk diverged from the vault's last write.
+
+    FS-as-truth: an external writer (user edit, another process) modified
+    the markdown under wiki/ without going through the vault, so the
+    documents table's content_hash no longer matches the file. The vault
+    snapshots the on-disk content to ``<path>.bak.<ts>`` and refuses the
+    overwrite/delete instead of silently clobbering the external edit
+    (hermes-agent `_detect_external_drift` alignment).
+    """
+
+    def __init__(self, path: str, backup_path: str):
+        self.path = path
+        self.backup_path = backup_path
+        super().__init__(
+            f"External drift detected on {path}: on-disk content differs "
+            f"from the vault's last write. Snapshot saved to {backup_path}; "
+            f"refusing to overwrite/delete. Re-read the doc and retry."
+        )
+
+
+# Recall trust score (hermes Holographic fact_feedback alignment).
+# trust_score lives in L1 frontmatter; recall multiplies it into the
+# ranking score and drops results below TRUST_MIN_RECALL.
+TRUST_DEFAULT = 1.0
+TRUST_MIN_RECALL = 0.3
+TRUST_DELTA_HELPFUL = 0.05
+TRUST_DELTA_UNHELPFUL = -0.10
+
+
+def trust_of(frontmatter: Optional[dict]) -> float:
+    """Read trust_score from a doc's frontmatter. Missing/invalid -> 1.0."""
+    if not frontmatter:
+        return TRUST_DEFAULT
+    try:
+        return min(1.0, max(0.0, float(frontmatter.get("trust_score", TRUST_DEFAULT))))
+    except (TypeError, ValueError):
+        return TRUST_DEFAULT
 
 
 class _BaseSubscription(Subscription):
@@ -144,9 +185,20 @@ class BaseVaultFS(ABC):
         self._embedder_model_hint: Optional[str] = None
         self._system_app: Optional[object] = None
         self._embedder_cache: Any = None  # EmbedderCache, lazy
+        # L0 verbat embedding (off by default; service layer enables it for
+        # spaces with embed_verbats=true). When on, verbat_add /
+        # verbat_append_content upsert a `verbat:{id}` vector so
+        # verbat_search can run semantic/hybrid modes.
+        self._embed_verbats_enabled: bool = False
+        # Optional reranker applied after hybrid RRF (per-space, default
+        # off). Any object with `async rerank(query, hits) -> hits`.
+        self._reranker: Any = None
 
     def configure_embedder_hint(
-        self, model_hint: Optional[str], system_app: Optional[object] = None
+        self,
+        model_hint: Optional[str],
+        system_app: Optional[object] = None,
+        embed_verbats: bool = False,
     ) -> None:
         """Service-layer hook: provide the model name to use for lazy
         embedder identity provisioning.
@@ -154,10 +206,23 @@ class BaseVaultFS(ABC):
         Called by `Service._make_vault` after constructing the vault.
         The hint is read by `_ensure_embedder_identity` on first vector
         op. If None, vector ops are skipped (FTS still works).
+
+        `embed_verbats` enables L0 verbat embedding on the write path
+        (per-space config, default off).
         """
         self._embedder_model_hint = model_hint
+        self._embed_verbats_enabled = embed_verbats
         if system_app is not None:
             self._system_app = system_app
+
+    def configure_reranker(self, reranker: Any) -> None:
+        """Service-layer hook: mount a reranker for hybrid doc search.
+
+        The reranker is any object with
+        `async rerank(query: str, hits: list[DocHit]) -> list[DocHit]`
+        (see `derisk_ext.knowledge.reranker`). Called with None to disable.
+        """
+        self._reranker = reranker
 
     # ----- metadata -----
     @property
@@ -226,11 +291,51 @@ class BaseVaultFS(ABC):
                 await self._raw_write(content_ref, v.content)
 
             await self._verbat_insert(v, inline_content, content_ref)
+            # Optional L0 embedding (per-space embed_verbats). Best-effort:
+            # failures are logged but never fail the write.
+            await self._embed_verbat_best_effort(v.id, v)
 
         await self.publish_event(
             ChangeEvent(space_id=self._space_id, layer="L0", op="create", id=v.id)
         )
         return v.id
+
+    async def _embed_verbat_best_effort(
+        self, vid: VerbatId, v: Optional[Verbat] = None
+    ) -> None:
+        """Embed a verbat's content and upsert vector `verbat:{id}`.
+
+        Only runs when the space enabled embed_verbats (see
+        `configure_embedder_hint`). Best-effort like
+        `_embed_chunks_for_doc`: no embedder / store failure → log + skip.
+        The vector ID is stable (`verbat:{verbat_id}`), so re-embedding a
+        growing CONVO transcript overwrites in place.
+        """
+        if not self._embed_verbats_enabled:
+            return
+        try:
+            if v is None:
+                v = await self._verbat_fetch(vid)
+            if v is None or not v.content or not v.content.strip():
+                return
+            embedder = await self._ensure_embedder_identity()
+            if embedder is None:
+                return
+            meta = {
+                "verbat_id": str(v.id),
+                "space_id": str(self._space_id),
+                "source_file": v.source_file,
+                "extract_mode": v.extract_mode.value,
+            }
+            # Cap embedded text — verbat content can be arbitrarily large.
+            await self.vector_upsert_text(
+                f"verbat:{v.id}", v.content[:8000], embedder, meta
+            )
+        except Exception as e:
+            logger.warning(
+                "verbat embedding failed for %s on space %s: %s",
+                vid, self._space_id, e,
+            )
 
     @abstractmethod
     async def _verbat_exists_by_hash(self, content_hash: str) -> Optional[VerbatId]: ...
@@ -257,7 +362,67 @@ class BaseVaultFS(ABC):
     ) -> list[Verbat]: ...
 
     async def verbat_search(
-        self, query: str, limit: int = 10, extract_mode: Optional[str] = None
+        self,
+        query: str,
+        limit: int = 10,
+        extract_mode: Optional[str] = None,
+        mode: str = "keyword",
+    ) -> list[VerbatHit]:
+        """Search L0 verbats.
+
+        Modes:
+        - "keyword" (default): SQL LIKE on content — always available.
+        - "semantic": vector recall over embedded verbats. Requires the
+          space's embed_verbats enabled (write-path embedding); returns []
+          when no embedder is available.
+        - "hybrid": keyword + semantic fused via RRF (k=60).
+
+        Semantic/hybrid degrade to keyword-only when embed_verbats is off.
+        """
+        # Legacy singular alias: ExtractMode.CONVO's stored value is
+        # "convos" (plural, aligned with the raw/convos/ dir).
+        if extract_mode == "convo":
+            extract_mode = ExtractMode.CONVO.value
+        if mode == "keyword" or not self._embed_verbats_enabled:
+            return await self._verbat_search_keyword(query, limit, extract_mode)
+        if mode == "semantic":
+            return await self._verbat_search_semantic(query, limit, extract_mode)
+        if mode == "hybrid":
+            kw_hits, sem_hits = await asyncio.gather(
+                self._verbat_search_keyword(query, limit * 2, extract_mode),
+                self._verbat_search_semantic(query, limit * 2, extract_mode),
+                return_exceptions=True,
+            )
+            if isinstance(kw_hits, Exception):
+                logger.warning("keyword branch of verbat hybrid failed: %s", kw_hits)
+                kw_hits = []
+            if isinstance(sem_hits, Exception):
+                logger.warning("semantic branch of verbat hybrid failed: %s", sem_hits)
+                sem_hits = []
+            rrf_k = 60
+            scores: dict[str, float] = {}
+            meta: dict[str, VerbatHit] = {}
+            for rank, h in enumerate(kw_hits):
+                scores[h.verbat_id] = scores.get(h.verbat_id, 0.0) + 1.0 / (rrf_k + rank)
+                meta.setdefault(h.verbat_id, h)
+            for rank, h in enumerate(sem_hits):
+                scores[h.verbat_id] = scores.get(h.verbat_id, 0.0) + 1.0 / (rrf_k + rank)
+                meta.setdefault(h.verbat_id, h)
+            ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+            return [
+                VerbatHit(
+                    verbat_id=vid,
+                    score=score,
+                    snippet=meta[vid].snippet,
+                    source_file=meta[vid].source_file,
+                    extract_mode=meta[vid].extract_mode,
+                )
+                for vid, score in ranked
+            ]
+        raise ValueError(f"Unknown verbat search mode: {mode}")
+
+    async def _verbat_search_keyword(
+        self, query: str, limit: int, extract_mode: Optional[str]
     ) -> list[VerbatHit]:
         verbats = await self._verbat_search_rows(query, limit, extract_mode)
         return [
@@ -271,6 +436,42 @@ class BaseVaultFS(ABC):
             for v in verbats
         ]
 
+    async def _verbat_search_semantic(
+        self, query: str, limit: int, extract_mode: Optional[str]
+    ) -> list[VerbatHit]:
+        """Vector-only verbat recall. Returns [] when no embedder is
+        available. Deprecated verbats are filtered out post-recall."""
+        embedder = await self._ensure_embedder_identity()
+        if embedder is None:
+            logger.info(
+                "verbat semantic search skipped on space %s — no embedder configured",
+                self._space_id,
+            )
+            return []
+        hits = await self.vector_query_text(query, embedder, top_k=limit * 3)
+        result: list[VerbatHit] = []
+        for h in hits:
+            vid = (h.metadata or {}).get("verbat_id") if h.metadata else None
+            if not vid:
+                continue  # doc-chunk vector, not a verbat
+            if extract_mode and h.metadata.get("extract_mode") != extract_mode:
+                continue
+            v = await self._verbat_fetch(str(vid))
+            if v is None or v.deprecated:
+                continue
+            result.append(
+                VerbatHit(
+                    verbat_id=v.id,
+                    score=float(h.score),
+                    snippet=make_snippet(v.content, query),
+                    source_file=v.source_file,
+                    extract_mode=v.extract_mode,
+                )
+            )
+            if len(result) >= limit:
+                break
+        return result
+
     @abstractmethod
     async def _verbat_search_rows(
         self, query: str, limit: int, extract_mode: Optional[str]
@@ -279,6 +480,12 @@ class BaseVaultFS(ABC):
     async def verbat_deprecate(self, vid: VerbatId) -> None:
         async with self.write_lock():
             await self._verbat_deprecate_row(vid)
+            # Best-effort vector cleanup when L0 embedding is enabled.
+            if self._embed_verbats_enabled:
+                try:
+                    await self.vector_delete(f"verbat:{vid}")
+                except Exception as e:
+                    logger.debug("vector_delete failed for verbat:%s: %s", vid, e)
         await self.publish_event(
             ChangeEvent(space_id=self._space_id, layer="L0", op="delete", id=vid)
         )
@@ -314,6 +521,8 @@ class BaseVaultFS(ABC):
         """
         async with self.write_lock():
             await self._verbat_append_content(vid, additional)
+            # Refresh the verbat vector (stable ID overwrites in place).
+            await self._embed_verbat_best_effort(vid)
         await self.publish_event(
             ChangeEvent(space_id=self._space_id, layer="L0", op="update", id=vid)
         )
@@ -373,6 +582,42 @@ class BaseVaultFS(ABC):
         )
         return doc_id
 
+    async def check_doc_drift(self, path: str) -> None:
+        """Round-trip guard for overwrite/delete ops on L1 docs.
+
+        Re-reads the file from disk and compares its content hash with
+        the content_hash the vault recorded at its last write. A mismatch
+        means an external writer modified the file (FS-as-truth) — the
+        on-disk content is snapshotted to ``<path>.bak.<ts>`` and
+        DocDriftError is raised instead of silently clobbering it.
+
+        Normal vault writes keep file and DB hash in sync, so the
+        read-then-write LLM path never trips this guard. No-op when the
+        doc or file is missing (nothing to lose).
+        """
+        norm_path = normalize_wiki_path(path)
+        meta = await self._doc_fetch_meta_by_path(norm_path)
+        if not meta:
+            return
+        doc_id, _version = meta
+        row = await self._doc_fetch_row(doc_id)
+        if not row:
+            return
+        expected_hash = row.get("content_hash")
+        disk_raw = await self._wiki_read(norm_path)
+        if not expected_hash or not disk_raw:
+            return
+        if sha256_hash(disk_raw) == expected_hash:
+            return
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+        backup_path = f"{norm_path}.bak.{ts}"
+        await self._wiki_write(backup_path, disk_raw)
+        logger.warning(
+            "External drift on %s (space %s) — snapshot at %s, refusing write",
+            norm_path, self._space_id, backup_path,
+        )
+        raise DocDriftError(norm_path, backup_path)
+
     async def doc_edit(self, path: str, content: str) -> None:
         norm_path = normalize_wiki_path(path)
         validate_wiki_path(norm_path)
@@ -384,6 +629,7 @@ class BaseVaultFS(ABC):
         now = datetime.utcnow()
 
         async with self.write_lock():
+            await self.check_doc_drift(norm_path)
             await self._wiki_write(norm_path, raw_md)
             existing = await self._doc_fetch_meta_by_path(norm_path)
             if existing:
@@ -447,6 +693,32 @@ class BaseVaultFS(ABC):
             updated_at=parse_dt(row["updated_at"]),
         )
 
+    async def doc_feedback(self, path: str, helpful: bool) -> dict:
+        """Adjust a doc's trust_score from recall-quality feedback.
+
+        hermes Holographic fact_feedback alignment: helpful +0.05 /
+        unhelpful -0.10, clamped to [0, 1]. The new score is written back
+        into the frontmatter via doc_edit, so the drift guard applies —
+        if the file was externally modified since the vault's last write,
+        DocDriftError is raised and the feedback is refused.
+
+        Returns {"path", "trust_score", "previous_trust"}.
+        """
+        doc = await self.doc_read(path)
+        if doc is None:
+            raise FileNotFoundError(f"doc not found: {normalize_wiki_path(path)}")
+        old = trust_of(doc.frontmatter)
+        delta = TRUST_DELTA_HELPFUL if helpful else TRUST_DELTA_UNHELPFUL
+        new = min(1.0, max(0.0, old + delta))
+        fm = dict(doc.frontmatter)
+        fm["trust_score"] = new
+        await self.doc_edit(doc.path, serialize_markdown(fm, doc.content))
+        logger.info(
+            "doc_feedback %s (space %s): trust %.2f -> %.2f",
+            doc.path, self._space_id, old, new,
+        )
+        return {"path": doc.path, "trust_score": new, "previous_trust": old}
+
     async def doc_delete(self, path: str) -> None:
         norm_path = normalize_wiki_path(path)
         if norm_path.split("/")[-1] in PROTECTED_FILES:
@@ -456,6 +728,7 @@ class BaseVaultFS(ABC):
             meta = await self._doc_fetch_meta_by_path(norm_path)
             if not meta:
                 return
+            await self.check_doc_drift(norm_path)
             doc_id, _version = meta
             # Fetch chunk hashes before the row is gone so we can clean
             # the corresponding vectors.
@@ -502,7 +775,8 @@ class BaseVaultFS(ABC):
         return await self._doc_list_rows(type, limit, offset)
 
     async def doc_search(
-        self, query: str, mode: str = "documents", limit: int = 10
+        self, query: str, mode: str = "documents", limit: int = 10,
+        include_invalid: bool = False,
     ) -> list[DocHit]:
         if mode == "documents":
             return await self._doc_search_documents(query, limit)
@@ -512,7 +786,127 @@ class BaseVaultFS(ABC):
             return await self._doc_search_semantic(query, limit)
         elif mode == "hybrid":
             return await self._doc_search_hybrid(query, limit)
+        elif mode == "graph":
+            return await self._doc_search_graph(query, limit, include_invalid)
         raise ValueError(f"Unknown search mode: {mode}")
+
+    # Predicates followed for graph expansion (RFC-005 Phase 3).
+    _GRAPH_EXPANSION_PREDICATES = ("about", "relates-to")
+    # Graph-expansion neighbors are downweighted vs direct hybrid hits.
+    _GRAPH_EXPANSION_SCORE_FACTOR = 0.5
+
+    async def _doc_search_graph(
+        self, query: str, limit: int, include_invalid: bool = False
+    ) -> list[DocHit]:
+        """Graph-expanded search (RFC-005 Phase 3).
+
+        1. Hybrid (FTS + vector RRF) top-K seeds.
+        2. For each seed, follow active `about`/`relates-to` edges to the
+           entity page, then the entity page's edges to OTHER source docs
+           — those are graph-expansion neighbors, marked
+           ``source="graph_expansion"`` and downweighted.
+        3. Temporal policy (skipped when ``include_invalid=True``): docs
+           that are the object of an active `supersedes` edge are dropped
+           (only-latest-version on chains); expansion follows active edges
+           only, so expired `about` edges never pull their doc in.
+        4. Final ordering: stable sort by `confidence` frontmatter desc
+           (missing = 1.0, so personal-space order is preserved).
+        """
+        seeds = await self._doc_search_hybrid(query, limit)
+
+        # Docs superseded by a newer version (object of an active
+        # supersedes edge) — filtered unless include_invalid.
+        superseded_ids: set[str] = set()
+        if not include_invalid:
+            sup = await self.graph_query(
+                entity=None, predicate="supersedes", include_invalid=False
+            )
+            superseded_ids = {
+                e.object[len("doc:"):]
+                for e in sup.edges
+                if (e.object or "").startswith("doc:")
+            }
+        if superseded_ids:
+            seeds = [s for s in seeds if s.document_id not in superseded_ids]
+
+        seed_ids = {s.document_id for s in seeds}
+        # id -> meta map for neighbor hydration (doc_list carries path,
+        # unlike _doc_fetch_row).
+        metas = {d.id: d for d in await self.doc_list(limit=10000)}
+        neighbors: dict[str, DocHit] = {}
+        for seed in seeds:
+            if len(neighbors) >= limit:
+                break
+            seed_node = f"doc:{seed.document_id}"
+            try:
+                hop1 = await self.graph_query(
+                    entity=seed_node, include_invalid=include_invalid
+                )
+            except Exception as e:
+                logger.warning("graph expansion hop1 failed for %s: %s", seed_node, e)
+                continue
+            entity_nodes: set[str] = set()
+            for e in hop1.edges:
+                if e.predicate not in self._GRAPH_EXPANSION_PREDICATES:
+                    continue
+                other = e.object if e.subject == seed_node else e.subject
+                if other.startswith("doc:") and other != seed_node:
+                    entity_nodes.add(other)
+            for ent_node in entity_nodes:
+                if len(neighbors) >= limit:
+                    break
+                try:
+                    hop2 = await self.graph_query(
+                        entity=ent_node, include_invalid=include_invalid
+                    )
+                except Exception as e:
+                    logger.warning("graph expansion hop2 failed for %s: %s", ent_node, e)
+                    continue
+                for e in hop2.edges:
+                    if e.predicate not in self._GRAPH_EXPANSION_PREDICATES:
+                        continue
+                    other = e.object if e.subject == ent_node else e.subject
+                    if not other.startswith("doc:") or other == ent_node:
+                        continue
+                    nid = other[len("doc:"):]
+                    if nid in seed_ids or nid in neighbors or nid in superseded_ids:
+                        continue
+                    if nid == seed.document_id:
+                        continue
+                    meta = metas.get(nid)
+                    if meta is None or meta.status != "active":
+                        continue
+                    neighbors[nid] = DocHit(
+                        document_id=nid,
+                        path=meta.path,
+                        title=meta.title,
+                        type=meta.type,
+                        score=seed.score * self._GRAPH_EXPANSION_SCORE_FACTOR,
+                        snippet="",
+                        verbats=[],
+                        source="graph_expansion",
+                    )
+                    if len(neighbors) >= limit:
+                        break
+
+        hits = list(seeds) + list(neighbors.values())
+
+        # Agent-memory ordering: confidence frontmatter desc (default 1.0).
+        # Stable sort preserves score order when all confidences are equal.
+        conf: dict[str, float] = {}
+        for h in hits:
+            try:
+                doc = await self.doc_read(h.path)
+                raw = (doc.frontmatter or {}).get("confidence", 1.0) if doc else 1.0
+                conf[h.document_id] = float(raw)
+            except (TypeError, ValueError):
+                conf[h.document_id] = 1.0
+            except Exception:
+                conf[h.document_id] = 1.0
+        hits.sort(
+            key=lambda h: conf.get(h.document_id, 1.0), reverse=True
+        )
+        return hits
 
     async def _doc_search_documents(self, query: str, limit: int) -> list[DocHit]:
         fts_hits = await self._fts_search_chunks(query, limit)
@@ -612,8 +1006,8 @@ class BaseVaultFS(ABC):
 
         ranked = sorted(
             scores.items(), key=lambda kv: kv[1], reverse=True
-        )[:limit]
-        return [
+        )[: limit * 2 if self._reranker is not None else limit]
+        hits = [
             DocHit(
                 document_id=doc_id,
                 path=meta[doc_id].path,
@@ -625,12 +1019,212 @@ class BaseVaultFS(ABC):
             )
             for doc_id, score in ranked
         ]
+        # Optional rerank stage (per-space rerank_model, default off).
+        # Reorders the top candidates; failures fall back to RRF order.
+        if self._reranker is not None and hits:
+            try:
+                hits = await self._reranker.rerank(query, hits)
+            except Exception as e:
+                logger.warning(
+                    "rerank failed on space %s (keeping RRF order): %s",
+                    self._space_id, e,
+                )
+        return hits[:limit]
 
     @abstractmethod
     async def _doc_search_references(self, query: str, limit: int) -> list[DocHit]: ...
 
     async def doc_lint(self, path: Optional[str] = None) -> list[LintIssue]:
-        return []
+        """Structural lint over L1 docs / L0 verbats / L2 edges.
+
+        Implements the rules declared in schema.md `## Lint Rules`
+        (RFC 003 §3.6). Rule toggles are read from the parsed schema;
+        `path` narrows the doc set to a single page when given.
+
+        Backend-agnostic: uses only public VaultFS methods (doc_list /
+        doc_read / verbat_list / graph_query), so Local and Distributed
+        share this implementation. Note: graph_query pages at the
+        backend's edge cap (500), so very large spaces may lint against a
+        truncated edge set.
+
+        Rule name → schema toggle:
+        - orphan_doc          → orphan_pages
+        - broken_wikilink     → dangling_links
+        - verbat_without_wiki → uncited_sources
+        - stale_edge          → stale_edges
+        - frontmatter_missing → frontmatter_required
+        - contradiction       → contradiction_detection (structural proxy:
+          an active `contradicts` edge coexisting with another active
+          predicate between the same entity pair; semantic contradiction
+          detection needs an LLM and is out of scope for lint)
+        """
+        from derisk.knowledge.frontmatter import extract_wikilinks
+
+        schema = await self._get_schema()
+        rules = schema.lint_rules
+        issues: list[LintIssue] = []
+
+        docs = await self.doc_list(limit=10000)
+        if path:
+            norm = normalize_wiki_path(path)
+            docs = [d for d in docs if d.path == norm]
+
+        # Load the active edge set once (backend pages at its own cap).
+        subgraph = await self.graph_query(
+            entity=None, predicate=None, include_invalid=False
+        )
+        edges = subgraph.edges
+
+        # 1. orphan_pages: docs with no incoming edge pointing at doc:{id}
+        if rules.orphan_pages:
+            inbound_doc_objects = {
+                e.object for e in edges if (e.object or "").startswith("doc:")
+            }
+            for d in docs:
+                if f"doc:{d.id}" not in inbound_doc_objects:
+                    issues.append(
+                        LintIssue(
+                            rule="orphan_doc",
+                            severity="info",
+                            path=d.path,
+                            message=f"文档 {d.path} 没有入边（孤岛文档）",
+                        )
+                    )
+
+        # 2. dangling_links: [[X]] wikilinks whose target page doesn't exist
+        if rules.dangling_links:
+            doc_paths = {d.path for d in docs}
+            for d in docs:
+                full = await self.doc_read(d.path)
+                if not full:
+                    continue
+                for link in extract_wikilinks(full.content):
+                    target = link.split("|")[0].strip().lstrip("/")
+                    target_path = target if target.endswith(".md") else f"{target}.md"
+                    exists = any(
+                        p == target_path or p.endswith(target) for p in doc_paths
+                    )
+                    if not exists:
+                        issues.append(
+                            LintIssue(
+                                rule="broken_wikilink",
+                                severity="warning",
+                                path=d.path,
+                                message=(
+                                    f"文档 {d.path} 中的 wikilink [[{link}]] "
+                                    f"指向不存在的页面"
+                                ),
+                            )
+                        )
+
+        # 3. uncited_sources: non-deprecated verbats with no derived-from edge
+        if rules.uncited_sources:
+            cited_verbat_ids = {
+                e.source_verbat_id for e in edges if e.source_verbat_id
+            }
+            verbats = await self.verbat_list(limit=10000)
+            for v in verbats:
+                if v.deprecated:
+                    continue
+                if v.id not in cited_verbat_ids:
+                    issues.append(
+                        LintIssue(
+                            rule="verbat_without_wiki",
+                            severity="info",
+                            verbat_id=v.id,
+                            message=(
+                                f"原文 {v.source_file} ({v.id}) 还没有派生的 wiki 文档"
+                            ),
+                        )
+                    )
+        else:
+            verbats = None
+
+        # 4. stale_edges: active edges whose source doc/verbat is gone
+        if rules.stale_edges:
+            active_doc_ids = {d.id for d in docs if d.status == "active"}
+            if verbats is None:
+                verbats = await self.verbat_list(limit=10000)
+            live_verbat_ids = {v.id for v in verbats if not v.deprecated}
+            for e in edges:
+                if e.source_document_id and e.source_document_id not in active_doc_ids:
+                    issues.append(
+                        LintIssue(
+                            rule="stale_edge",
+                            severity="warning",
+                            edge_id=e.id,
+                            message=(
+                                f"边 {e.id} ({e.subject} -[{e.predicate}]-> {e.object}) "
+                                f"的源文档 {e.source_document_id} 已不存在或已下线"
+                            ),
+                        )
+                    )
+                elif e.source_verbat_id and e.source_verbat_id not in live_verbat_ids:
+                    issues.append(
+                        LintIssue(
+                            rule="stale_edge",
+                            severity="warning",
+                            edge_id=e.id,
+                            verbat_id=e.source_verbat_id,
+                            message=(
+                                f"边 {e.id} ({e.subject} -[{e.predicate}]-> {e.object}) "
+                                f"的源原文 {e.source_verbat_id} 已不存在或已废弃"
+                            ),
+                        )
+                    )
+
+        # 5. frontmatter_required: docs missing required frontmatter fields
+        if rules.frontmatter_required:
+            required = list(rules.frontmatter_required)
+            for d in docs:
+                full = await self.doc_read(d.path)
+                if not full:
+                    continue
+                missing = [f for f in required if f not in full.frontmatter]
+                if missing:
+                    issues.append(
+                        LintIssue(
+                            rule="frontmatter_missing",
+                            severity="info",
+                            path=d.path,
+                            message=(
+                                f"文档 {d.path} 缺少 frontmatter 字段: "
+                                f"{', '.join(missing)}"
+                            ),
+                        )
+                    )
+
+        # 6. contradiction_detection (structural proxy): an active
+        # `contradicts` edge between a pair that also has another active
+        # predicate — the pair asserts and contradicts at once.
+        if rules.contradiction_detection:
+            pair_predicates: dict[frozenset, set] = {}
+            for e in edges:
+                pair = frozenset((e.subject, e.object))
+                pair_predicates.setdefault(pair, set()).add(e.predicate)
+            seen_pairs: set[frozenset] = set()
+            for e in edges:
+                if e.predicate != "contradicts":
+                    continue
+                pair = frozenset((e.subject, e.object))
+                if pair in seen_pairs:
+                    continue
+                others = pair_predicates.get(pair, set()) - {"contradicts"}
+                if others:
+                    seen_pairs.add(pair)
+                    issues.append(
+                        LintIssue(
+                            rule="contradiction",
+                            severity="warning",
+                            edge_id=e.id,
+                            message=(
+                                f"实体对 ({e.subject}, {e.object}) 同时存在 "
+                                f"'contradicts' 与 {sorted(others)} 关系，可能矛盾"
+                            ),
+                        )
+                    )
+
+        return issues
 
     async def doc_append_log(self, entry: str) -> None:
         existing = await self._wiki_read("log.md")

@@ -88,16 +88,18 @@ class BaseLLMCaller(BaseModel):
         return [re.sub(r"^\s*\d+\.\s*", "", line).strip() for line in lines]
 
     @staticmethod
-    def _parse_number(text: str, importance_weight: Optional[float] = None) -> float:
-        """Parse a number from a string."""
+    def _parse_number(text: str) -> float:
+        """Parse a raw 1-10 importance score from a string.
+
+        Returns the raw score WITHOUT applying ``importance_weight``.
+        Weight scaling happens in exactly one place —
+        ``Memory.score_memory_importance`` (base.py) — so the LLM-scored
+        path and the no-scorer default path share the same scale.
+        """
         match = re.search(r"^\D*(\d+)", text)
         if match:
-            score = float(match.group(1))
-            if importance_weight is not None:
-                score = (score / 10) * importance_weight
-            return score
-        else:
-            return 0.0
+            return float(match.group(1))
+        return 0.0
 
 
 class LLMInsightExtractor(BaseLLMCaller, InsightExtractor[T]):

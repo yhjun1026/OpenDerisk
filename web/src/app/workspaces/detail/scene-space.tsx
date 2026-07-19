@@ -44,7 +44,7 @@ function Markdown({ text }: { text: string }) {
   );
 }
 
-/** 内容渲染器:html → 沙箱 iframe;长文本内容字段 → markdown;其余 → 键值。 */
+/** 内容渲染器:html → 沙箱 iframe;JSON → 格式化代码块;长文本 → markdown。 */
 function ContentView({ text }: { text: string }) {
   if (isHtml(text)) {
     return (
@@ -55,6 +55,19 @@ function ContentView({ text }: { text: string }) {
         title="content preview"
       />
     );
+  }
+  const trimmed = text.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      const pretty = JSON.stringify(JSON.parse(trimmed), null, 2);
+      return (
+        <div className="ws-preview__markdown">
+          <Markdown text={'```json\n' + pretty + '\n```'} />
+        </div>
+      );
+    } catch {
+      // 非合法 JSON,按 markdown 渲染
+    }
   }
   return (
     <div className="ws-preview__markdown">

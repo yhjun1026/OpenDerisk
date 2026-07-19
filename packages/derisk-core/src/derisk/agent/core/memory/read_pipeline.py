@@ -26,7 +26,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -181,29 +182,59 @@ class MemoryPrefetchCache:
     Producer: the tier-0 prefetch hook calls `set_result(...)` after the
     background retrieval completes.
 
-    Consumer: `consume(timeout=0.0)` returns the cached result if ready,
-    or None if not ready (non-blocking by default). After consume, the
-    cache is cleared — one shot per turn.
+    Consumer: `consume(timeout=0.0, consumer=...)` returns the cached
+    result if ready, or None if not ready (non-blocking by default).
+
+    Multi-consumer semantics: when a `consumer` key is provided, each
+    distinct consumer may read the current result exactly once (so
+    several agents sharing one conversation all get the prefetch). A
+    result also expires after `ttl_seconds`, guarding against stale
+    prefetches leaking into far-later turns. Calling `consume` without
+    a consumer key keeps the legacy one-shot pop behaviour.
     """
 
-    def __init__(self) -> None:
+    DEFAULT_TTL_SECONDS = 120.0
+
+    def __init__(self, ttl_seconds: float = DEFAULT_TTL_SECONDS) -> None:
         self._result: Optional[str] = None
         self._ready: asyncio.Event = asyncio.Event()
         self._query: Optional[str] = None
         self._lock = asyncio.Lock()
+        self._ttl_seconds = ttl_seconds
+        self._created_at: Optional[float] = None
+        self._consumers: Set[str] = set()
 
     def reset(self) -> None:
         self._result = None
         self._query = None
         self._ready.clear()
+        self._created_at = None
+        self._consumers.clear()
 
     def set_result(self, query: str, result: str) -> None:
         self._query = query
         self._result = result
+        self._created_at = time.monotonic()
+        self._consumers.clear()
         self._ready.set()
 
-    async def consume(self, timeout: float = 0.0) -> Optional[str]:
-        """Pop the cached result. Returns None if not ready within timeout."""
+    def _expired(self) -> bool:
+        return (
+            self._created_at is not None
+            and (time.monotonic() - self._created_at) > self._ttl_seconds
+        )
+
+    async def consume(
+        self, timeout: float = 0.0, consumer: Optional[str] = None
+    ) -> Optional[str]:
+        """Read the cached result. Returns None if not ready within timeout.
+
+        Args:
+            timeout: Max seconds to wait for readiness (0 = non-blocking).
+            consumer: Optional consumer key. Each distinct key may consume
+                the current result once; repeat consumes by the same key
+                return None. Without a key this is a one-shot pop (legacy).
+        """
         if timeout <= 0:
             if not self._ready.is_set():
                 return None
@@ -212,10 +243,19 @@ class MemoryPrefetchCache:
                 await asyncio.wait_for(self._ready.wait(), timeout=timeout)
             except asyncio.TimeoutError:
                 return None
-        result = self._result
-        # One-shot: clear after consume so next turn starts fresh.
-        self.reset()
-        return result
+        if self._expired():
+            # Stale prefetch — drop it so no one consumes outdated memory.
+            self.reset()
+            return None
+        if consumer is None:
+            result = self._result
+            # One-shot: clear after consume so next turn starts fresh.
+            self.reset()
+            return result
+        if consumer in self._consumers:
+            return None
+        self._consumers.add(consumer)
+        return self._result
 
     @property
     def is_ready(self) -> bool:
@@ -251,8 +291,10 @@ class MemoryReadPipeline:
     def get_prefetch_cache(self) -> MemoryPrefetchCache:
         return self._prefetch
 
-    async def consume_prefetch(self, timeout: float = 0.0) -> Optional[str]:
-        return await self._prefetch.consume(timeout=timeout)
+    async def consume_prefetch(
+        self, timeout: float = 0.0, consumer: Optional[str] = None
+    ) -> Optional[str]:
+        return await self._prefetch.consume(timeout=timeout, consumer=consumer)
 
     # -- scrubber --
     def get_scrubber(self) -> StreamingContextScrubber:

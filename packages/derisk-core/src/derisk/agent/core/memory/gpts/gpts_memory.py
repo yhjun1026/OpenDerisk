@@ -275,6 +275,12 @@ class ConversationCache:
         ## SystemEventManager 用于记录系统事件
         self.event_manager: Optional[Any] = None
 
+        ## 流式推送攒批(推送瘦身:把短时间窗口内同 uid 的流式增量合并成一次推送,
+        ## 避免 token 级推送每次都触发 visualization() 全量构建)
+        self.stream_pending: Optional[Dict[str, Any]] = None
+        self.stream_pending_meta: Optional[Dict[str, Any]] = None
+        self.stream_pending_handle: Optional[asyncio.Handle] = None
+
         ## 统一 Hook 管理器（按需懒加载）
         ## 由 GptsMemory.init_hook_manager 在对话启动时根据 team_context.hook_config 装配
         self.hook_manager: Optional[Any] = None
@@ -424,10 +430,10 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
 
     def __init__(
         self,
-        plans_memory: GptsPlansMemory = DefaultGptsPlansMemory(),
-        message_memory: GptsMessageMemory = DefaultGptsMessageMemory(),
+        plans_memory: Optional[GptsPlansMemory] = None,
+        message_memory: Optional[GptsMessageMemory] = None,
         executor: Executor = None,
-        default_vis_converter: VisProtocolConverter = DefaultVisConverter(),
+        default_vis_converter: Optional[VisProtocolConverter] = None,
         *,
         cache_ttl: int = 10800,  # 会话缓存 TTL（秒）
         cache_maxsize: int = 200,  # 最大会话数
@@ -438,16 +444,15 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
         kanban_db_storage: Optional[Any] = None,  # 数据库 Kanban 存储后端
         todo_db_storage: Optional[Any] = None,  # 数据库 Todo 存储后端
     ):
-        if hasattr(self, "_initialized"):
-            return
-        self._initialized = True
-
-        self._plans_memory = plans_memory
-        self._message_memory = message_memory
+        # None 默认 + 函数体内实例化：避免可变默认参数被所有未显式传参的
+        # 实例共享（之前 DefaultGptsPlansMemory()/DefaultGptsMessageMemory()/
+        # DefaultVisConverter() 在函数定义时只求值一次）。
+        self._plans_memory = plans_memory or DefaultGptsPlansMemory()
+        self._message_memory = message_memory or DefaultGptsMessageMemory()
         self._message_system_memory = message_system_memory
         self._file_memory = file_memory or DefaultAgentFileMemory()
         self._executor = executor or DynamicThreadPoolExecutor()
-        self._default_vis_converter = default_vis_converter
+        self._default_vis_converter = default_vis_converter or DefaultVisConverter()
         self._conversations = TTLCache(
             maxsize=cache_maxsize, ttl=cache_ttl, timer=time.time
         )
@@ -1018,9 +1023,11 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
             logger.info(f"[vis_final] conv_id={conv_id}, messages数量={len(messages)}, start_round={cache.start_round}")
 
             messages = messages[cache.start_round :]
-            messages = await self._merge_messages_async(messages)
             plans = cache.plans  # 直接使用 dict
             vis_convert = cache.vis_converter or DefaultVisConverter()
+            # 同 vis_messages:转换器 opt-in 保留 Human 消息时跳过合并屏蔽
+            if not getattr(vis_convert, "include_user_messages", False):
+                messages = await self._merge_messages_async(messages)
             logger.info(f"[vis_final] vis_converter类型={type(vis_convert).__name__}, main_agent_name={cache.main_agent_name}")
             final_view = await vis_convert.final_view(
                 messages=messages,
@@ -1032,6 +1039,7 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
                 task_manager=cache.task_manager,
                 input_message_id=cache.input_message_id,
                 output_message_id=cache.output_message_id,
+                event_manager=cache.event_manager,
             )
             logger.info(f"[vis_final] final_view长度={len(final_view) if final_view else 0}, 内容前200字符={final_view[:200] if final_view else 'None'}")
             return final_view
@@ -1081,7 +1089,10 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
             return None
         messages = await self.get_messages(conv_id)
         messages = messages[cache.start_round :]
-        messages = await self._merge_messages_async(messages)
+        # 转换器可经 include_user_messages opt-in 保留 Human 消息
+        # (默认 _merge_messages 会屏蔽用户消息;scene_agent_workspace 需要用户气泡)
+        if not getattr(cache.vis_converter, "include_user_messages", False):
+            messages = await self._merge_messages_async(messages)
         all_plans = cache.plans
 
         # 从 cache 获取 event_manager，如果没有从 kwargs 获取
@@ -1355,6 +1366,108 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
         if gpt_msg and gpt_msg.sender == HUMAN_ROLE:
             return
 
+        # 流式增量攒批:同 uid 的 stream_msg 在时间窗口内合并为一次推送
+        # (token 级增量丢帧会丢内容,所以只能合并不能丢弃;
+        #  终态 reset(incr_type="all")与非流式推送不攒批,且会先把攒批冲掉)
+        if (
+            stream_msg is not None
+            and incr_type != "all"
+            and isinstance(stream_msg, dict)
+            and stream_msg.get("uid")
+        ):
+            await self._coalesce_stream_push(
+                conv_id,
+                cache,
+                stream_msg,
+                is_first_chunk=is_first_chunk,
+                incremental=incremental,
+                sender=sender,
+                **kwargs,
+            )
+            return
+
+        # 先把攒批的流式增量按序冲刷,保证消息顺序
+        await self._flush_stream_pending(cache)
+
+        await self._deliver_push(
+            conv_id,
+            cache,
+            gpt_msg=gpt_msg,
+            stream_msg=stream_msg,
+            new_plans=new_plans,
+            is_first_chunk=is_first_chunk,
+            incremental=incremental,
+            incr_type=incr_type,
+            sender=sender,
+            **kwargs,
+        )
+
+    # 流式攒批窗口:80ms 内的同 uid 增量合并为一次推送
+    STREAM_COALESCE_INTERVAL = 0.08
+
+    async def _coalesce_stream_push(
+        self,
+        conv_id: str,
+        cache: ConversationCache,
+        stream_msg: Dict[str, Any],
+        **meta,
+    ):
+        """把时间窗口内同 uid 的流式增量(stream_msg)合并暂存,到点统一推送。"""
+        pending = cache.stream_pending
+        if pending is not None and pending.get("uid") != stream_msg.get("uid"):
+            # uid 切换(新一轮输出):先把上一个攒批冲掉
+            await self._flush_stream_pending(cache)
+            pending = None
+
+        if pending is None:
+            cache.stream_pending = dict(stream_msg)
+            cache.stream_pending_meta = meta
+            loop = asyncio.get_running_loop()
+            cache.stream_pending_handle = loop.call_later(
+                self.STREAM_COALESCE_INTERVAL,
+                lambda c=conv_id: asyncio.ensure_future(
+                    self._flush_stream_pending_by_id(c)
+                ),
+            )
+        else:
+            # 文本增量直接拼接,与前端 incr 合并语义等价
+            for key in ("thinking", "content"):
+                if stream_msg.get(key):
+                    pending[key] = (pending.get(key) or "") + stream_msg[key]
+
+    async def _flush_stream_pending_by_id(self, conv_id: str):
+        cache = await self._get_cache(conv_id)
+        if cache:
+            await self._flush_stream_pending(cache)
+
+    async def _flush_stream_pending(self, cache: ConversationCache):
+        """把攒批的流式增量按普通推送流程发出去。"""
+        pending = cache.stream_pending
+        if pending is None:
+            return
+        cache.stream_pending = None
+        if cache.stream_pending_handle:
+            cache.stream_pending_handle.cancel()
+            cache.stream_pending_handle = None
+        meta = cache.stream_pending_meta or {}
+        cache.stream_pending_meta = None
+        await self._deliver_push(
+            cache.conv_id, cache, stream_msg=pending, **meta
+        )
+
+    async def _deliver_push(
+        self,
+        conv_id: str,
+        cache: ConversationCache,
+        gpt_msg: Optional[GptsMessage] = None,
+        stream_msg: Optional[Union[Dict, str]] = None,
+        new_plans: Optional[List[GptsPlan]] = None,
+        is_first_chunk: bool = False,
+        incremental: bool = False,
+        incr_type: Optional[str] = None,
+        sender: Optional["ConversableAgent"] = None,  # type:ignore
+        **kwargs,
+    ):
         try:
             final_view = await self.vis_messages(
                 conv_id,

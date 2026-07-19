@@ -112,6 +112,14 @@ DEFAULT_RELATION_TYPES: list[RelationType] = [
     RelationType("causes", "caused-by", "因果关系"),
     RelationType("contradicts", "contradicts", "矛盾关系（自反）"),
     RelationType("part-of", "has-part", "包含关系"),
+    # RFC-005: entity curation predicates. Personal spaces also carry them
+    # so cross-document entity linking (about / merge / supersede) works in
+    # both space forms — the two forms differ in page types, not in
+    # curation predicates.
+    RelationType("about", "about-by", "实体页关于某源文档"),
+    RelationType("relates-to", "relates-to", "自反关联"),
+    RelationType("supersedes", "merged-into", "新版取代旧版（inverse: merged-into）"),
+    RelationType("merged-into", "supersedes", "旧版合并入新版（inverse: supersedes）"),
 ]
 
 
@@ -145,6 +153,10 @@ def default_schema_md(space_name: str = "Knowledge Space") -> str:
 | causes | caused-by | 因果关系 |
 | contradicts | contradicts | 矛盾关系（自反） |
 | part-of | has-part | 包含关系 |
+| about | about-by | 实体页关于某源文档 |
+| relates-to | relates-to | 自反关联 |
+| supersedes | merged-into | 新版取代旧版（inverse: merged-into） |
+| merged-into | supersedes | 旧版合并入新版（inverse: supersedes） |
 
 ## Ingest Workflow
 新源 ingest 时：

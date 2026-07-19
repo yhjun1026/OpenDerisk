@@ -532,7 +532,6 @@ class AgentMemory(Memory[AgentMemoryFragment]):
         importance_scorer: Optional[ImportanceScorer[AgentMemoryFragment]] = None,
         insight_extractor: Optional[InsightExtractor[AgentMemoryFragment]] = None,
         gpts_memory: Optional[GptsMemory] = None,
-        extract_memory: Optional[Memory[MemoryFragment]] = None,
     ):
         """Create an agent memory.
 
@@ -543,7 +542,6 @@ class AgentMemory(Memory[AgentMemoryFragment]):
             insight_extractor(InsightExtractor[AgentMemoryFragment]): Extractor to
                 extract insights from memory fragments
             gpts_memory(GptsMemory): Memory to store GPTs related information
-            extract_memory(ExtractMemory[AgentExtractMemoryFragment]): long term memories
         """
         if not memory:
             memory = ShortTermMemory(buffer_size=5)
@@ -559,8 +557,6 @@ class AgentMemory(Memory[AgentMemoryFragment]):
         self.importance_scorer = importance_scorer
         self.insight_extractor = insight_extractor
         self.gpts_memory = gpts_memory
-        if extract_memory:
-            self.extract_memory = cast(Memory[MemoryFragment], extract_memory)
 
     @immutable
     def structure_clone(

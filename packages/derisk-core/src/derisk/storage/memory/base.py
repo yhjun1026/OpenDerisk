@@ -168,6 +168,26 @@ class MemoryStoreBase(IndexStoreBase, ABC):
             True if deleted, False if not found.
         """
 
+    @abstractmethod
+    def update_memory(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Update a memory entry's content and/or metadata.
+
+        Metadata is merged over the entry's existing metadata (not replaced).
+
+        Args:
+            memory_id: The entry id returned by write_memory/search_memory.
+            content: Optional new content (None keeps the existing content).
+            metadata: Optional metadata to merge in (None leaves it unchanged).
+
+        Returns:
+            True if the entry was found and updated, False otherwise.
+        """
+
     # --- Knowledge graph ---
 
     @abstractmethod
@@ -293,6 +313,17 @@ class MemoryStoreBase(IndexStoreBase, ABC):
         """Async version of delete_memory."""
         return await blocking_func_to_async(
             self._executor, self.delete_memory, memory_id
+        )
+
+    async def aupdate_memory(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Async version of update_memory."""
+        return await blocking_func_to_async(
+            self._executor, self.update_memory, memory_id, content, metadata
         )
 
     async def akg_add(

@@ -242,12 +242,19 @@ class MemoryPromotionEngine:
         promoted = []
         for c in scored_candidates[:self._max_promotions]:
             try:
-                # Mark memory as promoted (via metadata update)
-                if hasattr(store, 'aupdate_memory'):
-                    await store.aupdate_memory(
-                        memory_id=c.memory_id,
-                        metadata={"promoted": True, "promotion_score": c.promotion_score},
+                # Mark memory as promoted (via metadata update).
+                # MemoryStoreBase now defines aupdate_memory, so this is a
+                # real write (previously gated by hasattr → always no-op).
+                updated = await store.aupdate_memory(
+                    memory_id=c.memory_id,
+                    metadata={"promoted": True, "promotion_score": c.promotion_score},
+                )
+                if not updated:
+                    logger.warning(
+                        f"[Promotion:Deep] Store did not confirm update for "
+                        f"{c.memory_id}; skipping"
                     )
+                    continue
                 promoted.append(c)
 
                 logger.info(

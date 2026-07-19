@@ -15,15 +15,22 @@ then `vault.doc_create(...)` with `source_verbat` in frontmatter and an
 
 Idempotency: if a wiki doc with `source_verbat=<id>` already exists, the
 rebuild path first invalidates (deletes) the old doc, then regenerates.
+
+Job tracking: in-flight state lives in the in-memory IngestJobStore; every
+transition is also persisted to the space's `ingest_jobs` ledger (local
+backend, `.ks/index.db`) so history survives restarts. `list_jobs` merges
+both (memory wins for in-flight rows).
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
 import logging
 import mimetypes
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -78,7 +85,9 @@ class KnowledgeRebuildWikiPayload(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Job tracking (in-memory; lost on restart, good enough for v1)
+# Job tracking (in-memory for in-flight state; mirrored to the space's
+# `ingest_jobs` SQLite ledger on every transition so history survives
+# restarts — see IngestOrchestrator._persist_job / list_jobs)
 # ---------------------------------------------------------------------------
 
 
@@ -143,6 +152,9 @@ class IngestOrchestrator:
     def __init__(self, system_app: Any):
         self._system_app = system_app
         self.jobs = IngestJobStore()
+        # RFC-005 Phase 2 switch: cross-document entity curation after wiki
+        # generation (default on for personal / agent_memory spaces).
+        self.entity_curation_enabled: bool = True
 
     # ------------------------------------------------------------------
     # Public API
@@ -178,6 +190,17 @@ class IngestOrchestrator:
             job_id = await job_svc.submit(
                 "knowledge_ingest", payload, space_slug=space.slug,
             )
+            # The durable copy lives at <vault>/raw/<filename> (the job
+            # handler reads from there); the caller's file_path is a temp
+            # copy — unlink it after submit so temp files don't leak.
+            # Never unlink the durable raw itself (raw_file_create passes
+            # the raw path directly).
+            try:
+                durable = vault.root / "raw" / original_filename
+                if Path(file_path).resolve() != durable.resolve():
+                    Path(file_path).unlink(missing_ok=True)
+            except OSError:
+                pass
             return IngestJob(
                 id=job_id, space_slug=space.slug, source_file=original_filename,
             )
@@ -188,6 +211,7 @@ class IngestOrchestrator:
             source_file=original_filename,
         )
         self.jobs.add(job)
+        await self._persist_job(vault, job.id)
 
         # Kick off the pipeline in the background so the HTTP upload returns
         # immediately with the job_id. The caller polls /ingest-jobs.
@@ -205,6 +229,54 @@ class IngestOrchestrator:
             )
         )
         return job
+
+    # ------------------------------------------------------------------
+    # Job ledger persistence
+    # ------------------------------------------------------------------
+
+    async def _persist_job(self, vault: Any, job_id: str) -> None:
+        """Mirror the in-memory job row to the space's job ledger.
+
+        Only local vaults carry a ledger (`.ks/index.db`); other backends
+        skip via getattr — same pattern as the llm_call_log ledger.
+        """
+        save = getattr(vault, "ingest_job_save", None) if vault is not None else None
+        if save is None:
+            return
+        job = self.jobs.get(job_id)
+        if job is None:
+            return
+        try:
+            await save(dataclasses.asdict(job))
+        except Exception as e:
+            logger.warning("ingest job persist failed for %s: %s", job_id, e)
+
+    async def _job_update(self, vault: Any, job_id: str, **fields) -> None:
+        """Update in-memory job state and persist the transition."""
+        self.jobs.update(job_id, **fields)
+        await self._persist_job(vault, job_id)
+
+    async def list_jobs(
+        self, space_slug: str, vault: Any = None, limit: int = 50
+    ) -> List[IngestJob]:
+        """List jobs for a space, merging the in-memory store with the
+        persisted ledger (newest first). In-memory rows win for in-flight
+        jobs; persisted rows keep history queryable after a restart.
+        """
+        merged: Dict[str, IngestJob] = {}
+        list_fn = getattr(vault, "ingest_job_list", None) if vault is not None else None
+        if list_fn is not None:
+            try:
+                for row in await list_fn(limit=limit):
+                    merged[row["id"]] = IngestJob(**row)
+            except Exception as e:
+                logger.warning(
+                    "ingest job ledger read failed for %s: %s", space_slug, e
+                )
+        for j in self.jobs.list_for_space(space_slug, limit=limit):
+            merged[j.id] = j
+        jobs = sorted(merged.values(), key=lambda j: j.started_at, reverse=True)
+        return jobs[:limit]
 
     def _get_job_service(self) -> Any:
         """Return the JobService component if registered, else None."""
@@ -241,6 +313,7 @@ class IngestOrchestrator:
             source_file=f"rebuild:{verbat_id}",
         )
         self.jobs.add(job)
+        await self._persist_job(vault, job.id)
         asyncio.create_task(
             self._run_wiki_only(
                 job=job,
@@ -307,10 +380,10 @@ class IngestOrchestrator:
             model = self._resolve_extract_model(space, mime, model_override)
 
             # 4. Build model_caller closure
-            model_caller = self._make_model_caller(space)
+            model_caller = self._make_model_caller(space, vault=vault, job_id=job.id)
 
             # 5. Extract
-            self.jobs.update(job.id, status="extracting")
+            await self._job_update(vault, job.id, status="extracting")
             specs: List[VerbatimSpec] = await extractor.extract(
                 path=file_path,
                 mime=mime,
@@ -348,8 +421,8 @@ class IngestOrchestrator:
                 # verbat_add dedupes by content_hash and returns existing id
                 verbat_ids.append(vid)
             job.verbat_ids = verbat_ids
-            self.jobs.update(
-                job.id, status="generating_wiki", verbat_ids=verbat_ids
+            await self._job_update(
+                vault, job.id, status="generating_wiki", verbat_ids=verbat_ids
             )
 
             # 7. Generate wiki for each verbat (sequential to avoid hammering the LLM)
@@ -361,11 +434,12 @@ class IngestOrchestrator:
                         vault=vault,
                         verbat_id=vid,
                         llm_model=llm_model,
+                        job_id=job.id,
                     )
                     if doc_id:
                         job.wiki_doc_ids.append(doc_id)
-                        self.jobs.update(
-                            job.id, wiki_doc_ids=list(job.wiki_doc_ids)
+                        await self._job_update(
+                            vault, job.id, wiki_doc_ids=list(job.wiki_doc_ids)
                         )
                 except Exception as e:
                     logger.exception(
@@ -375,8 +449,15 @@ class IngestOrchestrator:
                     )
                     # Don't fail the whole job — other verbats may succeed
 
-            self.jobs.update(
-                job.id, status="done", finished_at=datetime.utcnow().isoformat()
+            # 7b. RFC-005 Phase 2: cross-document entity curation over the
+            # freshly generated wiki docs (sequential, same LLM-hammering
+            # rationale as the wiki loop above).
+            await self._curate_entities_for_docs(
+                space, vault, job.wiki_doc_ids, llm_model, job_id=job.id
+            )
+
+            await self._job_update(
+                vault, job.id, status="done", finished_at=datetime.utcnow().isoformat()
             )
 
             # 8. Clean up temp file
@@ -387,7 +468,8 @@ class IngestOrchestrator:
 
         except Exception as e:
             logger.exception("Ingest pipeline failed for job %s", job.id)
-            self.jobs.update(
+            await self._job_update(
+                vault,
                 job.id,
                 status="failed",
                 error=str(e),
@@ -408,6 +490,7 @@ class IngestOrchestrator:
         on_status: Any = None,
         on_verbat_ids: Any = None,
         on_wiki_doc_id: Any = None,
+        job_id: Optional[str] = None,
     ) -> tuple:
         """Core extract → persist → generate-wiki pipeline.
 
@@ -438,7 +521,7 @@ class IngestOrchestrator:
 
         # 3. Resolve model + 4. model caller
         model = self._resolve_extract_model(space, mime, model_override)
-        model_caller = self._make_model_caller(space)
+        model_caller = self._make_model_caller(space, vault=vault, job_id=job_id)
 
         # 5. Extract
         on_status("extracting")
@@ -479,6 +562,7 @@ class IngestOrchestrator:
             try:
                 doc_id = await self._generate_wiki(
                     space=space, vault=vault, verbat_id=vid, llm_model=llm_model,
+                    job_id=job_id,
                 )
                 if doc_id:
                     wiki_doc_ids.append(doc_id)
@@ -489,6 +573,11 @@ class IngestOrchestrator:
                     vid, space.slug,
                 )
                 # Don't fail the whole job — other verbats may succeed
+
+        # 7b. RFC-005 Phase 2: cross-document entity curation.
+        await self._curate_entities_for_docs(
+            space, vault, wiki_doc_ids, llm_model, job_id=job_id
+        )
 
         return verbat_ids, wiki_doc_ids
 
@@ -548,6 +637,7 @@ class IngestOrchestrator:
             model_override=payload.get("model_override"),
             agent_id_override=payload.get("agent_id_override"),
             llm_model_override=payload.get("llm_model_override"),
+            job_id=getattr(job, "id", None),
         )
         return {
             "space_slug": space_slug,
@@ -602,23 +692,25 @@ class IngestOrchestrator:
         llm_model_override: Optional[str],
     ) -> None:
         try:
-            self.jobs.update(job.id, status="generating_wiki")
+            await self._job_update(vault, job.id, status="generating_wiki")
             doc_id = await self._generate_wiki(
                 space=space,
                 vault=vault,
                 verbat_id=verbat_id,
                 llm_model=llm_model_override or space.llm_model,
                 force_rebuild=True,
+                job_id=job.id,
             )
             if doc_id:
                 job.wiki_doc_ids = [doc_id]
-                self.jobs.update(job.id, wiki_doc_ids=[doc_id])
-            self.jobs.update(
-                job.id, status="done", finished_at=datetime.utcnow().isoformat()
+                await self._job_update(vault, job.id, wiki_doc_ids=[doc_id])
+            await self._job_update(
+                vault, job.id, status="done", finished_at=datetime.utcnow().isoformat()
             )
         except Exception as e:
             logger.exception("Wiki rebuild failed for verbat %s", verbat_id)
-            self.jobs.update(
+            await self._job_update(
+                vault,
                 job.id,
                 status="failed",
                 error=str(e),
@@ -639,6 +731,27 @@ class IngestOrchestrator:
         "5. 不要输出任何解释性文字，只输出 markdown 文档本身"
     )
 
+    # RFC-005 Phase 2: cross-document entity curation. Runs after wiki
+    # generation for personal / agent_memory spaces. Tests route LLM stubs
+    # on the "实体归并" marker in this system prompt — keep it.
+    ENTITY_CURATE_PROMPT = (
+        "你是一个知识库实体归并助手。输入一篇刚生成的 wiki 文档和知识空间内现有的"
+        "实体页索引，完成跨文档实体归并。要求：\n"
+        "1. 只抽取文档中的关键实体（3-8 个：人/组织/产品/模型/关键概念），控制成本\n"
+        "2. 对照现有实体页索引，为每个实体判断 action：\n"
+        "   - new：索引中没有对应实体页 → 给 new_body（完整 markdown，含 YAML "
+        "frontmatter：type: entity、title、description）\n"
+        "   - merge：已有实体页且本文档是补充（不矛盾）→ 给 existing_path + "
+        "merged_body（frontmatter 取并集、正文合并两份来源后的完整 markdown）\n"
+        "   - supersede：已有实体页但本文档与之矛盾 → 给 existing_path + new_body"
+        "（新版完整 markdown）+ reason（矛盾点）\n"
+        "3. 只输出严格 JSON，不要输出任何解释性文字：\n"
+        '{"entities": [{"name": "...", "action": "new|merge|supersede", '
+        '"existing_path": "entities/xxx.md", "new_body": "...", '
+        '"merged_body": "...", "summary": "...", "reason": "..."}]}\n'
+        '4. 没有值得归并的实体时输出 {"entities": []}'
+    )
+
     async def _generate_wiki(
         self,
         space: Space,
@@ -646,6 +759,7 @@ class IngestOrchestrator:
         verbat_id: VerbatId,
         llm_model: Optional[str],
         force_rebuild: bool = False,
+        job_id: Optional[str] = None,
     ) -> Optional[DocId]:
         """Generate or rebuild the L1 wiki doc for one verbat."""
         verbat = await vault.verbat_get(verbat_id)
@@ -684,13 +798,22 @@ class IngestOrchestrator:
             model=llm_model,
             system_prompt=self.WIKI_SYSTEM_PROMPT,
             user_prompt=user_prompt,
+            vault=vault,
+            job_id=job_id,
+            task_name="wiki_generate",
         )
         if not markdown or not markdown.strip():
             logger.warning("LLM returned empty markdown for verbat %s", verbat_id)
             return None
 
         # Ensure frontmatter has source_verbat (LLM may forget)
-        markdown = self._ensure_frontmatter(markdown, verbat_id, verbat.source_file)
+        markdown = self._ensure_frontmatter(
+            markdown, verbat_id, verbat.source_file,
+            provenance=(
+                "agent" if getattr(space, "space_type", "personal") == "agent_memory"
+                else "human"
+            ),
+        )
 
         # Derive a path: wiki/sources/<slug>.md
         slug = self._slugify(verbat.source_file or verbat_id)
@@ -733,9 +856,15 @@ class IngestOrchestrator:
         return None
 
     def _ensure_frontmatter(
-        self, markdown: str, verbat_id: VerbatId, source_file: str
+        self, markdown: str, verbat_id: VerbatId, source_file: str,
+        provenance: Optional[str] = None,
     ) -> str:
-        """Guarantee the markdown has a frontmatter block with source_verbat set."""
+        """Guarantee the markdown has a frontmatter block with source_verbat set.
+
+        RFC-005 Phase 1: also stamps the provenance convention key
+        ("human" for personal spaces, "agent" for agent_memory spaces)
+        when the LLM didn't write one.
+        """
         if not markdown.startswith("---"):
             # Inject a minimal frontmatter
             fm = (
@@ -743,15 +872,18 @@ class IngestOrchestrator:
                 f"type: source\n"
                 f"title: {source_file}\n"
                 f"source_verbat: {verbat_id}\n"
-                f"---\n\n"
+                + (f"provenance: {provenance}\n" if provenance else "")
+                + f"---\n\n"
             )
             return fm + markdown
-        if f"source_verbat:" not in markdown.split("---")[1]:
-            # Insert source_verbat into the existing frontmatter
-            parts = markdown.split("---", 2)
-            if len(parts) >= 3:
-                parts[1] = parts[1].rstrip() + f"\nsource_verbat: {verbat_id}\n"
-                return "---" + parts[1] + "---" + parts[2]
+        parts = markdown.split("---", 2)
+        if len(parts) >= 3:
+            fm_block = parts[1]
+            if f"source_verbat:" not in fm_block:
+                fm_block = fm_block.rstrip() + f"\nsource_verbat: {verbat_id}\n"
+            if provenance and "provenance:" not in fm_block:
+                fm_block = fm_block.rstrip() + f"\nprovenance: {provenance}\n"
+            return "---" + fm_block + "---" + parts[2]
         return markdown
 
     @staticmethod
@@ -761,11 +893,300 @@ class IngestOrchestrator:
         base = re.sub(r"[^a-zA-Z0-9_\-]", "-", name).strip("-").lower()
         return base or "untitled"
 
+    @staticmethod
+    def _slugify_unicode(name: str) -> str:
+        """Slug that keeps CJK characters (entity names are often Chinese)."""
+        import re
+
+        base = re.sub(r"[^\w\-]+", "-", name).strip("-").lower()
+        return base or "untitled"
+
+    # ------------------------------------------------------------------
+    # Entity curation (RFC-005 Phase 2)
+    # ------------------------------------------------------------------
+
+    async def _curate_entities_for_docs(
+        self,
+        space: Space,
+        vault: Any,
+        doc_ids: List[DocId],
+        llm_model: Optional[str],
+        job_id: Optional[str] = None,
+    ) -> None:
+        """Run entity curation over freshly generated wiki docs.
+
+        Gated on the orchestrator switch + dual-form space type. Failures
+        are logged, never raised — curation must not fail the ingest job.
+        """
+        if not self.entity_curation_enabled:
+            return
+        if getattr(space, "space_type", "personal") not in ("personal", "agent_memory"):
+            return
+        for doc_id in doc_ids or []:
+            try:
+                await self._curate_entities(
+                    space, vault, doc_id, llm_model, job_id=job_id
+                )
+            except Exception:
+                logger.exception(
+                    "Entity curation failed for doc %s in space %s",
+                    doc_id, space.slug,
+                )
+
+    async def _curate_entities(
+        self,
+        space: Space,
+        vault: Any,
+        doc_id: DocId,
+        llm_model: Optional[str],
+        job_id: Optional[str] = None,
+    ) -> None:
+        """LLM-assisted entity merge for one wiki doc (llm_wiki-style).
+
+        1. Read the wiki doc + the space's existing entity page index.
+        2. LLM (ENTITY_CURATE_PROMPT) returns strict JSON with per-entity
+           action: new | merge | supersede.
+        3. Dispatch: doc_create / doc_edit + about edges; supersede also
+           adds a supersedes edge and invalidates the old page's edges.
+        """
+        import json as _json
+
+        # 1. Resolve the wiki doc (doc_id -> path -> Document)
+        docs = await vault.doc_list(limit=10000)
+        meta = next((d for d in docs if d.id == doc_id), None)
+        if meta is None:
+            return
+        doc = await vault.doc_read(meta.path)
+        if doc is None:
+            return
+
+        # 2. Existing entity page index (title + one-line description)
+        index_lines: List[str] = []
+        ent_metas = await vault.doc_list(type="entity", limit=50)
+        for em in ent_metas:
+            try:
+                full = await vault.doc_read(em.path)
+                desc = ""
+                if full is not None:
+                    desc = str(full.frontmatter.get("description") or "")
+                index_lines.append(f"- {em.path} | {em.title} | {desc}")
+            except Exception:
+                index_lines.append(f"- {em.path} | {em.title} |")
+        entity_index = (
+            "\n".join(index_lines) if index_lines else "(空 — 尚无任何实体页)"
+        )
+
+        user_prompt = (
+            f"现有实体页索引（path | title | description）：\n{entity_index}\n\n"
+            f"刚生成的 wiki 文档（path: {doc.path}）：\n\n{doc.raw_content[:12000]}"
+        )
+        resp = await self._call_llm(
+            model=llm_model,
+            system_prompt=self.ENTITY_CURATE_PROMPT,
+            user_prompt=user_prompt,
+            vault=vault,
+            job_id=job_id,
+            task_name="entity_curate",
+        )
+        entities = self._parse_curation_json(resp)
+        if not entities:
+            return
+
+        for ent in entities[:8]:  # hard cap, matches the prompt's 3-8 limit
+            if not isinstance(ent, dict):
+                continue
+            name = str(ent.get("name") or "").strip()
+            action = str(ent.get("action") or "").strip().lower()
+            if not name:
+                continue
+            try:
+                if action == "merge":
+                    await self._curate_merge(vault, ent, doc_id)
+                elif action == "supersede":
+                    await self._curate_supersede(vault, ent, name, doc_id)
+                else:  # default: new
+                    await self._curate_new(vault, ent, name, doc_id)
+            except Exception:
+                logger.exception(
+                    "Entity curation action=%s failed for '%s' in space %s",
+                    action, name, space.slug,
+                )
+
+    @staticmethod
+    def _parse_curation_json(resp: str) -> List[dict]:
+        """Parse the LLM's strict-JSON curation response (tolerant of
+        markdown fences and surrounding prose)."""
+        import json as _json
+
+        if not resp:
+            return []
+        text = resp.strip()
+        if text.startswith("```"):
+            # strip ```json ... ``` fence
+            text = text.split("\n", 1)[-1] if "\n" in text else text
+            if text.endswith("```"):
+                text = text[: text.rfind("```")]
+            text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            return []
+        try:
+            data = _json.loads(text[start : end + 1])
+        except Exception as e:
+            logger.warning("entity curation JSON parse failed: %s", e)
+            return []
+        entities = data.get("entities") if isinstance(data, dict) else None
+        return entities if isinstance(entities, list) else []
+
+    @staticmethod
+    def _ensure_entity_frontmatter(markdown: str, name: str) -> str:
+        """Guarantee an entity page has frontmatter with type: entity."""
+        if markdown.startswith("---"):
+            parts = markdown.split("---", 2)
+            if len(parts) >= 3:
+                fm_block = parts[1]
+                if "type:" not in fm_block:
+                    fm_block = fm_block.rstrip() + "\ntype: entity\n"
+                if "title:" not in fm_block:
+                    fm_block = fm_block.rstrip() + f"\ntitle: {name}\n"
+                return "---" + fm_block + "---" + parts[2]
+            return markdown
+        return f"---\ntype: entity\ntitle: {name}\n---\n\n" + markdown
+
+    async def _entity_doc_id_by_path(self, vault: Any, path: str) -> Optional[DocId]:
+        docs = await vault.doc_list(type="entity", limit=10000)
+        meta = next((d for d in docs if d.path == path), None)
+        return meta.id if meta else None
+
+    async def _add_about_edge(
+        self, vault: Any, entity_doc_id: DocId, source_doc_id: DocId
+    ) -> None:
+        """Anchor an entity page to a source doc via an `about` edge.
+
+        source_document_id is deliberately NULL: doc_edit on either
+        endpoint invalidates edges sourced from that doc, and entity pages
+        are edited on every merge — the about chain is managed explicitly
+        by curation (supersede invalidates old edges) instead.
+        """
+        try:
+            await vault.edge_add(
+                Edge(
+                    id=new_edge_id(),
+                    space_id=vault.space_id,
+                    subject=f"doc:{entity_doc_id}",
+                    predicate="about",
+                    object=f"doc:{source_doc_id}",
+                )
+            )
+        except Exception as e:
+            logger.warning("about edge add failed (%s -> %s): %s",
+                           entity_doc_id, source_doc_id, e)
+
+    async def _free_entity_path(self, vault: Any, base_slug: str) -> str:
+        """Pick a collision-free entities/<slug>.md path."""
+        path = f"entities/{base_slug}.md"
+        if await self._entity_doc_id_by_path(vault, path) is None:
+            return path
+        for i in range(2, 100):
+            candidate = f"entities/{base_slug}-{i}.md"
+            if await self._entity_doc_id_by_path(vault, candidate) is None:
+                return candidate
+        return f"entities/{base_slug}-{uuid.uuid4().hex[:6]}.md"
+
+    async def _curate_new(
+        self, vault: Any, ent: dict, name: str, source_doc_id: DocId
+    ) -> None:
+        body = str(ent.get("new_body") or "").strip()
+        if not body:
+            body = f"# {name}\n\n{ent.get('summary') or ''}\n"
+        body = self._ensure_entity_frontmatter(body, name)
+        path = await self._free_entity_path(vault, self._slugify_unicode(name))
+        entity_doc_id = await vault.doc_create(path=path, content=body)
+        await self._add_about_edge(vault, entity_doc_id, source_doc_id)
+
+    async def _curate_merge(
+        self, vault: Any, ent: dict, source_doc_id: DocId
+    ) -> None:
+        existing_path = str(ent.get("existing_path") or "").strip()
+        merged = str(ent.get("merged_body") or "").strip()
+        if not existing_path or not merged:
+            logger.warning(
+                "merge action missing existing_path/merged_body: %s", ent
+            )
+            return
+        # doc_edit's drift guard is safe here: the entity page was written
+        # through the vault, so file hash and DB hash are in sync.
+        await vault.doc_edit(path=existing_path, content=merged)
+        entity_doc_id = await self._entity_doc_id_by_path(vault, existing_path)
+        if entity_doc_id:
+            await self._add_about_edge(vault, entity_doc_id, source_doc_id)
+
+    async def _curate_supersede(
+        self, vault: Any, ent: dict, name: str, source_doc_id: DocId
+    ) -> None:
+        existing_path = str(ent.get("existing_path") or "").strip()
+        new_body = str(ent.get("new_body") or "").strip()
+        if not existing_path or not new_body:
+            logger.warning(
+                "supersede action missing existing_path/new_body: %s", ent
+            )
+            return
+        old_doc_id = await self._entity_doc_id_by_path(vault, existing_path)
+
+        # New version lives at entities/<slug>-v2.md (next free -vN).
+        base = existing_path.rsplit("/", 1)[-1]
+        base_slug = base[:-3] if base.endswith(".md") else base
+        new_path = None
+        for i in range(2, 100):
+            candidate = f"entities/{base_slug}-v{i}.md"
+            if await self._entity_doc_id_by_path(vault, candidate) is None:
+                new_path = candidate
+                break
+        if new_path is None:
+            new_path = f"entities/{base_slug}-v{uuid.uuid4().hex[:6]}.md"
+
+        new_doc_id = await vault.doc_create(
+            path=new_path, content=self._ensure_entity_frontmatter(new_body, name)
+        )
+        if old_doc_id:
+            # Invalidate the old version's active edges FIRST (kept in
+            # history via valid_to, not deleted) — doing this before adding
+            # the supersedes edge so the fresh edge isn't swept up.
+            try:
+                old_edges = await vault.graph_query(
+                    entity=f"doc:{old_doc_id}", include_invalid=False
+                )
+                for e in old_edges.edges:
+                    await vault.edge_invalidate(e.id)
+            except Exception as e:
+                logger.warning("invalidating old entity edges failed: %s", e)
+            # supersedes edge: new -> old (source_document_id NULL — must
+            # survive doc_edit on either endpoint; see _add_about_edge)
+            try:
+                await vault.edge_add(
+                    Edge(
+                        id=new_edge_id(),
+                        space_id=vault.space_id,
+                        subject=f"doc:{new_doc_id}",
+                        predicate="supersedes",
+                        object=f"doc:{old_doc_id}",
+                    )
+                )
+            except Exception as e:
+                logger.warning("supersedes edge add failed: %s", e)
+        await self._add_about_edge(vault, new_doc_id, source_doc_id)
+
     # ------------------------------------------------------------------
     # LLM + model_caller
     # ------------------------------------------------------------------
 
-    def _make_model_caller(self, space: Space) -> ModelCaller:
+    def _make_model_caller(
+        self,
+        space: Space,
+        vault: Any = None,
+        job_id: Optional[str] = None,
+    ) -> ModelCaller:
         """Build a callable for extractors that need an LLM (image/audio)."""
 
         async def caller(
@@ -779,6 +1200,9 @@ class IngestOrchestrator:
                 system_prompt=None,
                 user_prompt=prompt,
                 image_paths=images,
+                vault=vault,
+                job_id=job_id,
+                task_name="extract",
             )
 
         return caller
@@ -789,10 +1213,15 @@ class IngestOrchestrator:
         system_prompt: Optional[str],
         user_prompt: str,
         image_paths: Optional[List[Path]] = None,
+        vault: Any = None,
+        job_id: Optional[str] = None,
+        task_name: str = "extract",
     ) -> str:
         """Call the LLM via the Agent's ModelConfigCache + AIWrapper.
 
         Returns the model's text output. Returns "" on failure.
+        When `vault` is provided, the call's token usage is recorded in the
+        vault's llm_call_log ledger under `task_name`.
         """
         try:
             from derisk.agent.util.llm.llm_client import AIWrapper
@@ -852,9 +1281,33 @@ class IngestOrchestrator:
         }
 
         result_text = ""
+        usage: Optional[Dict[str, Any]] = None
+        error_code = 0
+        started = time.monotonic()
         async for result in ai_wrapper.create(**gen_kwargs):
             if result and result.content:
                 result_text += result.content
+            if result is not None:
+                result_usage = getattr(result, "usage", None)
+                if result_usage:
+                    usage = result_usage
+                result_error = getattr(result, "error_code", 0) or 0
+                if result_error:
+                    error_code = result_error
+        latency_ms = int((time.monotonic() - started) * 1000)
+
+        if vault is not None:
+            try:
+                await vault.llm_call_log_add(
+                    job_id=job_id,
+                    task_name=task_name,
+                    model=model,
+                    usage=usage,
+                    latency_ms=latency_ms,
+                    error_code=error_code,
+                )
+            except Exception as e:
+                logger.warning("llm_call_log_add failed (%s): %s", task_name, e)
         return result_text
 
     # ------------------------------------------------------------------

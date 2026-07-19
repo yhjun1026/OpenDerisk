@@ -10,6 +10,7 @@ const SchemaEditor = lazy(() => import('./SchemaEditor'));
 const LintView = lazy(() => import('./LintView'));
 const SpaceSettings = lazy(() => import('./SpaceSettings'));
 const UsageView = lazy(() => import('./UsageView'));
+const MemoryView = lazy(() => import('./MemoryView'));
 
 export default function CenterPane() {
   const { view, slug, openDoc } = useSpace();
@@ -21,6 +22,7 @@ export default function CenterPane() {
     schema: <SchemaEditor slug={slug} />,
     lint: <LintView slug={slug} onOpenDoc={openDoc} />,
     usage: <UsageView slug={slug} />,
+    memory: <MemoryView slug={slug} />,
     settings: <SpaceSettings slug={slug} />,
   };
 

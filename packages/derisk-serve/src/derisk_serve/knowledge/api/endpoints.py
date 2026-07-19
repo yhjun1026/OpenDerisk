@@ -13,25 +13,37 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import shutil
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from derisk.component import SystemApp
 from derisk.knowledge.types import ExtractMode
 from derisk_ext.knowledge.vaultfs._util import normalize_wiki_path, parse_markdown
 from derisk_serve.core import Result
+from derisk_serve.utils.auth import (
+    UserRequest,
+    _is_permissions_enabled,
+    get_user_from_headers,
+)
 
 from ..config import SERVE_SERVICE_COMPONENT_NAME, ServeConfig
 from ..service.service import Service
+from .auth import (
+    check_space_access,
+    filter_spaces_for_user,
+    owner_for_create,
+    parse_api_keys,
+)
 from .schemas import (
     CreateSpaceRequest,
+    CurateReportResponse,
     DocCreateRequest,
     DocEditRequest,
     DocHitOut,
@@ -40,6 +52,9 @@ from .schemas import (
     IngestJobListResponse,
     IngestJobResponse,
     LintResponse,
+    LlmCallLogItem,
+    LlmCallLogListResponse,
+    LlmUsageSummaryResponse,
     RawFileCreateRequest,
     RawFileEditRequest,
     RawFileReadResponse,
@@ -53,8 +68,10 @@ from .schemas import (
     TreeNode,
     UpdateSpaceRequest,
     UploadResponse,
+    VerbatHitOut,
     VerbatListResponse,
     VerbatOut,
+    VerbatSearchResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,19 +91,89 @@ def get_service() -> Service:
 
 
 # ---------------------------------------------------------------------------
+# Auth (conventions: datasource check_api_key + utils.auth user resolution;
+# helpers in .auth — see that module for the visibility semantics)
+# ---------------------------------------------------------------------------
+
+get_bearer_token = HTTPBearer(auto_error=False)
+
+
+async def check_api_key(
+    auth: Optional[HTTPAuthorizationCredentials] = Depends(get_bearer_token),
+    service: Service = Depends(get_service),
+) -> Optional[str]:
+    """Check the API key (datasource convention).
+
+    If `ServeConfig.api_keys` is not set, allow all. Otherwise require a
+    matching `Authorization: Bearer <key>` header.
+    """
+    if service.config.api_keys:
+        api_keys = parse_api_keys(service.config.api_keys)
+        if auth is None or (token := auth.credentials) not in api_keys:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": {
+                        "message": "",
+                        "type": "invalid_request_error",
+                        "param": None,
+                        "code": "invalid_api_key",
+                    }
+                },
+            )
+        return token
+    # api_keys not set; allow all
+    return None
+
+
+async def space_access_guard(
+    request: Request,
+    user: UserRequest = Depends(get_user_from_headers),
+    service: Service = Depends(get_service),
+) -> None:
+    """Router-level guard enforcing space visibility on /spaces/{slug}/….
+
+    No-op when the permissions plugin is disabled (single-machine mode)
+    or when the route has no {slug} path param (collection routes handle
+    filtering themselves). Agent-runtime memory access goes through
+    KnowledgeService.get_vault directly (not HTTP) and is unaffected.
+    """
+    slug = request.path_params.get("slug")
+    if not slug:
+        return
+    if not _is_permissions_enabled():
+        return  # single-machine mode: behavior unchanged
+    try:
+        space = await service.get_space_config(slug)
+    except Exception:
+        return  # let the route surface the real error
+    write = request.method not in ("GET", "HEAD", "OPTIONS")
+    check_space_access(space, user, write)
+
+
+router.dependencies.append(Depends(check_api_key))
+router.dependencies.append(Depends(space_access_guard))
+
+
+# ---------------------------------------------------------------------------
 # Space management
 # ---------------------------------------------------------------------------
 
 
 @router.get("/spaces", response_model=Result[List[SpaceInfo]])
-async def list_spaces(service: Service = Depends(get_service)):
+async def list_spaces(
+    service: Service = Depends(get_service),
+    user: UserRequest = Depends(get_user_from_headers),
+):
     spaces = await service.list_spaces()
-    return Result.succ(spaces)
+    return Result.succ(filter_spaces_for_user(spaces, user))
 
 
 @router.post("/spaces", response_model=Result[SpaceInfo])
 async def create_space(
-    req: CreateSpaceRequest, service: Service = Depends(get_service)
+    req: CreateSpaceRequest,
+    service: Service = Depends(get_service),
+    user: UserRequest = Depends(get_user_from_headers),
 ):
     try:
         info = await service.create_space(
@@ -96,6 +183,11 @@ async def create_space(
             llm_model=req.llm_model,
             multimodal_model=req.multimodal_model,
             embedder_model=req.embedder_model,
+            rerank_model=req.rerank_model,
+            embed_verbats=req.embed_verbats,
+            owner_id=owner_for_create(user),
+            visibility=req.visibility,
+            space_type=req.space_type,
         )
         return Result.succ(info)
     except ValueError as e:
@@ -106,16 +198,7 @@ async def create_space(
 async def get_space(slug: str, service: Service = Depends(get_service)):
     space = await service.get_space_config(slug)
     vault = service._vaults.get(slug)
-    return Result.succ(
-        SpaceInfo(
-            slug=space.slug,
-            root=str(vault.root) if vault else "",
-            default_agent_id=space.default_agent_id,
-            llm_model=space.llm_model,
-            multimodal_model=space.multimodal_model,
-            embedder_model=space.embedder_model,
-        )
-    )
+    return Result.succ(_space_to_info(space, vault))
 
 
 @router.delete("/spaces/{slug}", response_model=Result[Dict[str, bool]])
@@ -142,18 +225,11 @@ async def update_space(
             llm_model=req.llm_model,
             multimodal_model=req.multimodal_model,
             embedder_model=req.embedder_model,
+            rerank_model=req.rerank_model,
+            embed_verbats=req.embed_verbats,
         )
         vault = service._vaults.get(slug)
-        return Result.succ(
-            SpaceInfo(
-                slug=space.slug,
-                root=str(vault.root) if vault else "",
-                default_agent_id=space.default_agent_id,
-                llm_model=space.llm_model,
-                multimodal_model=space.multimodal_model,
-                embedder_model=space.embedder_model,
-            )
-        )
+        return Result.succ(_space_to_info(space, vault))
     except KeyError:
         raise HTTPException(status_code=404, detail="space not found")
     except ValueError as e:
@@ -203,10 +279,48 @@ async def verbats(
             extract_mode=v.extract_mode.value,
             deprecated=v.deprecated,
             content_preview=v.content[:200] if v.content else None,
+            content_date=v.content_date.isoformat() if v.content_date else None,
+            filed_at=v.filed_at.isoformat() if v.filed_at else None,
+            metadata=v.metadata,
         )
         for v in page
     ]
     return Result.succ(VerbatListResponse(items=items))
+
+
+@router.get(
+    "/spaces/{slug}/verbats/search", response_model=Result[VerbatSearchResponse]
+)
+async def search_verbats(
+    slug: str,
+    q: str = Query(..., min_length=1),
+    mode: str = Query("keyword", pattern="^(keyword|semantic|hybrid)$"),
+    limit: int = Query(10, ge=1, le=100),
+    extract_mode: Optional[str] = None,
+    service: Service = Depends(get_service),
+):
+    """Search L0 verbats. semantic/hybrid require the space's embed_verbats
+    enabled (otherwise they degrade to keyword)."""
+    vault = await service.get_vault(slug)
+    hits = await vault.verbat_search(
+        q, limit=limit, extract_mode=extract_mode, mode=mode
+    )
+    return Result.succ(
+        VerbatSearchResponse(
+            hits=[
+                VerbatHitOut(
+                    verbat_id=h.verbat_id,
+                    score=h.score,
+                    snippet=h.snippet,
+                    source_file=h.source_file,
+                    extract_mode=h.extract_mode.value,
+                )
+                for h in hits
+            ],
+            mode=mode,
+            total=len(hits),
+        )
+    )
 
 
 @router.get(
@@ -530,8 +644,38 @@ async def list_ingest_jobs(
     limit: int = Query(50, ge=1, le=200),
     service: Service = Depends(get_service),
 ):
-    """List recent ingest jobs for the space (newest first)."""
-    jobs = service.orchestrator.jobs.list_for_space(slug, limit=limit)
+    """List ingest jobs for the space (newest first).
+
+    Merges in-flight in-memory jobs with the persisted `ingest_jobs`
+    ledger (history survives restarts). Each job is enriched with token
+    usage aggregated from the llm_call_log ledger by job_id (empty when
+    the backend has no ledger).
+    """
+    vault = await service.get_vault(slug)
+    jobs = await service.orchestrator.list_jobs(slug, vault, limit=limit)
+
+    # Aggregate llm_call_log rows by job_id → {job_id: {total, by_task, by_model}}
+    usage_by_job: Dict[str, Dict[str, Any]] = {}
+    try:
+        log_query = getattr(vault, "llm_call_log_query", None)
+        if log_query is not None:
+            rows = await log_query(limit=2000)
+            for r in rows:
+                jid = r.get("job_id")
+                if not jid:
+                    continue
+                agg = usage_by_job.setdefault(
+                    jid, {"total": 0, "by_task": {}, "by_model": {}}
+                )
+                tokens = r.get("total_tokens") or 0
+                agg["total"] += tokens
+                task = r.get("task_name") or "unknown"
+                agg["by_task"][task] = agg["by_task"].get(task, 0) + tokens
+                model = r.get("model") or "unknown"
+                agg["by_model"][model] = agg["by_model"].get(model, 0) + tokens
+    except Exception as e:
+        logger.warning("ingest-jobs usage aggregation failed for %s: %s", slug, e)
+
     return Result.succ(
         IngestJobListResponse(
             items=[
@@ -545,6 +689,9 @@ async def list_ingest_jobs(
                     error=j.error,
                     started_at=j.started_at,
                     finished_at=j.finished_at,
+                    total_tokens=usage_by_job.get(j.id, {}).get("total", 0),
+                    by_task=usage_by_job.get(j.id, {}).get("by_task", {}),
+                    by_model=usage_by_job.get(j.id, {}).get("by_model", {}),
                 )
                 for j in jobs
             ]
@@ -553,84 +700,117 @@ async def list_ingest_jobs(
 
 
 # ---------------------------------------------------------------------------
-# Lint (structural, v1)
+# LLM usage ledger (RFC-005)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/spaces/{slug}/llm-usage/summary",
+    response_model=Result[LlmUsageSummaryResponse],
+)
+async def llm_usage_summary(slug: str, service: Service = Depends(get_service)):
+    """Aggregate LLM token usage for the space (totals + by_task/by_model)."""
+    vault = await service.get_vault(slug)
+    summary_fn = getattr(vault, "llm_call_log_summary", None)
+    if summary_fn is None:
+        return Result.succ(LlmUsageSummaryResponse())
+    return Result.succ(LlmUsageSummaryResponse(**await summary_fn()))
+
+
+@router.get(
+    "/spaces/{slug}/llm-usage",
+    response_model=Result[LlmCallLogListResponse],
+)
+async def llm_usage_list(
+    slug: str,
+    task_name: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    service: Service = Depends(get_service),
+):
+    """List raw LLM call ledger rows (newest first), optionally by task."""
+    vault = await service.get_vault(slug)
+    log_query = getattr(vault, "llm_call_log_query", None)
+    if log_query is None:
+        return Result.succ(LlmCallLogListResponse(items=[]))
+    rows = await log_query(limit=limit, task_name=task_name)
+    return Result.succ(
+        LlmCallLogListResponse(items=[LlmCallLogItem(**r) for r in rows])
+    )
+
+
+# ---------------------------------------------------------------------------
+# Memory space: tier3 curate report
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/spaces/{slug}/memory/curate-report",
+    response_model=Result[CurateReportResponse],
+)
+async def memory_curate_report(slug: str, service: Service = Depends(get_service)):
+    """Read the latest tier3 curate REPORT.md for a memory space.
+
+    The idle curator (LongtermMemoryManager.curate_space) writes reports to
+    ``<space_root>/.curator/<timestamp>/REPORT.md``. Returns empty content
+    when no report exists yet.
+    """
+    vault = await service.get_vault(slug)
+    root = getattr(vault, "root", None)
+    if root is None:
+        return Result.succ(CurateReportResponse())
+    curator_dir = Path(root) / ".curator"
+    if not curator_dir.is_dir():
+        return Result.succ(CurateReportResponse())
+    # Timestamp dirnames (%Y%m%d-%H%M%S) sort lexicographically
+    candidates = sorted(
+        (p for p in curator_dir.iterdir() if (p / "REPORT.md").is_file()),
+        key=lambda p: p.name,
+        reverse=True,
+    )
+    if not candidates:
+        return Result.succ(CurateReportResponse())
+    latest = candidates[0] / "REPORT.md"
+    content = await asyncio.to_thread(latest.read_text, encoding="utf-8")
+    return Result.succ(
+        CurateReportResponse(
+            content=content,
+            path=str(latest),
+            timestamp=candidates[0].name,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Lint (structural; rules implemented in BaseVaultFS.doc_lint, toggled by
+# schema.md `## Lint Rules`)
 # ---------------------------------------------------------------------------
 
 
 @router.get("/spaces/{slug}/lint", response_model=Result[LintResponse])
-async def lint_space(slug: str, service: Service = Depends(get_service)):
-    """Run structural lint: orphan docs, broken wikilinks, verbats without wiki."""
+async def lint_space(
+    slug: str,
+    path: Optional[str] = Query(None),
+    service: Service = Depends(get_service),
+):
+    """Run structural lint: orphan docs, broken wikilinks, verbats without
+    wiki, stale edges, missing frontmatter, contradiction proxies."""
     vault = await service.get_vault(slug)
-    issues: List[Dict[str, Any]] = []
-
-    # 1. Orphan docs: docs with no incoming edges
-    try:
-        docs = await vault.doc_list(limit=10000)
-        for d in docs:
-            # Check for incoming edges where object references this doc
-            incoming = await vault._db.execute_fetchall(
-                "SELECT id FROM edges WHERE space_id=? AND object=? AND valid_to IS NULL LIMIT 1",
-                (vault.space_id, f"doc:{d.id}"),
-            )
-            if not incoming:
-                issues.append(
-                    {
-                        "rule": "orphan_doc",
-                        "severity": "info",
-                        "path": d.path,
-                        "message": f"文档 {d.path} 没有入边（孤岛文档）",
-                    }
-                )
-    except Exception as e:
-        logger.warning("lint orphan_doc failed: %s", e)
-
-    # 2. Broken wikilinks: [[X]] where X doesn't exist
-    try:
-        for d in docs:
-            full = await vault.doc_read(d.path)
-            if not full:
-                continue
-            links = re.findall(r"\[\[([^\]]+)\]\]", full.content)
-            for link in links:
-                target = link.split("|")[0].strip().lstrip("/")
-                # Crude: check if any doc path matches
-                target_path = target if target.endswith(".md") else f"{target}.md"
-                exists = any(doc.path == target_path or doc.path.endswith(target) for doc in docs)
-                if not exists:
-                    issues.append(
-                        {
-                            "rule": "broken_wikilink",
-                            "severity": "warning",
-                            "path": d.path,
-                            "message": f"文档 {d.path} 中的 wikilink [[{link}]] 指向不存在的页面",
-                        }
-                    )
-    except Exception as e:
-        logger.warning("lint broken_wikilink failed: %s", e)
-
-    # 3. Verbats without derived wiki docs
-    try:
-        verbats = await vault.verbat_list(limit=10000)
-        for v in verbats:
-            if v.deprecated:
-                continue
-            derived = await vault._db.execute_fetchall(
-                "SELECT id FROM edges WHERE space_id=? AND source_verbat_id=? AND valid_to IS NULL LIMIT 1",
-                (vault.space_id, v.id),
-            )
-            if not derived:
-                issues.append(
-                    {
-                        "rule": "verbat_without_wiki",
-                        "severity": "info",
-                        "verbat_id": v.id,
-                        "message": f"原文 {v.source_file} ({v.id}) 还没有派生的 wiki 文档",
-                    }
-                )
-    except Exception as e:
-        logger.warning("lint verbat_without_wiki failed: %s", e)
-
-    return Result.succ(LintResponse(issues=issues))  # type: ignore[arg-type]
+    issues = await vault.doc_lint(path=path)
+    return Result.succ(
+        LintResponse(
+            issues=[
+                {
+                    "rule": i.rule,
+                    "severity": i.severity,
+                    "path": i.path,
+                    "verbat_id": i.verbat_id,
+                    "edge_id": i.edge_id,
+                    "message": i.message,
+                }
+                for i in issues
+            ]
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -776,7 +956,8 @@ async def doc_search(
     vault = await service.get_vault(slug)
     try:
         hits = await vault.doc_search(
-            req.query, mode=req.mode, limit=req.limit
+            req.query, mode=req.mode, limit=req.limit,
+            include_invalid=req.include_invalid,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -883,6 +1064,27 @@ async def schema_write(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _space_to_info(space, vault) -> SpaceInfo:
+    """Build a SpaceInfo from a Space config + its vault (may be None)."""
+    return SpaceInfo(
+        slug=space.slug,
+        root=str(vault.root) if vault else "",
+        space_type=getattr(space, "space_type", "personal"),
+        default_agent_id=space.default_agent_id,
+        llm_model=space.llm_model,
+        multimodal_model=space.multimodal_model,
+        embedder_model=space.embedder_model,
+        visibility=(
+            space.visibility.value
+            if hasattr(space.visibility, "value")
+            else space.visibility
+        ),
+        owner_id=space.owner_id,
+        rerank_model=space.rerank_model,
+        embed_verbats=space.embed_verbats,
+    )
 
 
 def _walk(path: Path, root: Path, depth: int) -> List[TreeNode]:

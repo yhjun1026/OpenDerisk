@@ -153,13 +153,16 @@ export class VisBaseParser {
 
   /**
    * 更新当前VIS内容（主入口）
+   * @param serialize 为 false 时只做 AST 合并,跳过 parseAST2Vis 全量序列化
+   *   (高频流式 chunk 场景下由调用方在合适时机统一 flushSerialize,
+   *   避免每个 chunk 都支付一次 O(N) 字符串重建)
    */
-  updateCurrentMarkdown(incrMarkdownString: string | null): string {
+  updateCurrentMarkdown(incrMarkdownString: string | null, serialize = true): string {
     // 关键修复：允许空字符串作为有效的更新内容，用于清空数据
     if (incrMarkdownString === undefined || incrMarkdownString === null) {
       return this.currentVis;
     }
-    
+
     // 处理空字符串：清空所有数据
     if (incrMarkdownString === '') {
       this.currentVis = '';
@@ -191,8 +194,21 @@ export class VisBaseParser {
     this.mergeIncrementalChunk(incrAST);
 
     // 更新currentVis
-    this.currentVis = this.parseAST2Vis(this.astRoot);
+    if (serialize) {
+      this.currentVis = this.parseAST2Vis(this.astRoot);
+    }
 
+    return this.currentVis;
+  }
+
+  /**
+   * 将延迟序列化的 AST 一次性产出为 markdown 字符串。
+   * 与 updateCurrentMarkdown(serialize=false) 配套使用。
+   */
+  flushSerialize(): string {
+    if (this.astRoot) {
+      this.currentVis = this.parseAST2Vis(this.astRoot);
+    }
     return this.currentVis;
   }
 
@@ -1110,6 +1126,8 @@ export class VisParser {
   private parsers: Map<string, VisParser>;
   private windowParsers: Map<string, VisBaseParser>;  // 新增：每个窗口独立的VisBaseParser
   private defaultParser: VisBaseParser;
+  private dirty = false;
+  private lastResult: Record<string, string | null> | null = null;
 
   constructor() {
     this.current = '';
@@ -1150,8 +1168,10 @@ export class VisParser {
    * 更新VIS内容
    * 关键修复：当某个窗口的内容为null时，保留该窗口之前的数据
    * 优化：meta_window 作为纯 JSON 数据直接传递（不需要 VIS 解析）
+   * @param serialize 为 false 时跳过 markdown 全量序列化与 current 重建,
+   *   由调用方在合帧时机统一调用 flush()（高频流式 chunk 性能优化）
    */
-  update(vis: string): string {
+  update(vis: string, serialize = true): string {
     try {
       const json = safeJsonParse<Record<string, string | null>>(vis);
 
@@ -1195,7 +1215,7 @@ export class VisParser {
         // 关键修复：空字符串会清空数据，跳过更新以保留之前累积的数据
         // 这与测试页面的行为一致：测试页面只有当窗口有实际内容时才调用 updateCurrentMarkdown
         if (windowContent !== undefined && windowContent !== null && windowContent !== '') {
-          windowParser.updateCurrentMarkdown(windowContent);
+          windowParser.updateCurrentMarkdown(windowContent, serialize);
         }
 
         // 关键修复：始终使用解析器的当前状态（保留历史）
@@ -1215,12 +1235,40 @@ export class VisParser {
         }
       });
 
-      this.current = JSON.stringify(result);
+      this.lastResult = result;
+      if (serialize) {
+        this.current = JSON.stringify(result);
+      } else {
+        this.dirty = true;
+      }
     } catch {
-      this.defaultParser.updateCurrentMarkdown(vis);
-      this.current = this.defaultParser.currentVis;
+      this.defaultParser.updateCurrentMarkdown(vis, serialize);
+      if (serialize) {
+        this.current = this.defaultParser.currentVis;
+      } else {
+        this.dirty = true;
+      }
     }
 
+    return this.current;
+  }
+
+  /**
+   * 将延迟的合并结果一次性序列化并重建 current。
+   * 与 update(vis, false) 配套：多次增量合并后,在合帧时机调用一次。
+   */
+  flush(): string {
+    if (!this.dirty) return this.current;
+    this.windowParsers.forEach((parser) => parser.flushSerialize());
+    this.defaultParser.flushSerialize();
+    const result: Record<string, string | null> = { ...(this.lastResult || {}) };
+    this.windowParsers.forEach((parser, key) => {
+      if (parser.currentVis) {
+        result[key] = parser.currentVis;
+      }
+    });
+    this.current = JSON.stringify(result);
+    this.dirty = false;
     return this.current;
   }
 

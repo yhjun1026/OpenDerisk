@@ -125,6 +125,51 @@ class DocEditTool(KnowledgeToolBase):
             return self.fail(str(e))
 
 
+class DocFeedbackTool(KnowledgeToolBase):
+    """Record recall-quality feedback for an L1 document."""
+
+    @classmethod
+    def tool_name(cls) -> str:
+        return "doc_feedback"
+
+    @classmethod
+    def tool_description(cls) -> str:
+        return (
+            "Rate whether a recalled L1 document was helpful. Adjusts the "
+            "doc's trust_score (helpful +0.05 / unhelpful -0.10, clamped "
+            "to [0, 1]); docs below 0.3 stop being returned by recall. "
+            "Use after a recalled memory proved useful or misleading."
+        )
+
+    def _define_own_parameters(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path of the doc under wiki/, as returned by doc_search",
+                },
+                "helpful": {
+                    "type": "boolean",
+                    "description": "true if the recalled doc was useful, false if misleading/stale",
+                },
+            },
+            "required": ["path", "helpful"],
+        }
+
+    async def execute(
+        self, args: Dict[str, Any], context: Optional[ToolContext] = None
+    ) -> ToolResult:
+        try:
+            vault = await self._get_vault(args, context)
+            result = await vault.doc_feedback(
+                args["path"], bool(args["helpful"])
+            )
+            return self.ok(result)
+        except Exception as e:
+            return self.fail(str(e))
+
+
 class DocSearchTool(KnowledgeToolBase):
     """Search L1 documents by keyword (FTS5)."""
 

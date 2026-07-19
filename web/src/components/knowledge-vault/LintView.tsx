@@ -32,6 +32,9 @@ const RULE_LABEL: Record<string, string> = {
   orphan_doc: '孤岛文档',
   broken_wikilink: '断链',
   verbat_without_wiki: '无 wiki 派生',
+  stale_edge: '过期边',
+  frontmatter_missing: '缺 frontmatter',
+  contradiction: '矛盾陈述',
 };
 
 export default function LintView({ slug, onOpenDoc, onDeleteVerbat }: Props) {
@@ -85,7 +88,7 @@ export default function LintView({ slug, onOpenDoc, onDeleteVerbat }: Props) {
       <Alert
         type="info"
         showIcon
-        message={t('knowledge_lint_hint' as any) || 'v1 仅做结构性体检（孤岛文档、断链、无 wiki 派生）。LLM 语义体检将在 v2 推出。'}
+        message={t('knowledge_lint_hint' as any) || '结构性体检：孤岛文档、断链、无 wiki 派生、过期边、缺 frontmatter、矛盾陈述。LLM 语义体检将在后续版本推出。'}
         className="!text-xs"
       />
 
@@ -126,6 +129,11 @@ export default function LintView({ slug, onOpenDoc, onDeleteVerbat }: Props) {
                     {issue.verbat_id && (
                       <code className="text-[11px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
                         {issue.verbat_id.slice(0, 16)}…
+                      </code>
+                    )}
+                    {issue.edge_id && (
+                      <code className="text-[11px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
+                        edge:{issue.edge_id.slice(0, 16)}…
                       </code>
                     )}
                   </div>

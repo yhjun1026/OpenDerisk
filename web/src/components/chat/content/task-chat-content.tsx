@@ -109,7 +109,7 @@ const TaskChatContent: React.FC<TaskChatContentProps> = ({ ctrl }) => {
             <div className="w-full px-3 py-3">
               <div className="w-full space-y-2">
                 {showMessages.map((content) => (
-                  <div key={content.key}>
+                  <div key={content.key} className="[content-visibility:auto] [contain-intrinsic-size:auto_200px]">
                     <ChatContent content={content} messages={showMessages} />
                   </div>
                 ))}

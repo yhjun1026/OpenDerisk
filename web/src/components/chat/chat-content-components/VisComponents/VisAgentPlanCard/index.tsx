@@ -23,6 +23,7 @@ import {
   ApiOutlined,
   SearchOutlined,
   CloudOutlined,
+  ThunderboltOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
 import { Avatar, Button, Tooltip } from 'antd';
@@ -94,7 +95,7 @@ const getTaskIcon = (taskType: string): string => {
  * Returns a React node if a match is found, null otherwise (falls back to image icon).
  */
 const toolNameIconMap: Array<{ keywords: string[]; icon: React.ReactNode; color: string; label: string }> = [
-  { keywords: ['skill_read', 'skill_exec', 'skill_list'], icon: <CodeOutlined />, color: '#8b5cf6', label: '技能' },
+  { keywords: ['skill'], icon: <ThunderboltOutlined />, color: '#8b5cf6', label: '技能' },
   { keywords: ['sql', 'database', 'db_', 'mysql', 'postgres', 'sqlite', 'query', 'table_spec', 'table_info', 'schema', 'get_table'], icon: <DatabaseOutlined />, color: '#1677ff', label: 'SQL' },
   { keywords: ['shell', 'bash', 'terminal', 'command', 'exec_command', 'ssh'], icon: <CodeOutlined />, color: '#52c41a', label: '终端' },
   { keywords: ['browser', 'web', 'http', 'url', 'crawl', 'scrape', 'fetch_url'], icon: <GlobalOutlined />, color: '#722ed1', label: '浏览器' },
@@ -118,6 +119,8 @@ export const getToolNameIcon = (toolName?: string, title?: string): { icon: Reac
 /**
  * Format raw tool-call args (usually a JSON string) into a concise, readable
  * summary for the task row — raw JSON with braces/quotes is noise in the UI.
+ * The FIRST value is treated as the primary argument (path/db_name/command...)
+ * and is always shown (truncated if long); a second short value may follow.
  */
 export const formatArgsSummary = (raw: string): string => {
   const trimmed = raw.trim();
@@ -134,10 +137,12 @@ export const formatArgsSummary = (raw: string): string => {
   }
   const parts = values.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
   if (parts.length === 0) return '';
-  const short = parts.filter((s) => s.length <= 40);
-  const first = short.length > 0 ? short[0] : `${parts[0].slice(0, 40)}…`;
-  const second = short.length > 1 ? ` · ${short[1]}` : '';
-  return first + second;
+  // 主参数优先取第一个"非纯数字"的值(path/db_name/command 等),
+  // 纯数字通常是 limit/offset/timeout 之类的修饰参数,不适合做主显示
+  const primaryRaw = parts.find((s) => !/^\d+(\.\d+)?$/.test(s)) ?? parts[0];
+  const primary = primaryRaw.length <= 48 ? primaryRaw : `${primaryRaw.slice(0, 48)}…`;
+  const secondary = parts.find((s) => s !== primaryRaw && s.length <= 24);
+  return secondary ? `${primary} · ${secondary}` : primary;
 };
 
 const getTaskLabel = (taskType: string): string => {

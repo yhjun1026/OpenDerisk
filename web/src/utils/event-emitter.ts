@@ -10,6 +10,7 @@ export const EVENTS = {
   CLOSE_PANEL: 'closePanel',
   OPEN_PANEL: 'openPanel',
   SWITCH_TAB: 'switchTab',
+  SYSTEM_EVENTS: 'systemEvents',
 };
 
 const DEBUG_EMITTER = false; // 调试 folder/work 联动时打开

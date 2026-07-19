@@ -287,20 +287,35 @@ class LocalVaultFS(BaseVaultFS):
     async def _verbat_search_rows(
         self, query: str, limit: int, extract_mode: Optional[str]
     ) -> list[Verbat]:
+        # With INLINE_THRESHOLD=0 verbat content lives on disk (content
+        # column NULL), so SQL LIKE alone can't match. Pre-filter in SQL
+        # (inline LIKE, or any disk-backed row), then re-check disk-backed
+        # rows in Python after _row_to_verbat loads content from
+        # content_ref. Scan is capped to bound the Python pass.
+        clauses = ["space_id=?", "deprecated=0"]
+        params: list[Any] = [self._space_id]
         if extract_mode:
-            cursor = await self._db.execute(
-                "SELECT * FROM verbats WHERE space_id=? AND extract_mode=? "
-                "AND deprecated=0 AND content LIKE ? LIMIT ?",
-                (self._space_id, extract_mode, f"%{query}%", limit),
-            )
-        else:
-            cursor = await self._db.execute(
-                "SELECT * FROM verbats WHERE space_id=? AND deprecated=0 "
-                "AND content LIKE ? LIMIT ?",
-                (self._space_id, f"%{query}%", limit),
-            )
+            clauses.append("extract_mode=?")
+            params.append(extract_mode)
+        clauses.append(
+            "(content LIKE ? OR (content IS NULL AND content_ref IS NOT NULL))"
+        )
+        params.append(f"%{query}%")
+        where = " AND ".join(clauses)
+        cursor = await self._db.execute(
+            f"SELECT * FROM verbats WHERE {where} LIMIT ?",
+            (*params, 1000),
+        )
         rows = await cursor.fetchall()
-        return [self._row_to_verbat(r) for r in rows]
+        hits: list[Verbat] = []
+        for r in rows:
+            v = self._row_to_verbat(r)
+            if r["content"] is None and query not in v.content:
+                continue  # disk-backed row SQL couldn't pre-filter
+            hits.append(v)
+            if len(hits) >= limit:
+                break
+        return hits
 
     async def _verbat_deprecate_row(self, vid: VerbatId) -> None:
         await self._db.execute(
@@ -641,7 +656,7 @@ class LocalVaultFS(BaseVaultFS):
             INSERT INTO edges
               (id, space_id, subject, predicate, object, valid_from, valid_to,
                source_document_id, source_verbat_id, weight, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 e.id,
@@ -650,6 +665,7 @@ class LocalVaultFS(BaseVaultFS):
                 e.predicate,
                 e.object,
                 e.valid_from.isoformat() if e.valid_from else None,
+                e.valid_to.isoformat() if e.valid_to else None,
                 e.source_document_id,
                 e.source_verbat_id,
                 e.weight,
@@ -941,6 +957,180 @@ class LocalVaultFS(BaseVaultFS):
             (state.value, now.isoformat(), self._space_id),
         )
         await self._db.commit()
+
+    # ===================================================================
+    # LLM call ledger (RFC-005)
+    # ===================================================================
+    async def llm_call_log_add(
+        self,
+        job_id: Optional[str],
+        task_name: str,
+        model: str,
+        usage: Optional[dict],
+        latency_ms: int = 0,
+        error_code: int = 0,
+    ) -> None:
+        """Record one LLM call's token usage (best-effort ledger)."""
+        import uuid
+
+        usage = usage or {}
+        await self._db.execute(
+            """
+            INSERT INTO llm_call_log
+              (id, space_id, job_id, task_name, model,
+               prompt_tokens, completion_tokens, total_tokens,
+               latency_ms, error_code, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"llm_{uuid.uuid4().hex[:16]}",
+                self._space_id,
+                job_id,
+                task_name,
+                model or "",
+                int(usage.get("prompt_tokens") or 0),
+                int(usage.get("completion_tokens") or 0),
+                int(usage.get("total_tokens") or 0),
+                int(latency_ms or 0),
+                int(error_code or 0),
+                datetime.utcnow().isoformat(),
+            ),
+        )
+        await self._db.commit()
+
+    async def llm_call_log_query(
+        self,
+        limit: int = 100,
+        task_name: Optional[str] = None,
+        job_id: Optional[str] = None,
+    ) -> list[dict]:
+        """List ledger rows (newest first), optionally filtered."""
+        sql = (
+            "SELECT id, job_id, task_name, model, prompt_tokens, "
+            "completion_tokens, total_tokens, latency_ms, error_code, "
+            "created_at FROM llm_call_log WHERE space_id=?"
+        )
+        params: list = [self._space_id]
+        if task_name:
+            sql += " AND task_name=?"
+            params.append(task_name)
+        if job_id:
+            sql += " AND job_id=?"
+            params.append(job_id)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        rows = await self._db.execute_fetchall(sql, tuple(params))
+        return [dict(r) for r in rows]
+
+    async def llm_call_log_summary(self) -> dict:
+        """Aggregate the ledger: totals + by_task / by_model breakdowns."""
+        rows = await self._db.execute_fetchall(
+            "SELECT task_name, model, prompt_tokens, completion_tokens, "
+            "total_tokens FROM llm_call_log WHERE space_id=?",
+            (self._space_id,),
+        )
+
+        def _bucket() -> dict:
+            return {"tokens": 0, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+
+        by_task: dict = {}
+        by_model: dict = {}
+        total_calls = 0
+        total_tokens = 0
+        total_prompt = 0
+        total_completion = 0
+        for r in rows:
+            total_calls += 1
+            total_tokens += r["total_tokens"] or 0
+            total_prompt += r["prompt_tokens"] or 0
+            total_completion += r["completion_tokens"] or 0
+            for bucket, key in ((by_task, r["task_name"]), (by_model, r["model"] or "unknown")):
+                b = bucket.setdefault(key, _bucket())
+                b["tokens"] += r["total_tokens"] or 0
+                b["calls"] += 1
+                b["prompt_tokens"] += r["prompt_tokens"] or 0
+                b["completion_tokens"] += r["completion_tokens"] or 0
+        return {
+            "total_calls": total_calls,
+            "total_tokens": total_tokens,
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "by_task": by_task,
+            "by_model": by_model,
+        }
+
+    # ===================================================================
+    # Ingest job ledger
+    # ===================================================================
+    async def ingest_job_save(self, job: dict) -> None:
+        """Upsert one ingest job row (idempotent by job id).
+
+        `job` mirrors the serve layer's IngestJob dataclass fields;
+        verbat_ids / wiki_doc_ids are JSON-encoded lists.
+        """
+        import json as _json
+
+        await self._db.execute(
+            """
+            INSERT OR REPLACE INTO ingest_jobs
+              (id, space_id, space_slug, source_file, verbat_ids, wiki_doc_ids,
+               status, error, started_at, finished_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job["id"],
+                self._space_id,
+                job["space_slug"],
+                job["source_file"],
+                _json.dumps(job.get("verbat_ids") or []),
+                _json.dumps(job.get("wiki_doc_ids") or []),
+                job.get("status") or "pending",
+                job.get("error"),
+                job["started_at"],
+                job.get("finished_at"),
+            ),
+        )
+        await self._db.commit()
+
+    async def ingest_job_get(self, job_id: str) -> Optional[dict]:
+        """Fetch one ingest job row by id, or None."""
+        rows = await self._db.execute_fetchall(
+            "SELECT * FROM ingest_jobs WHERE id=? AND space_id=?",
+            (job_id, self._space_id),
+        )
+        if not rows:
+            return None
+        return self._row_to_ingest_job(rows[0])
+
+    async def ingest_job_list(self, limit: int = 50) -> list[dict]:
+        """List ingest job rows (newest first)."""
+        rows = await self._db.execute_fetchall(
+            "SELECT * FROM ingest_jobs WHERE space_id=? "
+            "ORDER BY started_at DESC LIMIT ?",
+            (self._space_id, limit),
+        )
+        return [self._row_to_ingest_job(r) for r in rows]
+
+    def _row_to_ingest_job(self, r: aiosqlite.Row) -> dict:
+        import json as _json
+
+        def _loads(raw):
+            try:
+                return _json.loads(raw) if raw else []
+            except Exception:
+                return []
+
+        return {
+            "id": r["id"],
+            "space_slug": r["space_slug"],
+            "source_file": r["source_file"],
+            "verbat_ids": _loads(r["verbat_ids"]),
+            "wiki_doc_ids": _loads(r["wiki_doc_ids"]),
+            "status": r["status"],
+            "error": r["error"],
+            "started_at": r["started_at"],
+            "finished_at": r["finished_at"],
+        }
 
     # ===================================================================
     # SQLite-specific row mappers

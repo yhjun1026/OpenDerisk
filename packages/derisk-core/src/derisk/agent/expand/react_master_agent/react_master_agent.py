@@ -1707,7 +1707,11 @@ class ReActMasterAgent(ConversableAgent):
                         pipeline = self.memory.gpts_memory.get_memory_pipeline(conv_id)
                         if pipeline is not None:
                             # Non-blocking consume of last turn's prefetch.
-                            memory_context = await pipeline.consume_prefetch(timeout=0.0)
+                            # consumer=self.name：同 conv 多 agent 各自消费一次
+                            # （prefetch cache 按消费方 key 去重）。
+                            memory_context = await pipeline.consume_prefetch(
+                                timeout=0.0, consumer=self.name
+                            )
                             if memory_context:
                                 logger.info(
                                     f"[MemoryRead] prefetch hit: {len(memory_context)} chars"

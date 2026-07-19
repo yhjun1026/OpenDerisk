@@ -11,20 +11,32 @@ class SpaceInfo(BaseModel):
     slug: str
     root: str
     backend: Optional[str] = "local"  # "local" | "distributed"
+    # RFC-005: dual-form space ("personal" | "agent_memory")
+    space_type: Optional[str] = "personal"
     # v2 ingest pipeline config (RFC 004 §6). All optional.
     default_agent_id: Optional[str] = None
     llm_model: Optional[str] = None
     multimodal_model: Optional[str] = None
     embedder_model: Optional[str] = None
+    # Access control (owner empty = legacy world-accessible space)
+    visibility: Optional[str] = None  # private | shared | public
+    owner_id: Optional[str] = None
+    # v5 retrieval tuning (both default off)
+    rerank_model: Optional[str] = None
+    embed_verbats: Optional[bool] = None
 
 
 class CreateSpaceRequest(BaseModel):
     slug: str
     backend: Optional[str] = None  # "local" | "distributed"; None = server default
+    space_type: Optional[str] = None  # "personal" | "agent_memory"; None = personal
     default_agent_id: Optional[str] = None
     llm_model: Optional[str] = None
     multimodal_model: Optional[str] = None
     embedder_model: Optional[str] = None
+    rerank_model: Optional[str] = None
+    embed_verbats: Optional[bool] = None
+    visibility: Optional[str] = None  # private | shared | public; None = private
 
 
 class UpdateSpaceRequest(BaseModel):
@@ -34,6 +46,8 @@ class UpdateSpaceRequest(BaseModel):
     llm_model: Optional[str] = None
     multimodal_model: Optional[str] = None
     embedder_model: Optional[str] = None
+    rerank_model: Optional[str] = None
+    embed_verbats: Optional[bool] = None
 
 
 class TreeNode(BaseModel):
@@ -97,10 +111,26 @@ class VerbatOut(BaseModel):
     content_preview: Optional[str] = None
     content_date: Optional[str] = None
     filed_at: Optional[str] = None
+    # 记忆元数据 (author/user_id/conv_id/turn_round 等)
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class VerbatListResponse(BaseModel):
     items: List[VerbatOut]
+
+
+class VerbatHitOut(BaseModel):
+    verbat_id: str
+    score: float = 0.0
+    snippet: str = ""
+    source_file: str = ""
+    extract_mode: str = ""
+
+
+class VerbatSearchResponse(BaseModel):
+    hits: List[VerbatHitOut]
+    mode: str
+    total: int
 
 
 class SchemaMdResponse(BaseModel):
@@ -134,10 +164,60 @@ class IngestJobResponse(BaseModel):
     error: Optional[str] = None
     started_at: str
     finished_at: Optional[str] = None
+    # Token usage aggregated from llm_call_log by job_id
+    total_tokens: int = 0
+    by_task: Dict[str, int] = Field(default_factory=dict)
+    by_model: Dict[str, int] = Field(default_factory=dict)
 
 
 class IngestJobListResponse(BaseModel):
     items: List[IngestJobResponse]
+
+
+# ---------------------------------------------------------------------------
+# LLM usage ledger (RFC-005)
+# ---------------------------------------------------------------------------
+
+
+class LlmUsageBucket(BaseModel):
+    tokens: int = 0
+    calls: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+class LlmUsageSummaryResponse(BaseModel):
+    total_calls: int = 0
+    total_tokens: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    by_task: Dict[str, LlmUsageBucket] = Field(default_factory=dict)
+    by_model: Dict[str, LlmUsageBucket] = Field(default_factory=dict)
+
+
+class LlmCallLogItem(BaseModel):
+    id: str
+    job_id: Optional[str] = None
+    task_name: str
+    model: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    latency_ms: int = 0
+    error_code: int = 0
+    created_at: str
+
+
+class LlmCallLogListResponse(BaseModel):
+    items: List[LlmCallLogItem]
+
+
+class CurateReportResponse(BaseModel):
+    """Latest tier3 curate REPORT.md for a memory space (empty when absent)."""
+
+    content: str = ""
+    path: Optional[str] = None
+    timestamp: Optional[str] = None
 
 
 class LintIssueOut(BaseModel):
@@ -187,11 +267,13 @@ class SearchRequest(BaseModel):
     - "references": edge-based backlink search
     - "semantic": vector recall only (requires embedder configured)
     - "hybrid": FTS + vector via reciprocal rank fusion
+    - "graph": hybrid seeds + entity-graph expansion (RFC-005 Phase 3)
     """
 
     query: str
     mode: str = "documents"
     limit: int = 10
+    include_invalid: bool = False  # graph mode: recall superseded/expired too
 
 
 class DocHitOut(BaseModel):
@@ -223,11 +305,18 @@ __all__ = [
     "SubgraphResponse",
     "VerbatOut",
     "VerbatListResponse",
+    "VerbatHitOut",
+    "VerbatSearchResponse",
     "SchemaMdResponse",
     "SchemaMdUpdate",
     "UploadResponse",
     "IngestJobResponse",
     "IngestJobListResponse",
+    "LlmUsageBucket",
+    "LlmUsageSummaryResponse",
+    "LlmCallLogItem",
+    "LlmCallLogListResponse",
+    "CurateReportResponse",
     "LintIssueOut",
     "LintResponse",
     "SetEmbedderRequest",

@@ -25,11 +25,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
+from cachetools import TTLCache
+
 from derisk.agent import ActionOutput
 from derisk.agent.core.memory.gpts.base import GptsMessage
 
 logger = logging.getLogger(__name__)
-
 
 class ConversationRoundStatus(Enum):
     """对话轮次状态"""
@@ -781,8 +782,15 @@ AI 回答:
             logger.info(f"Cleared conversation history for session {self.session_id}")
 
 
-# 全局管理器缓存
-_history_managers: Dict[str, ConversationHistoryManager] = {}
+# 全局管理器缓存（有界：TTL + maxsize，参考 gpts_memory.ConversationCache
+# 的 TTLCache 用法，避免 session 只增不减造成内存泄漏）
+_HISTORY_MANAGERS_MAXSIZE = 200
+_HISTORY_MANAGERS_TTL_SECONDS = 10800  # 3 小时，与 ConversationCache 默认一致
+_history_managers: TTLCache = TTLCache(
+    maxsize=_HISTORY_MANAGERS_MAXSIZE,
+    ttl=_HISTORY_MANAGERS_TTL_SECONDS,
+    timer=time.time,
+)
 _manager_lock = asyncio.Lock()
 
 

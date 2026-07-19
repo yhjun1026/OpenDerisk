@@ -2,7 +2,7 @@
 
 import { apiInterceptors } from '@/client/api';
 import { createSpace, deleteSpace, listSpaces } from '@/client/api/knowledge-vault';
-import type { SpaceInfo } from '@/types/knowledge-vault';
+import type { SpaceInfo, SpaceType, SpaceVisibility } from '@/types/knowledge-vault';
 import {
   DeleteOutlined,
   PlusOutlined,
@@ -25,6 +25,8 @@ export default function KnowledgeVaultHomePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [newSlug, setNewSlug] = useState('');
   const [newBackend, setNewBackend] = useState<'local' | 'distributed'>('local');
+  const [newSpaceType, setNewSpaceType] = useState<SpaceType>('personal');
+  const [newVisibility, setNewVisibility] = useState<SpaceVisibility>('private');
   const [query, setQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -48,12 +50,21 @@ export default function KnowledgeVaultHomePage() {
       message.warning('slug 只允许字母、数字、下划线、短横线');
       return;
     }
-    const [, res] = await apiInterceptors(createSpace({ slug, backend: newBackend }));
+    const [, res] = await apiInterceptors(
+      createSpace({
+        slug,
+        backend: newBackend,
+        space_type: newSpaceType,
+        visibility: newVisibility,
+      }),
+    );
     if (res) {
       message.success(`已创建空间 ${slug}`);
       setModalOpen(false);
       setNewSlug('');
       setNewBackend('local');
+      setNewSpaceType('personal');
+      setNewVisibility('private');
       await loadSpaces();
     }
   }
@@ -184,7 +195,7 @@ export default function KnowledgeVaultHomePage() {
                           <span className="mcp-badge mcp-badge--type">
                             {s.backend || 'local'}
                           </span>
-                          {(s.slug || '').startsWith('memory-') && (
+                          {(s.space_type === 'agent_memory' || (s.slug || '').startsWith('memory-')) && (
                             <span className="mcp-badge mcp-badge--offline">记忆</span>
                           )}
                           {s.llm_model && (
@@ -293,6 +304,27 @@ export default function KnowledgeVaultHomePage() {
         <div className="text-xs text-[var(--mcp-text-tertiary)] mt-2">
           distributed 后端需要在配置文件中启用 [knowledge.distributed] enabled=true
         </div>
+        <div className="mcp-modal-section-title">类型</div>
+        <Select
+          value={newSpaceType}
+          onChange={(v) => setNewSpaceType(v)}
+          className="w-full"
+          options={[
+            { value: 'personal', label: '个人知识' },
+            { value: 'agent_memory', label: 'Agent 记忆' },
+          ]}
+        />
+        <div className="mcp-modal-section-title">可见性</div>
+        <Select
+          value={newVisibility}
+          onChange={(v) => setNewVisibility(v)}
+          className="w-full"
+          options={[
+            { value: 'private', label: '私有（仅自己可见）' },
+            { value: 'shared', label: '共享（登录用户可见）' },
+            { value: 'public', label: '公开（所有人可见）' },
+          ]}
+        />
       </Modal>
     </Spin>
   );

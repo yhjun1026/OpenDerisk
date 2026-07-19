@@ -318,9 +318,6 @@ export const VisAgentPlanCardWrap = styled.div`
       font-weight: 500;
       color: #334155;
       flex-shrink: 0;
-      max-width: 45%;
-      overflow: hidden;
-      text-overflow: ellipsis;
       white-space: nowrap;
     }
 

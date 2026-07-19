@@ -1811,7 +1811,6 @@ class AgentChat(BaseComponent, ABC):
                     try:
                         from derisk.agent.core.memory.longterm_manager import (
                             LongTermMemoryConfig,
-                            create_memory_integration_bundle,
                         )
                         from derisk.storage.memory import LLMMemoryProcessor
 
@@ -2038,7 +2037,17 @@ class AgentChat(BaseComponent, ABC):
                                             "LLM extraction will be skipped"
                                         )
 
-                                    recall_tracker = RecallTracker()
+                                    # 持久化召回统计（SQLite，跟随 derisk
+                                    # 本地存储惯例 data/memory/），重启后
+                                    # promotion 不再冷启动。
+                                    recall_tracker = RecallTracker(
+                                        db_path=os.path.join(
+                                            os.getcwd(),
+                                            "data",
+                                            "memory",
+                                            "recall_tracker.db",
+                                        )
+                                    )
                                     promotion_engine = MemoryPromotionEngine(
                                         recall_tracker=recall_tracker,
                                     )

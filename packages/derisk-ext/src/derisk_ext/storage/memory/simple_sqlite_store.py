@@ -26,6 +26,11 @@ from derisk.storage.memory.base import (
     MemoryStoreBase,
     MemoryStoreConfig,
 )
+from derisk_ext.knowledge.vaultfs.base import (
+    TRUST_DELTA_HELPFUL,
+    TRUST_DELTA_UNHELPFUL,
+    TRUST_MIN_RECALL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +109,15 @@ class SimpleSQLiteMemoryStore(MemoryStoreBase):
             CREATE INDEX IF NOT EXISTS idx_memories_wing_room
             ON memories(wing, room)
         """)
+
+        # Recall trust score (hermes Holographic fact_feedback alignment).
+        # Idempotent migration for databases created before this column.
+        try:
+            cursor.execute(
+                "ALTER TABLE memories ADD COLUMN trust_score REAL NOT NULL DEFAULT 1.0"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
         # Knowledge graph triples table
         if self._config.enable_kg:
@@ -224,13 +238,19 @@ class SimpleSQLiteMemoryStore(MemoryStoreBase):
             sql += " AND room = ?"
             params.append(room)
 
-        sql += f" ORDER BY created_at DESC LIMIT {top_k}"
+        # Over-fetch so post-filtering by trust_score doesn't starve top_k.
+        sql += f" ORDER BY created_at DESC LIMIT {top_k * 4}"
 
         cursor.execute(sql, params)
         rows = cursor.fetchall()
 
         results = []
         for row in rows:
+            # Recall trust: score *= trust_score; entries below
+            # TRUST_MIN_RECALL stop surfacing (feedback-driven).
+            trust = row["trust_score"] if row["trust_score"] is not None else 1.0
+            if trust < TRUST_MIN_RECALL:
+                continue
             # Calculate a simple "score" based on word overlap
             query_words = set(query.lower().split())
             content_words = set(row["content"].lower().split())
@@ -242,13 +262,13 @@ class SimpleSQLiteMemoryStore(MemoryStoreBase):
                 content=row["content"],
                 wing=row["wing"],
                 room=row["room"],
-                metadata=json.loads(row["metadata"] or "{}"),
-                score=score,
+                metadata={**json.loads(row["metadata"] or "{}"), "trust_score": trust},
+                score=score * trust,
                 created_at=row["created_at"]
             ))
 
         conn.close()
-        return results
+        return results[:top_k]
 
     async def asearch_memory(
         self,
@@ -260,6 +280,44 @@ class SimpleSQLiteMemoryStore(MemoryStoreBase):
     ) -> List[MemoryEntry]:
         """Async search - calls sync version."""
         return self.search_memory(query, top_k, wing, room, max_distance)
+
+    def memory_feedback(self, memory_id: str, helpful: bool) -> Optional[Dict[str, Any]]:
+        """Record recall-quality feedback for a memory entry.
+
+        helpful +0.05 / unhelpful -0.10, clamped to [0, 1] (hermes
+        Holographic fact_feedback alignment). Entries below
+        TRUST_MIN_RECALL stop being returned by search_memory.
+        Returns the new state, or None if the entry doesn't exist.
+        """
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT trust_score FROM memories WHERE id = ?", (memory_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            conn.close()
+            return None
+        old = row["trust_score"] if row["trust_score"] is not None else 1.0
+        delta = TRUST_DELTA_HELPFUL if helpful else TRUST_DELTA_UNHELPFUL
+        new = min(1.0, max(0.0, old + delta))
+        cursor.execute(
+            "UPDATE memories SET trust_score = ?, updated_at = ? WHERE id = ?",
+            (new, datetime.now().isoformat(), memory_id),
+        )
+        conn.commit()
+        conn.close()
+        logger.info(
+            f"[SimpleSQLiteMemoryStore] memory_feedback {memory_id} "
+            f"helpful={helpful} trust {old:.2f} -> {new:.2f}"
+        )
+        return {"id": memory_id, "trust_score": new, "previous_trust": old}
+
+    async def amemory_feedback(
+        self, memory_id: str, helpful: bool
+    ) -> Optional[Dict[str, Any]]:
+        """Async feedback - calls sync version."""
+        return self.memory_feedback(memory_id, helpful)
 
     def delete_memory(self, memory_id: str) -> bool:
         """Delete a single memory entry by id."""
@@ -277,6 +335,52 @@ class SimpleSQLiteMemoryStore(MemoryStoreBase):
     async def adelete_memory(self, memory_id: str) -> bool:
         """Async delete - calls sync version."""
         return self.delete_memory(memory_id)
+
+    def update_memory(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Update a memory entry's content and/or metadata (merged)."""
+        conn = self._get_conn()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT metadata FROM memories WHERE id = ?", (memory_id,))
+        row = cursor.fetchone()
+        if row is None:
+            conn.close()
+            return False
+
+        merged = json.loads(row["metadata"] or "{}")
+        if metadata:
+            merged.update(metadata)
+
+        now = datetime.now().isoformat()
+        if content is not None:
+            cursor.execute(
+                "UPDATE memories SET content = ?, metadata = ?, updated_at = ? "
+                "WHERE id = ?",
+                (content, json.dumps(merged), now, memory_id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE memories SET metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(merged), now, memory_id),
+            )
+
+        conn.commit()
+        conn.close()
+        return True
+
+    async def aupdate_memory(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Async update - calls sync version."""
+        return self.update_memory(memory_id, content, metadata)
 
     # --- Knowledge graph methods ---
 

@@ -7,6 +7,7 @@ import these to avoid duplication.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -122,36 +123,141 @@ def make_snippet(content: str, query: str, context: int = 50) -> str:
     return snippet
 
 
-def chunk_text(text: str, max_chars: int = 2000) -> list[tuple[int, str, str]]:
-    """Naive paragraph-based chunking with content-hash IDs.
+def _split_markdown_blocks(text: str) -> list[str]:
+    """Split markdown into semantic blocks at structural boundaries.
 
-    Splits on double-newlines, accumulates until max_chars. Returns a
-    list of `(chunk_index, chunk_text, content_hash)` tuples where
-    `content_hash = sha256(chunk_text)[:16]`. The hash is stable across
-    re-chunking for unchanged chunks, so vector IDs derived from it
-    (`doc:{doc_id}:chunk:{hash}`) survive edits to other parts of the
+    Block boundaries:
+    - ATX headings (``# …``) start a new block
+    - fenced code blocks (``` … ```) are kept whole (never split mid-code)
+    - consecutive list lines (``- ``/``* ``/``1. ``) form one block
+    - blank-line-separated paragraphs form one block each
+    """
+    blocks: list[str] = []
+    current: list[str] = []
+    in_fence = False
+    in_list = False
+
+    def _flush() -> None:
+        nonlocal current
+        block = "\n".join(current).strip()
+        if block:
+            blocks.append(block)
+        current = []
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            if in_fence:
+                # Closing fence — end the code block.
+                current.append(line)
+                _flush()
+                in_fence = False
+            else:
+                # Opening fence — start a fresh block.
+                _flush()
+                current.append(line)
+                in_fence = True
+                in_list = False
+            continue
+        if in_fence:
+            current.append(line)
+            continue
+        if stripped.startswith("#"):
+            _flush()
+            in_list = False
+            current.append(line)
+            continue
+        is_list_item = bool(
+            re.match(r"^(\s*[-*+] |\s*\d+[.)] )", line)
+        ) if stripped else False
+        if not stripped:
+            _flush()
+            in_list = False
+            continue
+        if is_list_item:
+            if not in_list:
+                _flush()
+                in_list = True
+            current.append(line)
+            continue
+        if in_list:
+            # Non-list line ends the list block.
+            _flush()
+            in_list = False
+        current.append(line)
+    _flush()
+    return blocks
+
+
+def chunk_text(
+    text: str, max_chars: int = 2000, overlap_chars: int = 200
+) -> list[tuple[int, str, str]]:
+    """Markdown structure-aware chunking with content-hash IDs.
+
+    Splits into semantic blocks (headings / fenced code / lists /
+    paragraphs — see `_split_markdown_blocks`), then greedily packs whole
+    blocks into chunks up to `max_chars`. Consecutive chunks overlap by
+    carrying over the trailing block(s) of the previous chunk that fit in
+    `overlap_chars`, so context that spans a boundary stays retrievable.
+    A single block larger than `max_chars` is hard-split on the size
+    boundary (last resort — structure is preserved whenever possible).
+
+    Returns a list of `(chunk_index, chunk_text, content_hash)` tuples
+    where `content_hash = sha256(chunk_text)[:16]`. The hash is stable
+    across re-chunking for unchanged chunks, so vector IDs derived from
+    it (`doc:{doc_id}:chunk:{hash}`) survive edits to other parts of the
     document.
     """
     import hashlib
 
-    paragraphs = text.split("\n\n")
+    def _hash(piece: str) -> str:
+        return hashlib.sha256(piece.encode("utf-8")).hexdigest()[:16]
+
+    blocks = _split_markdown_blocks(text)
+    if not blocks:
+        return [(0, text, _hash(text))]
+
     pieces: list[str] = []
     current = ""
-    for p in paragraphs:
-        if len(current) + len(p) + 2 > max_chars and current:
-            pieces.append(current.strip())
-            current = p
+    for block in blocks:
+        candidate = current + "\n\n" + block if current else block
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+        if current:
+            pieces.append(current)
+            # Overlap: carry trailing blocks of the emitted chunk into the
+            # next one, bounded by overlap_chars.
+            overlap = ""
+            for prev_block in reversed(_split_markdown_blocks(current)):
+                candidate_overlap = (
+                    prev_block + "\n\n" + overlap if overlap else prev_block
+                )
+                if len(candidate_overlap) > overlap_chars:
+                    break
+                overlap = candidate_overlap
+            current = overlap
+        # A block that (even without overlap) exceeds max_chars is
+        # hard-split on the size boundary.
+        while len(block) > max_chars:
+            head, block = block[:max_chars], block[max_chars:]
+            if current:
+                pieces.append(current)
+                current = ""
+            pieces.append(head)
+        candidate = current + "\n\n" + block if current else block
+        if len(candidate) <= max_chars:
+            current = candidate
         else:
-            current = current + "\n\n" + p if current else p
+            if current:
+                pieces.append(current)
+            current = block
     if current.strip():
-        pieces.append(current.strip())
+        pieces.append(current)
     if not pieces:
         pieces = [text]
 
-    return [
-        (i, piece, hashlib.sha256(piece.encode("utf-8")).hexdigest()[:16])
-        for i, piece in enumerate(pieces)
-    ]
+    return [(i, piece, _hash(piece)) for i, piece in enumerate(pieces)]
 
 
 def chunk_text_plain(text: str, max_chars: int = 2000) -> list[str]:

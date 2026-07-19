@@ -64,6 +64,7 @@ def stub_llm(monkeypatch):
             system_prompt: Optional[str],
             user_prompt: str,
             image_paths=None,
+            **_kwargs,  # tolerate ledger kwargs (vault=/job_id=/task_name=)
         ) -> str:
             return markdown
 
@@ -87,7 +88,7 @@ async def _wait_for_job(orchestrator, job_id: str, timeout: float = 5.0):
 
 
 @pytest.mark.asyncio
-async def test_ingest_txt_creates_verbat_and_wiki_doc(vault, space, stub_llm, tmp_path: Path):
+async def test_ingest_txt_creates_verbat_and_wiki_doc(vault, space, stub_llm, tmp_path: Path, monkeypatch):
     from derisk_serve.knowledge.ingest import IngestOrchestrator
 
     orch = IngestOrchestrator(system_app=None)
@@ -103,10 +104,12 @@ async def test_ingest_txt_creates_verbat_and_wiki_doc(vault, space, stub_llm, tm
         "# Test Source\n\nA generated wiki doc.\n"
     )
     stub_md = fake_md  # capture
-    async def _stub_call(self, model, system_prompt, user_prompt, image_paths=None):
+    async def _stub_call(self, model, system_prompt, user_prompt, image_paths=None, **_kwargs):
         return stub_md
 
-    pytest.MonkeyPatch().setattr(
+    # NOTE: use the monkeypatch fixture (auto-undo). A bare
+    # pytest.MonkeyPatch() leaks the stub into later tests in the process.
+    monkeypatch.setattr(
         IngestOrchestrator, "_call_llm", _stub_call
     )
 
@@ -144,14 +147,14 @@ async def test_ingest_txt_creates_verbat_and_wiki_doc(vault, space, stub_llm, tm
 
 
 @pytest.mark.asyncio
-async def test_ingest_deprecated_verbat_keeps_wiki_doc(vault, space, stub_llm):
+async def test_ingest_deprecated_verbat_keeps_wiki_doc(vault, space, stub_llm, monkeypatch):
     """Deleting a verbat marks it deprecated but does not destroy the wiki doc."""
     from derisk_serve.knowledge.ingest import IngestOrchestrator
 
-    async def _stub(self, model, system_prompt, user_prompt, image_paths=None):
+    async def _stub(self, model, system_prompt, user_prompt, image_paths=None, **_kwargs):
         return "---\ntype: source\ntitle: T\n---\n\nbody\n"
 
-    pytest.MonkeyPatch().setattr(
+    monkeypatch.setattr(
         IngestOrchestrator, "_call_llm", _stub
     )
 
@@ -185,19 +188,19 @@ async def test_ingest_deprecated_verbat_keeps_wiki_doc(vault, space, stub_llm):
 
 
 @pytest.mark.asyncio
-async def test_rebuild_wiki_for_verbat_replaces_existing_doc(vault, space):
+async def test_rebuild_wiki_for_verbat_replaces_existing_doc(vault, space, monkeypatch):
     """Force-rebuild should delete the old wiki doc and create a new one."""
     from derisk_serve.knowledge.ingest import IngestOrchestrator
 
     call_count = {"n": 0}
 
-    async def _stub(self, model, system_prompt, user_prompt, image_paths=None):
+    async def _stub(self, model, system_prompt, user_prompt, image_paths=None, **_kwargs):
         call_count["n"] += 1
         # No source_verbat in frontmatter — _ensure_frontmatter injects the
         # real verbat id, which is what _find_doc_by_source_verbat looks for.
         return f"---\ntype: source\ntitle: Rev{call_count['n']}\n---\n\nbody v{call_count['n']}\n"
 
-    pytest.MonkeyPatch().setattr(
+    monkeypatch.setattr(
         IngestOrchestrator, "_call_llm", _stub
     )
 

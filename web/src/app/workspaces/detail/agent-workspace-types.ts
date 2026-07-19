@@ -6,9 +6,11 @@ export interface WorkspaceArtifact {
 
 export interface WorkspaceExecutionStep {
   id: string;
-  type: 'tool_call' | 'thinking' | 'artifact' | 'delivery';
+  type: 'tool_call' | 'thinking' | 'artifact' | 'delivery' | 'user';
   title: string;
   status: 'running' | 'done' | 'failed';
+  /** 时间戳(ISO 字符串),跨轮次合并时按此交错排序 */
+  ts?: string | null;
   action?: string | null;
   action_input?: Record<string, unknown> | null;
   output?: string | null;

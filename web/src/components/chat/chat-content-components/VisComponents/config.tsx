@@ -36,10 +36,11 @@ import VisStepListCard from './VisStepListCard';
 import { parseFirstJson } from '@/utils/json';
 import VisTodoList from './VisTodoList';
 import VisParseError from './VisParseError';
+import VisError from './VisError';
 import VisStatusNotification from './VisStatusNotification';
 import VisAuthorizationCard from './VisAuthorizationCard';
 import VisConfirmResponse from './VisConfirmResponse';
-import VisSystemEvents from './VisSystemEvents';
+import SystemEventsBridge from './VisSystemEvents/bridge';
 import VisManusLeftPanel from './VisManusLeftPanel';
 import VisManusRightPanel from './VisManusRightPanel';
 import VisCard from './VisCard';
@@ -597,7 +598,7 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       const data = parseFirstJson(content);
       return (
         <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-system-events" />}>
-          <VisSystemEvents data={data} />
+          <SystemEventsBridge data={data} />
         </ErrorBoundary>
       );
     } catch (e) {
@@ -744,6 +745,19 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       );
     } catch (e) {
       return <VisParseError content={content} error={e} componentName="d-sql-query" />;
+    }
+  },
+  'd-error': ({ children }) => {
+    const content = String(children);
+    try {
+      const data = parseFirstJson(content);
+      return (
+        <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-error" />}>
+          <VisError data={data} />
+        </ErrorBoundary>
+      );
+    } catch (e) {
+      return <VisParseError content={content} error={e} componentName="d-error" />;
     }
   },
 };

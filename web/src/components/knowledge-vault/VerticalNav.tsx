@@ -1,22 +1,27 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import {
   ApartmentOutlined,
   BarChartOutlined,
   BookOutlined,
+  BulbOutlined,
   FileOutlined,
   FileSearchOutlined,
   SettingOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
+import { apiInterceptors } from '@/client/api';
+import { getSpace } from '@/client/api/knowledge-vault';
 import VaultSeal from './VaultSeal';
 import { useSpace, type View } from './SpaceContext';
 
-const ITEMS: { value: View; label: string; icon: React.ReactNode }[] = [
+const ITEMS: { value: View; label: string; icon: React.ReactNode; memoryOnly?: boolean }[] = [
   { value: 'raw', label: 'Raw', icon: <FileOutlined /> },
   { value: 'wiki', label: 'Wiki', icon: <BookOutlined /> },
   { value: 'graph', label: 'Graph', icon: <ApartmentOutlined /> },
+  { value: 'memory', label: 'Memory', icon: <BulbOutlined />, memoryOnly: true },
   { value: 'schema', label: 'Schema', icon: <FileSearchOutlined /> },
   { value: 'lint', label: 'Lint', icon: <ToolOutlined /> },
   { value: 'usage', label: 'Usage', icon: <BarChartOutlined /> },
@@ -25,6 +30,20 @@ const ITEMS: { value: View; label: string; icon: React.ReactNode }[] = [
 
 export default function VerticalNav() {
   const { view, setView, slug } = useSpace();
+  const [spaceType, setSpaceType] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiInterceptors(getSpace(slug)).then(([, s]) => {
+      if (!cancelled) setSpaceType(s?.space_type ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  const isMemorySpace = slug.startsWith('memory-') || spaceType === 'agent_memory';
+  const items = ITEMS.filter((item) => !item.memoryOnly || isMemorySpace);
 
   return (
     <div className="w-16 flex-shrink-0 bg-white border-r border-[#ECEAE3] flex flex-col items-center py-3 h-full">
@@ -37,7 +56,7 @@ export default function VerticalNav() {
       </Link>
       <div className="h-px w-6 bg-[#ECEAE3] mb-3" />
       <div className="flex-1 flex flex-col gap-1 w-full px-2 items-center">
-        {ITEMS.map((item) => {
+        {items.map((item) => {
           const active = view === item.value;
           return (
             <button

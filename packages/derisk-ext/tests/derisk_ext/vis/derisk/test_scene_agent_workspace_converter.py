@@ -87,12 +87,22 @@ async def test_tool_stream_msg_produces_execution_step():
 
 @pytest.mark.asyncio
 async def test_streaming_text_becomes_summary():
-    """LLM 流式文本(stream_msg.content)→ summary 实时更新。"""
+    """LLM 流式文本(stream_msg.content,增量 delta)→ summary 实时拼接更新。"""
     conv = SceneAgentWorkspaceConverter(derisk_url="http://localhost")
     out1 = await conv.visualization(messages=[], stream_msg={"message_id": "m9", "content": "正在"})
     assert _extract_payload(out1)["summary"] == "正在"
-    out2 = await conv.visualization(messages=[], stream_msg={"message_id": "m9", "content": "正在查询"})
+    out2 = await conv.visualization(messages=[], stream_msg={"message_id": "m9", "content": "查询"})
     assert _extract_payload(out2)["summary"] == "正在查询"
+
+
+@pytest.mark.asyncio
+async def test_streaming_delta_appends_not_replaces():
+    """stream_msg.content 是增量 delta:多个 chunk 应追加拼接,而非互相替换。"""
+    conv = SceneAgentWorkspaceConverter(derisk_url="http://localhost")
+    await conv.visualization(messages=[], stream_msg={"message_id": "m9", "content": "正在"})
+    await conv.visualization(messages=[], stream_msg={"message_id": "m9", "content": "查询"})
+    out = await conv.visualization(messages=[], stream_msg={"message_id": "m9", "content": "任务"})
+    assert _extract_payload(out)["summary"] == "正在查询任务"
 
 
 @pytest.mark.asyncio
@@ -132,6 +142,21 @@ async def test_intermediate_replies_become_steps_not_summary():
     narr_steps = [s for s in payload["execution"] if s["type"] == "thinking"]
     assert len(narr_steps) == 1
     assert narr_steps[0]["output"] == "先查一下"
+
+
+@pytest.mark.asyncio
+async def test_user_message_becomes_user_step():
+    """Human 消息 → user 类型步骤(前端渲染用户气泡)。"""
+    conv = SceneAgentWorkspaceConverter(derisk_url="http://localhost")
+    msgs = [
+        _make_gpt_msg(content="帮我查下任务", message_id="u1", sender="Human"),
+        _make_gpt_msg(content="好的,结果如下", message_id="a1"),
+    ]
+    payload = _extract_payload(await conv.final_view(messages=msgs))
+    user_steps = [s for s in payload["execution"] if s["type"] == "user"]
+    assert len(user_steps) == 1
+    assert user_steps[0]["output"] == "帮我查下任务"
+    assert payload["summary"] == "好的,结果如下"
 
 
 @pytest.mark.asyncio

@@ -50,7 +50,10 @@ def make_default_thinking_fn(
         if memory_bundle is not None:
             pipeline = getattr(memory_bundle, "pipeline", None)
             if pipeline is not None:
-                result = await pipeline.consume_prefetch(timeout=0.0)
+                # consumer key：同 conv 多 agent 各自消费一次（prefetch
+                # cache 按消费方 key 去重），miss 时同步 fallback。
+                consumer = input_.get("agent_id") or "default_thinking"
+                result = await pipeline.consume_prefetch(timeout=0.0, consumer=consumer)
                 if result is None:
                     result = await memory_bundle.manager.retrieve_relevant_memories(
                         query=user_prompt, exclude_rooms=STATIC_ROOMS,

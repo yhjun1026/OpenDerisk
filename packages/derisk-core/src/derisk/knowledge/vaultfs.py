@@ -83,6 +83,7 @@ class VaultFS(Protocol):
         query: str,
         limit: int = 10,
         extract_mode: Optional[str] = None,
+        mode: str = "keyword",  # "keyword" | "semantic" | "hybrid"
     ) -> list[VerbatHit]: ...
 
     async def verbat_deprecate(self, vid: VerbatId) -> None:

@@ -48,15 +48,23 @@ export default function WorkspaceDetailPage() {
         setConvUid(current.conv_uid);
         return;
       }
-      const [, newConv] = await apiInterceptors(createConversation({}));
-      if (!newConv?.conv_uid) {
-        setConvLoadError('无法创建会话，请稍后重试');
+      const [newErr, newConv] = await apiInterceptors(createConversation({}));
+      if (newErr || !newConv?.conv_uid) {
+        setConvLoadError(newErr?.message || '无法创建会话，请稍后重试');
         return;
       }
-      await apiInterceptors(
+      const [linkErr] = await apiInterceptors(
         linkConversation({ workspace_id: workspaceId, conv_uid: newConv.conv_uid, user_id: undefined })
       );
-      await apiInterceptors(setCurrentConversation(workspaceId, newConv.conv_uid));
+      if (linkErr) {
+        setConvLoadError(`会话关联空间失败：${linkErr.message || '未知错误'}`);
+        return;
+      }
+      const [currErr] = await apiInterceptors(setCurrentConversation(workspaceId, newConv.conv_uid));
+      if (currErr) {
+        setConvLoadError(`设置当前会话失败：${currErr.message || '未知错误'}`);
+        return;
+      }
       setConvUid(newConv.conv_uid);
     },
     {
@@ -129,7 +137,7 @@ export default function WorkspaceDetailPage() {
       <div className="ws-page-bg" />
       <div
         className="ws-page-content ws-page-content--fluid"
-        style={{ paddingTop: 16, paddingBottom: 16, height: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column', gap: 16 }}
+        style={{ paddingTop: 12, paddingBottom: 12, height: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column', gap: 10 }}
       >
         <div className="ws-console-header">
           <div className="ws-console-header-left">

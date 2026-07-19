@@ -4,6 +4,7 @@
 （不通过 _BUNDLE_REGISTRY 间接查找）。handler 函数通过闭包捕获 manager/pipeline，
 注册到 FunctionRegistry 后由 HookManager 的 FunctionHookExecutor 调用。
 """
+from collections import deque
 from typing import Any
 
 from derisk.agent.core.hook.executors import FunctionRegistry
@@ -35,14 +36,31 @@ def register_memory_hooks(
     manager = memory_bundle.manager
     pipeline = getattr(memory_bundle, "pipeline", None)
 
+    # tier2 反思的轮次来源：V2 build_turn_complete_context 不传
+    # extra.turns，这里由 tier1（每轮必触发）把本轮问答存入闭包缓冲，
+    # tier2 触发时取最近 N 轮。maxlen 即反思窗口大小。
+    turns_buffer: deque = deque(maxlen=reflection_interval)
+
     hooks: list = []
 
     # Tier 0: prefetch — 下一轮预取记忆，fire-and-forget
     if pipeline is not None:
         async def _tier0_prefetch(event: dict, _runtime: dict) -> None:
             try:
+                # 轮末预热：用本轮完整问答对作为预取查询（对齐 V1
+                # hook_dispatcher.memory_prefetch_function）。
+                query = "\n".join(
+                    p
+                    for p in (
+                        event.get("user_prompt") or "",
+                        event.get("final_answer") or "",
+                    )
+                    if p
+                )
+                if not query:
+                    return
                 result = await manager.retrieve_relevant_memories(
-                    query=event.get("final_answer") or event.get("user_prompt", ""),
+                    query=query,
                     exclude_rooms=["profile", "preference"],
                 )
                 cache = pipeline.get_prefetch_cache()
@@ -61,15 +79,20 @@ def register_memory_hooks(
                 kind=HookKind.FUNCTION,
                 function_name="_v2_memory_tier0_prefetch",
                 blocking=False,
+                timeout=8,  # hermes 对齐：记忆 hook 8s 熔断
             ),
             priority=190,
         ))
 
     # Tier 1: write_turn_lightweight — 每轮轻量写入
     async def _tier1_write(event: dict, _runtime: dict) -> None:
+        user_msg = event.get("user_prompt", "")
+        ai_msg = event.get("final_answer", "")
+        if user_msg or ai_msg:
+            turns_buffer.append({"user": user_msg, "assistant": ai_msg})
         await manager.write_turn_lightweight(
-            user_message=event.get("user_prompt", ""),
-            agent_response=event.get("final_answer", ""),
+            user_message=user_msg,
+            agent_response=ai_msg,
             metadata={
                 "conv_id": event.get("conv_id"),
                 "round": event.get("round"),
@@ -88,6 +111,7 @@ def register_memory_hooks(
             kind=HookKind.FUNCTION,
             function_name="_v2_memory_tier1_write",
             blocking=False,
+            timeout=8,
         ),
         priority=200,
     ))
@@ -95,11 +119,9 @@ def register_memory_hooks(
     # Tier 2: reflect_on_last_n_turns — 每 N 轮跨轮反思
     async def _tier2_reflect(event: dict, _runtime: dict) -> None:
         # V1 路径在 base_agent.py 把 turns 放在 event["extra"]["turns"]；
-        # V2 的 build_turn_complete_context 暂未支持 extra，turns 为 None
-        # 时 reflect_on_last_n_turns 会早退（longterm_manager.py:519）。
-        # V2 run_loop 补字段之前，tier2 在 V2 路径下仍是 no-op。
+        # V2 由上面的 tier1 闭包缓冲提供最近 N 轮问答。
         extra = event.get("extra") or {}
-        turns = extra.get("turns")
+        turns = extra.get("turns") or list(turns_buffer)
         await manager.reflect_on_last_n_turns(
             n=reflection_interval,
             turns=turns,
@@ -116,6 +138,7 @@ def register_memory_hooks(
             kind=HookKind.FUNCTION,
             function_name="_v2_memory_tier2_reflect",
             blocking=False,
+            timeout=120,  # LLM 反思需要更长窗口，仍有界
         ),
         priority=210,
     ))
@@ -140,6 +163,7 @@ def register_memory_hooks(
             kind=HookKind.FUNCTION,
             function_name="_v2_memory_tier3_curate",
             blocking=False,
+            timeout=120,
         ),
         priority=220,
     ))

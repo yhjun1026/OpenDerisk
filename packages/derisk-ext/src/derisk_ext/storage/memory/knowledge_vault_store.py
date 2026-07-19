@@ -30,6 +30,7 @@ from derisk.storage.memory.base import (
     MemoryStoreBase,
     MemoryStoreConfig,
 )
+from derisk_ext.knowledge.vaultfs.base import TRUST_MIN_RECALL
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +141,14 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
           edges with valid_from=now
 
         merged_content is threat-scanned before write.
+
+        Drift guard: before any mutation, each source doc is round-trip
+        checked against its last vault write. External edits (FS-as-truth)
+        abort the merge with DocDriftError — sources are snapshotted to
+        .bak.<ts> by the vault and never silently clobbered.
         """
         from derisk.storage.memory.threat_scanner import scan_memory_content
+        from derisk_ext.knowledge.vaultfs.base import DocDriftError
         is_safe, reasons = scan_memory_content(merged_content)
         if not is_safe:
             logger.warning(
@@ -151,6 +158,10 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
             raise ValueError(
                 f"Memory content rejected by threat scanner: {reasons}"
             )
+        # Pre-flight drift check on all sources before creating the
+        # target, so a drifted source never leaves a partial merge.
+        for src in source_paths:
+            await self._vault.check_doc_drift(src)
         target_doc_id = await self._vault.doc_create(
             target_path, merged_content, frontmatter
         )
@@ -160,6 +171,8 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
                 # L1 doc_delete refuses protected files; memory docs aren't
                 # protected. History preserved via edges + L0 verbats remain.
                 await self._vault.doc_delete(src)
+            except DocDriftError:
+                raise
             except Exception as e:
                 logger.warning(
                     "[KnowledgeVaultMemory] curate_merge: doc_delete %s failed: %s",
@@ -200,6 +213,22 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
     # Async wrappers (override base — vault is async-native)
     # ------------------------------------------------------------------
 
+    async def _doc_trust(self, path: str) -> float:
+        """Read a doc's trust_score from frontmatter (default 1.0).
+
+        Best-effort: unreadable docs keep full trust so a transient FS
+        error never silently drops recall.
+        """
+        from derisk_ext.knowledge.vaultfs.base import trust_of
+        try:
+            doc = await self._vault.doc_read(path)
+            return trust_of(doc.frontmatter if doc else None)
+        except Exception as e:
+            logger.debug(
+                "[KnowledgeVaultMemory] trust lookup failed for %s: %s", path, e
+            )
+            return 1.0
+
     async def awrite_memory(
         self,
         content: str,
@@ -220,12 +249,19 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
 
         if tier == 2 and meta.get("doc_path"):
             doc_path = meta["doc_path"]
-            frontmatter = meta.get("frontmatter") or {
+            frontmatter = dict(meta.get("frontmatter")) if meta.get("frontmatter") else {
                 "type": "memory",
                 "title": (content[:40] + "...") if len(content) > 40 else content,
                 "created": now.isoformat(),
                 "updated": now.isoformat(),
             }
+            # RFC-005 Phase 1: provenance convention keys for agent-memory
+            # writes (provenance/author_agent_id/confidence/valid_from/
+            # valid_to). Caller-supplied frontmatter wins.
+            frontmatter.setdefault("provenance", "agent")
+            for key in ("author_agent_id", "confidence", "valid_from", "valid_to"):
+                if meta.get(key) is not None and key not in frontmatter:
+                    frontmatter[key] = meta[key]
             doc_id = await self.write_doc(doc_path, content, frontmatter)
             return MemoryEntry(
                 id=doc_id,
@@ -269,6 +305,29 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
             created_at=now.isoformat(),
         )
 
+    async def memory_feedback(self, memory_id: str, helpful: bool) -> Dict[str, Any]:
+        """Record recall-quality feedback for an L1 memory doc.
+
+        `memory_id` may be a doc path (wiki/memories/x.md) or a doc_id as
+        returned in MemoryEntry.id by asearch_memory. Adjusts the doc's
+        frontmatter trust_score (helpful +0.05 / unhelpful -0.10, clamped
+        to [0, 1]) through the vault's doc_edit primitive, so the write
+        is drift-protected. Docs below TRUST_MIN_RECALL stop being
+        returned by asearch_memory.
+        """
+        path = memory_id
+        if not memory_id.endswith(".md"):
+            metas = await self._vault.doc_list(limit=10000)
+            path = next((m.path for m in metas if m.id == memory_id), None)
+            if path is None:
+                raise ValueError(f"memory not found: {memory_id}")
+        result = await self._vault.doc_feedback(path, helpful)
+        logger.info(
+            "[KnowledgeVaultMemory] memory_feedback slug=%s id=%s helpful=%s trust=%.2f",
+            self._config.space_slug, memory_id, helpful, result["trust_score"],
+        )
+        return result
+
     async def asearch_memory(
         self,
         query: str,
@@ -284,6 +343,11 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
                 query=query, mode="hybrid", limit=top_k
             )
             for h in doc_hits:
+                # Recall trust: score *= trust_score; docs driven below
+                # TRUST_MIN_RECALL by negative feedback stop surfacing.
+                trust = await self._doc_trust(h.path)
+                if trust < TRUST_MIN_RECALL:
+                    continue
                 entries.append(MemoryEntry(
                     id=h.document_id,
                     content=h.snippet,
@@ -294,8 +358,9 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
                         "path": h.path,
                         "title": h.title,
                         "type": h.type,
+                        "trust_score": trust,
                     },
-                    score=h.score,
+                    score=h.score * trust,
                 ))
         except Exception as e:
             logger.warning(
@@ -390,6 +455,45 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
             )
             return False
 
+    async def aupdate_memory(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Record metadata updates as L2 graph edges.
+
+        The vault has no metadata-update primitive for L0 verbats / L1
+        docs, so promotion-style metadata (e.g. {"promoted": True,
+        "promotion_score": 0.83}) is persisted as edges on a
+        ``memory:<id>`` entity — durable across restarts and queryable
+        via graph_query. Content replacement is unsupported (vault docs
+        are addressed by path, not id) and returns False.
+        """
+        if content is not None:
+            logger.warning(
+                "[KnowledgeVaultMemory] aupdate_memory: content update not "
+                "supported for memory_id=%s", memory_id,
+            )
+            return False
+        meta = metadata or {}
+        if not meta:
+            return True
+        try:
+            for key, value in meta.items():
+                await self.akg_add(
+                    subject=f"memory:{memory_id}",
+                    predicate=str(key),
+                    object_=str(value),
+                )
+            return True
+        except Exception as e:
+            logger.warning(
+                "[KnowledgeVaultMemory] aupdate_memory %s failed: %s",
+                memory_id, e,
+            )
+            return False
+
     async def akg_invalidate(self, triple_id: str) -> bool:
         try:
             await self._vault.edge_invalidate(eid=triple_id)
@@ -423,6 +527,11 @@ class KnowledgeVaultMemoryStore(MemoryStoreBase):
     def delete_memory(self, memory_id: str) -> bool:
         raise NotImplementedError(
             "KnowledgeVaultMemoryStore is async-only; use adelete_memory"
+        )
+
+    def update_memory(self, memory_id, content=None, metadata=None) -> bool:
+        raise NotImplementedError(
+            "KnowledgeVaultMemoryStore is async-only; use aupdate_memory"
         )
 
     def kg_add(self, subject, predicate, object_, valid_from=None, valid_to=None,

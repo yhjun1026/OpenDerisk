@@ -4,7 +4,7 @@ import { apiInterceptors } from '@/client/api';
 import { getDerisksList, getModelList } from '@/client/api';
 import { getSpace, patchSpace, setEmbedderIdentity } from '@/client/api/knowledge-vault';
 import type { SpaceInfo } from '@/types/knowledge-vault';
-import { Button, Form, InputNumber, Modal, Select, Spin, message } from 'antd';
+import { Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, message } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -79,6 +79,8 @@ export default function SpaceSettings({ slug, onSaved }: Props) {
       llm_model: space.llm_model || undefined,
       multimodal_model: space.multimodal_model || undefined,
       embedder_model: space.embedder_model || undefined,
+      rerank_model: space.rerank_model || '',
+      embed_verbats: !!space.embed_verbats,
     });
   }, [space, form]);
 
@@ -93,6 +95,8 @@ export default function SpaceSettings({ slug, onSaved }: Props) {
           llm_model: values.llm_model || null,
           multimodal_model: values.multimodal_model || null,
           embedder_model: values.embedder_model || null,
+          rerank_model: values.rerank_model?.trim() || null,
+          embed_verbats: !!values.embed_verbats,
         }),
       );
       if (raw) {
@@ -199,6 +203,40 @@ export default function SpaceSettings({ slug, onSaved }: Props) {
                 options={models}
                 optionFilterProp="label"
               />
+            </Form.Item>
+
+            <Form.Item
+              name="rerank_model"
+              label={t('knowledge_rerank_model' as any) || 'Rerank 模型'}
+              tooltip={
+                t('knowledge_rerank_model_desc' as any) ||
+                '检索结果重排模型，留空表示关闭 rerank'
+              }
+              extra={
+                t('knowledge_rerank_model_hint' as any) ||
+                '填写模型名（如 bge-reranker-v2-m3）开启检索重排；留空 = 关闭。'
+              }
+            >
+              <Input
+                allowClear
+                placeholder={t('knowledge_rerank_model_placeholder' as any) || '留空 = 关闭 rerank'}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="embed_verbats"
+              valuePropName="checked"
+              label={t('knowledge_embed_verbats' as any) || 'L0 原文向量化'}
+              tooltip={
+                t('knowledge_embed_verbats_desc' as any) ||
+                '开启后对 L0 verbat 原文做 embedding，支持 verbat 的 semantic/hybrid 检索'
+              }
+              extra={
+                t('knowledge_embed_verbats_hint' as any) ||
+                '开启后 verbat_search 支持 mode=semantic / hybrid；关闭时仅 keyword。需要已配置向量模型。'
+              }
+            >
+              <Switch />
             </Form.Item>
 
             <div className="flex justify-between items-center mt-2">

@@ -43,6 +43,12 @@ export const apiInterceptors = <T = any, D = any>(
         } catch {
           /* empty */
         }
+        const status = err.response?.status;
+        if (status === 401) {
+          errMessage = '登录状态已失效，请重新登录 (401)';
+        } else if (status === 403) {
+          errMessage = '没有访问该资源的权限 (403)';
+        }
       }
       notification && notification.error({
         message: `Request error`,

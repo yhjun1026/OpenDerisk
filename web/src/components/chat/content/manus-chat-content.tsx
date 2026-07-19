@@ -11,6 +11,7 @@ import { LeftOutlined, DesktopOutlined } from '@ant-design/icons';
 import classNames from 'classnames';
 import { ee, EVENTS } from '@/utils/event-emitter';
 import markdownComponents, { markdownPlugins } from '@/components/chat/chat-content-components/config';
+import VisSystemEvents from '@/components/chat/chat-content-components/VisComponents/VisSystemEvents';
 import { GPTVis } from '@antv/gpt-vis';
 import { useSearchParams } from 'next/navigation';
 
@@ -214,6 +215,19 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
   const { history, replyLoading } = useContext(ChatContentContext);
   const [userClosedPanel, setUserClosedPanel] = useState(false);
   const [overrideRunningWindow, setOverrideRunningWindow] = useState<string | null>(null);
+  // 状态事件 badge 数据(由 SystemEventsBridge 从消息流中桥接出来)
+  const [systemEvents, setSystemEvents] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (data: any) => setSystemEvents(data);
+    ee.on(EVENTS.SYSTEM_EVENTS, handler);
+    return () => { ee.off(EVENTS.SYSTEM_EVENTS, handler); };
+  }, []);
+
+  // 会话清空/切换时重置 badge
+  useEffect(() => {
+    if (history.length === 0) setSystemEvents(null);
+  }, [history.length]);
 
   // Sliding window: only render the last MAX_RENDER_COUNT messages, skip oversized ones
   const showMessages = useMemo(() => {
@@ -384,7 +398,9 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
               <div className={classNames("w-full px-3 py-2", !isRightPanelVisible && "max-w-3xl mx-auto")}>
                 <div className="w-full space-y-0.5">
                   {showMessages.map((content) => (
-                    <div key={content.key}>
+                    // content-visibility:auto 让浏览器跳过屏外消息的渲染,
+                    // 长会话(200 条滑动窗口)下大幅降低布局/绘制成本
+                    <div key={content.key} className="[content-visibility:auto] [contain-intrinsic-size:auto_200px]">
                       <ChatContent content={content} messages={showMessages} compact />
                     </div>
                   ))}
@@ -405,6 +421,16 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
           </div>
           {showInput && (
             <div className={classNames("flex-shrink-0 pb-4 pt-2 px-4", !isRightPanelVisible && "max-w-3xl mx-auto w-full")}>
+              {/* 状态事件 badge 区 — 固定在输入框上方。
+                  is_running 与流式状态联动兜底:流结束后即使后端未推终态,
+                  也不再显示"转圈"。 */}
+              {systemEvents && (
+                <div className="w-full mb-2">
+                  <VisSystemEvents
+                    data={{ ...systemEvents, is_running: !!systemEvents.is_running && isProcessing }}
+                  />
+                </div>
+              )}
               <div className="w-full">
                 <UnifiedChatInput ctrl={ctrl} showFloatingActions={hasMessages} />
               </div>
