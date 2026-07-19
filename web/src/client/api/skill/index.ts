@@ -20,6 +20,11 @@ export const syncSkillFromGit = (repo_url: string, branch: string = 'main', forc
   return POST(`/api/v1/serve_skill_service/sync_git?repo_url=${encodeURIComponent(repo_url)}&branch=${branch}&force_update=${force_update}`);
 };
 
+export const syncLocalDir = (skill_dir?: string) => {
+  const query = skill_dir ? `?skill_dir=${encodeURIComponent(skill_dir)}` : '';
+  return POST(`/api/v1/serve_skill_service/sync_local_dir${query}`);
+};
+
 // Async sync task APIs
 export const createSyncTask = (data: {
   repo_url: string;

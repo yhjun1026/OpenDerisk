@@ -182,6 +182,31 @@ async def sync_git(
 
 
 @router.post(
+    "/sync_local_dir",
+    response_model=Result[List[SkillResponse]],
+    dependencies=[Depends(check_api_key)],
+)
+async def sync_local_dir(
+    skill_dir: Optional[str] = Query(
+        None,
+        description="local skill directory path; defaults to project skill dir",
+    ),
+    service: Service = Depends(get_service),
+) -> Result[List[SkillResponse]]:
+    """Sync skills from a local directory (upsert).
+
+    Scans the project skill directory for SKILL.md files and creates/updates
+    the corresponding skill records. Used to rebuild skill records from
+    on-disk files (e.g. after DB data loss).
+    """
+    try:
+        return Result.succ(await service.sync_from_local_dir(skill_dir))
+    except Exception as e:
+        logger.exception("skill sync local dir exception!")
+        return Result.failed(str(e))
+
+
+@router.post(
     "/upload",
     response_model=Result[SkillResponse],
     dependencies=[Depends(check_api_key)],

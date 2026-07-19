@@ -1,8 +1,8 @@
 "use client"
 import { apiInterceptors } from '@/client/api';
-import { getSkillList, createSkill, updateSkill, deleteSkill, createSyncTask, getSyncTaskStatus, getRecentSyncTasks, updateSkillAutoSync, uploadSkillFromZip } from '@/client/api/skill';
+import { getSkillList, createSkill, updateSkill, deleteSkill, createSyncTask, getSyncTaskStatus, getRecentSyncTasks, updateSkillAutoSync, uploadSkillFromZip, syncLocalDir } from '@/client/api/skill';
 import { InnerDropdown } from '@/components/blurred-card';
-import { FolderOpenFilled, ReloadOutlined, PlusOutlined, GithubOutlined, SyncOutlined, HistoryOutlined, CloudSyncOutlined, CloudOutlined, UploadOutlined } from '@ant-design/icons';
+import { FolderOpenFilled, FolderOpenOutlined, ReloadOutlined, PlusOutlined, GithubOutlined, SyncOutlined, HistoryOutlined, CloudSyncOutlined, CloudOutlined, UploadOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { Form, Pagination, Result, Spin, Tooltip, Button, message, Tag, Input, Modal, Select, Switch, PaginationProps, Progress, Drawer, List, Typography, Space, Upload } from 'antd';
 import { useRouter } from 'next/navigation';
@@ -34,6 +34,7 @@ const SkillPage: React.FC = () => {
   const [isSyncProgressDrawerVisible, setIsSyncProgressDrawerVisible] = useState(false);
   const [editingSkill, setEditingSkill] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [syncingLocal, setSyncingLocal] = useState(false);
 
   // Sync task state
   const [currentSyncTask, setCurrentSyncTask] = useState<any>(null);
@@ -232,6 +233,16 @@ const SkillPage: React.FC = () => {
     }
   };
 
+  const handleSyncLocalDir = async () => {
+    setSyncingLocal(true);
+    const [err, res] = await apiInterceptors(syncLocalDir());
+    setSyncingLocal(false);
+    if (res) {
+      message.success(`Synced ${res?.length ?? 0} skills from local directory`);
+      runGetSkillList(queryParams, paginationParams);
+    }
+  };
+
   const handleSyncStop = async () => {
     if (currentSyncTask) {
       message.info('Stopping sync task...');
@@ -301,6 +312,13 @@ const SkillPage: React.FC = () => {
             Sync from Git
           </Button>
         )}
+        <Button
+          icon={<FolderOpenOutlined />}
+          loading={syncingLocal}
+          onClick={handleSyncLocalDir}
+        >
+          Sync Local Dir
+        </Button>
       </Space>
     );
   };

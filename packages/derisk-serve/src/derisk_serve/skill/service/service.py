@@ -419,6 +419,76 @@ class Service(BaseService[SkillEntity, SkillRequest, SkillResponse]):
             logger.exception(f"Failed to sync skills from git: {e}")
             raise
 
+    async def sync_from_local_dir(
+        self, skill_dir: Optional[str] = None
+    ) -> List[SkillResponse]:
+        """Scan a local skill directory and upsert all SKILL.md into the DB.
+
+        Rebuilds server_app_skill records from on-disk skill files (e.g. after
+        DB data loss). For each subdirectory containing SKILL.md, parse its
+        frontmatter and create/update the skill record (upsert). Files are
+        expected to already live under the project skill directory, so no
+        file copy is performed (unlike sync_from_git).
+        """
+
+        def _run() -> List[SkillResponse]:
+            project_skill_dir = skill_dir or self._serve_config.get_project_skill_dir()
+            if not os.path.isdir(project_skill_dir):
+                raise ValueError(f"Skill directory not found: {project_skill_dir}")
+
+            synced: List[SkillResponse] = []
+            for entry in os.scandir(project_skill_dir):
+                if not entry.is_dir():
+                    continue
+                skill_md_path = os.path.join(entry.path, "SKILL.md")
+                if not os.path.exists(skill_md_path):
+                    continue
+                try:
+                    skill_meta = self._parse_skill_md(skill_md_path)
+                    if not skill_meta or not skill_meta.get("name"):
+                        logger.warning(
+                            f"Skipping {entry.path}: no name in SKILL.md"
+                        )
+                        continue
+
+                    skill_code = normalize_skill_name(skill_meta["name"])
+                    existing = self.dao.get_one({"skill_code": skill_code})
+                    auto_sync = existing.auto_sync if existing else True
+
+                    with open(skill_md_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+
+                    request = SkillRequest(
+                        skill_code=skill_code,
+                        name=skill_meta["name"],
+                        description=skill_meta.get("description", ""),
+                        type=skill_meta.get("type", "python"),
+                        author=skill_meta.get("author"),
+                        email=skill_meta.get("email"),
+                        version=skill_meta.get("version"),
+                        path=skill_code,
+                        content=content,
+                        icon=skill_meta.get("icon"),
+                        category=skill_meta.get("category"),
+                        installed=0,
+                        available=True,
+                        auto_sync=auto_sync,
+                    )
+                    # create() upserts: updates if skill_code already exists
+                    synced.append(self.create(request))
+                except Exception as e:
+                    logger.exception(
+                        f"Error processing skill directory {entry.path}: {e}"
+                    )
+                    continue
+
+            logger.info(
+                f"Synced {len(synced)} skills from local dir {project_skill_dir}"
+            )
+            return synced
+
+        return await asyncio.to_thread(_run)
+
     def _find_skill_directories(self, repo_path: str) -> List[str]:
         """Find skill directories in the repository.
 
