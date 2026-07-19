@@ -62,18 +62,28 @@ cp "$DB" "$WORK/original.db"
 ok "原文件已备份: $DB.prerecover_$TS (就地留底,方便回滚)"
 
 # 2. .recover 页级抽取
-#    关键:.recover 遇到坏页会返回非零退出码,但仍会输出已恢复的数据(这是正常行为!)。
-#    只要产出了 SQL 就必须保留 -- 绝不能因非零退出而丢弃改用 .dump(.dump 遇坏页即停,抢救率远差)。
+#    关键1:.recover 遇到坏页会返回非零退出码,但仍会输出已恢复的数据(正常!),只要产出 SQL 就保留。
+#    关键2:若 -wal 文件损坏,.recover 会立刻 malformed 失败、几乎无输出;
+#           此时把 -wal/-shm 移开重跑,取主库最后一次 checkpoint 的稳定状态。
 info "[2/6] 执行 .recover 抽取数据"
 RECOVER_LOG="$WORK/recover.log"
 sqlite3 "$WORK/original.db" ".recover" > "$WORK/recovered.sql" 2> "$RECOVER_LOG" || true
 LINES="$(wc -l < "$WORK/recovered.sql" | xargs)"
 if [ "$LINES" -lt 5 ]; then
-    warn ".recover 几乎无输出(仅 $LINES 行),改用 .dump 兜底"
+    if [ -f "$WORK/original.db-wal" ]; then
+        warn ".recover 仅 $LINES 行,疑似 -wal 损坏,移开 -wal/-shm 后重跑(取最后 checkpoint 状态)"
+        mv "$WORK/original.db-wal" "$WORK/original.db-wal.setaside" 2>/dev/null || true
+        mv "$WORK/original.db-shm" "$WORK/original.db-shm.setaside" 2>/dev/null || true
+        sqlite3 "$WORK/original.db" ".recover" > "$WORK/recovered.sql" 2>> "$RECOVER_LOG" || true
+        LINES="$(wc -l < "$WORK/recovered.sql" | xargs)"
+    fi
+fi
+if [ "$LINES" -lt 5 ]; then
+    warn ".recover 仍几乎无输出(仅 $LINES 行),改用 .dump 兜底"
     sqlite3 "$WORK/original.db" ".dump" > "$WORK/recovered.sql" 2>> "$RECOVER_LOG" || true
     LINES="$(wc -l < "$WORK/recovered.sql" | xargs)"
 else
-    ok "抽取 SQL 行数: $LINES (.recover 对坏库返回非零属正常,已保留全部输出)"
+    ok "抽取 SQL 行数: $LINES"
 fi
 # grep -c 无匹配时会打印 0 并返回非零,用 || true 避免 set -e 退出;空值兜底为 0
 ERRCNT="$(grep -ci 'error\|malformed' "$RECOVER_LOG" 2>/dev/null || true)"
