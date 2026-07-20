@@ -1122,6 +1122,9 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
         logger.info(f"完成会话[{conv_id}]")
         cache = await self._get_cache(conv_id)
         if cache:
+            # 先冲刷攒批中(stream_pending)的流式增量,避免最后一批 content
+            # 被 [DONE] 抢先进队列而丢失(80ms 攒批窗口内未 flush 的内容)。
+            await self._flush_stream_pending(cache)
             await cache.channel.put("[DONE]")
 
     async def have_memory_cache(self, conv_id: str) -> bool:
@@ -1549,6 +1552,8 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
         if cache:
             # 设置停止标志，阻止新的消息推送
             cache.stop_flag = True
+            # 先冲刷攒批中的流式增量,再通知消费者退出,避免丢失最后一批 content
+            await self._flush_stream_pending(cache)
             # 通知队列消费者退出
             try:
                 cache.channel.put_nowait("[DONE]")

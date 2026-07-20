@@ -1332,6 +1332,16 @@ class AgentChat(BaseComponent, ABC):
                 chat_iter = self._chat_messages(agent_conv_id, task)
                 last_chunk_time = current_ms()
 
+                # 用 asyncio.wait 而非 wait_for 包装 __anext__:
+                # wait_for 超时会 cancel 协程,向 _chat_messages 异步生成器注入
+                # CancelledError(属 BaseException,_chat_messages 的 except Exception
+                # 抓不住),生成器被关闭 -> 下次 __anext__ 直接 StopAsyncIteration
+                # -> 提前 yield [DONE],但后台 agent task 仍在跑(表现为:前端不渲染
+                # 内容,过一会突然完成,后端 agent 还在继续)。
+                # asyncio.wait 超时不 cancel pending task,生成器保持挂起继续等
+                # queue.get(),agent 思考/工具执行数分钟也不会中断。
+                next_chunk = asyncio.ensure_future(chat_iter.__anext__())
+
                 while True:
                     # Drain workspace events before waiting for the next chunk (and
                     # on every heartbeat cycle) so they are not delayed.
@@ -1341,13 +1351,12 @@ class AgentChat(BaseComponent, ABC):
                         if formatted:
                             yield task, formatted, agent_conv_id
 
-                    try:
-                        chunk = await asyncio.wait_for(
-                            chat_iter.__anext__(), timeout=HEARTBEAT_TIMEOUT_S
-                        )
-                    except StopAsyncIteration:
-                        break
-                    except asyncio.TimeoutError:
+                    done, _ = await asyncio.wait(
+                        {next_chunk}, timeout=HEARTBEAT_TIMEOUT_S
+                    )
+                    if next_chunk not in done:
+                        # 超时:next_chunk 仍在等 queue.get(),不 cancel。检查是否
+                        # 到了 heartbeat 间隔,发 SSE 注释保活 TCP 连接。
                         now = current_ms()
                         if (
                             task
@@ -1357,6 +1366,11 @@ class AgentChat(BaseComponent, ABC):
                             yield task, ": heartbeat\n\n", agent_conv_id
                             last_chunk_time = now
                         continue
+
+                    try:
+                        chunk = next_chunk.result()
+                    except StopAsyncIteration:
+                        break
 
                     last_chunk_time = current_ms()
                     if chunk and len(chunk) > 0:
@@ -1374,6 +1388,7 @@ class AgentChat(BaseComponent, ABC):
                             )
                             yield task, f"data: {str(e)}\n\n", agent_conv_id
                     stream_complete = True
+                    next_chunk = asyncio.ensure_future(chat_iter.__anext__())
 
                 # Wait for task to finish if it hasn't already
                 if not task.done():
