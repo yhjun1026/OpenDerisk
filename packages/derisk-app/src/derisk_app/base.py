@@ -22,8 +22,31 @@ sys.path.append(ROOT_PATH)
 logger = logging.getLogger(__name__)
 
 
+def _checkpoint_sqlite_wal() -> None:
+    """停止前把 WAL 合并回主库并截断 -wal/-shm。
+
+    os._exit 跳过所有 atexit/finally(为绕过 chroma atexit hang),SQLite 的 WAL
+    不会被自动 checkpoint。若停止时有 background task 正在写(heartbeat /
+    save_conversation / 工具结果),-wal 残留不完整页,下次启动回放会导致 schema
+    页损坏('database disk image is malformed')。此处手动 wal_checkpoint(TRUNCATE)
+    + dispose,失败不阻塞退出(退回原不 checkpoint 行为,不会更糟)。
+    """
+    try:
+        from derisk.storage.metadata.db_manager import db
+        from sqlalchemy import text
+
+        engine = db.engine
+        with engine.connect() as conn:
+            conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+            conn.commit()
+        engine.dispose()
+    except Exception as e:
+        logger.warning(f"WAL checkpoint on shutdown failed: {e}")
+
+
 def signal_handler(sig, frame):
     print("in order to avoid chroma db atexit problem")
+    _checkpoint_sqlite_wal()
     os._exit(0)
 
 
@@ -37,6 +60,9 @@ def server_init(param: ApplicationConfig, system_app: SystemApp):
 
     # load_native_plugins(cfg)
     signal.signal(signal.SIGINT, signal_handler)
+    # SIGTERM 是 kill / 容器停止 / systemctl stop 发的信号,原来没注册会走
+    # Python 默认终止(同样不 checkpoint WAL)。补上让停止时也能优雅 checkpoint。
+    signal.signal(signal.SIGTERM, signal_handler)
 
 
 def _initialize_db_storage(param: ServiceConfig, system_app: SystemApp):

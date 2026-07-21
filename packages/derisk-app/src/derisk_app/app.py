@@ -660,6 +660,17 @@ class AppCreator:
         return f"{self.__class__.__module__}:{self.__class__.__name__}.create"
 
     def workers(self):
+        # SQLite 不支持多进程并发写同一文件:WAL 的 -shm 跨进程协调脆弱,
+        # 多 worker 停止时各自残留 -wal 极易导致主库损坏。强制单进程。
+        from derisk_ext.datasource.rdbms.conn_sqlite import SQLiteConnectorParameters
+
+        if isinstance(self.config.service.web.database, SQLiteConnectorParameters):
+            configured = self.config.system.workers
+            if configured and configured > 1:
+                logger.warning(
+                    f"SQLite 不支持多进程并发写,忽略 workers={configured} 强制单进程"
+                )
+            return None
         return self.config.system.workers
 
 
