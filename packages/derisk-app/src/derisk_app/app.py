@@ -81,15 +81,29 @@ def _apply_json_database_config(app_config: ApplicationConfig) -> None:
             or not getattr(cfg, "web", None)
             or not getattr(cfg.web, "database", None)
         ):
+            logger.info("[DB Config] No database config in JSON, using TOML defaults")
             return
         db = cfg.web.database
         db_type = (db.type or "sqlite").lower()
 
         password = "${env:DERISK_DB_PASSWORD}"
+        password_source = "env"
         if getattr(db, "password_ref", ""):
             resolved = get_secret_value(db.password_ref)
             if resolved:
                 password = resolved
+                password_source = f"secret:{db.password_ref}"
+
+        logger.info("=" * 80)
+        logger.info("[DB Config] Applying database configuration from JSON config:")
+        logger.info(f"[DB Config]   Type:     {db_type}")
+        logger.info(f"[DB Config]   Host:     {db.host or 'localhost'}")
+        logger.info(f"[DB Config]   Port:     {db.port or 3306}")
+        logger.info(f"[DB Config]   User:     {db.user or 'root'}")
+        logger.info(f"[DB Config]   Database: {db.name or 'derisk'}")
+        logger.info(f"[DB Config]   Password: {'***' + password[-4:] if len(password) > 4 else '***'}")
+        logger.info(f"[DB Config]   Password source: {password_source}")
+        logger.info("=" * 80)
 
         if db_type == "sqlite":
             from derisk_ext.datasource.rdbms.conn_sqlite import (
@@ -100,6 +114,7 @@ def _apply_json_database_config(app_config: ApplicationConfig) -> None:
                 path=db.path or "pilot/meta_data/derisk.db",
                 check_same_thread=False,
             )
+            logger.info(f"[DB Config] SQLite path: {db.path or 'pilot/meta_data/derisk.db'}")
         elif db_type == "mysql":
             from derisk_ext.datasource.rdbms.conn_mysql import MySQLParameters
 
@@ -110,6 +125,7 @@ def _apply_json_database_config(app_config: ApplicationConfig) -> None:
                 password=password,
                 database=db.name or "derisk",
             )
+            logger.info(f"[DB Config] MySQL connection: {db.user}@{db.host}:{db.port}/{db.name}")
         elif db_type == "postgresql":
             from derisk_ext.datasource.rdbms.conn_postgresql import (
                 PostgreSQLParameters,
@@ -122,10 +138,12 @@ def _apply_json_database_config(app_config: ApplicationConfig) -> None:
                 password=password,
                 database=db.name or "derisk",
             )
-        logger.info(f"[Startup] Applied system-setting database: {db_type}")
+            logger.info(f"[DB Config] PostgreSQL connection: {db.user}@{db.host}:{db.port}/{db.name}")
+
+        logger.info(f"[DB Config] ✓ Database configuration applied successfully")
     except Exception as e:
         logger.warning(
-            f"[Startup] Failed to apply system-setting database, fallback to TOML: {e}"
+            f"[DB Config] ✗ Failed to apply system-setting database, fallback to TOML: {e}"
         )
 
 
@@ -141,14 +159,22 @@ def load_config(config_file: str = None) -> ApplicationConfig:
     if env_config and not config_file:
         config_file = env_config
 
+    logger.info("=" * 80)
+    logger.info("[Config] Loading configuration...")
     if config_file is None:
         config_file = os.path.join(DERISK_ROOT_PATH, "configs", "derisk-minimal.toml")
     elif not os.path.isabs(config_file):
         config_file = os.path.join(DERISK_ROOT_PATH, config_file)
 
+    logger.info(f"[Config] TOML config file: {config_file}")
+    logger.info(f"[Config] TOML file exists: {os.path.exists(config_file)}")
+    logger.info("=" * 80)
+
     from derisk.util.configure import ConfigurationManager
 
     if not os.path.exists(config_file):
+        logger.info("=" * 80)
+        logger.info("[Config] No TOML file found, using zero configuration mode")
         logger.info(
             f"Starting with zero configuration (no TOML file needed). "
             f"Configure models and settings through the web UI at http://localhost:7777"
@@ -188,6 +214,21 @@ def load_config(config_file: str = None) -> ApplicationConfig:
             f"Service ready. Open http://localhost:{app_config.service.web.port} to configure."
         )
         _apply_json_database_config(app_config)
+
+        # 输出最终使用的数据库配置
+        db = app_config.service.web.database
+        logger.info("=" * 80)
+        logger.info("[Config] Final database configuration (from JSON/TOML):")
+        logger.info(f"[Config]   Type: {type(db).__name__}")
+        if hasattr(db, 'host'):
+            logger.info(f"[Config]   Host: {db.host}")
+            logger.info(f"[Config]   Port: {db.port}")
+            logger.info(f"[Config]   User: {db.user}")
+            logger.info(f"[Config]   Database: {db.database}")
+        else:
+            logger.info(f"[Config]   Path: {db.path}")
+        logger.info("=" * 80)
+
         return app_config
 
     logger.info(f"Loading configuration from: {config_file}")
@@ -208,6 +249,21 @@ def load_config(config_file: str = None) -> ApplicationConfig:
         app_config.service.web.host = env_host
 
     _apply_json_database_config(app_config)
+
+    # 输出最终使用的数据库配置
+    db = app_config.service.web.database
+    logger.info("=" * 80)
+    logger.info("[Config] Final database configuration (from JSON/TOML):")
+    logger.info(f"[Config]   Type: {type(db).__name__}")
+    if hasattr(db, 'host'):
+        logger.info(f"[Config]   Host: {db.host}")
+        logger.info(f"[Config]   Port: {db.port}")
+        logger.info(f"[Config]   User: {db.user}")
+        logger.info(f"[Config]   Database: {db.database}")
+    else:
+        logger.info(f"[Config]   Path: {db.path}")
+    logger.info("=" * 80)
+
     return app_config
 
 

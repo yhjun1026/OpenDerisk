@@ -36,10 +36,33 @@ def _checkpoint_sqlite_wal() -> None:
         from sqlalchemy import text
 
         engine = db.engine
+        if engine is None:
+            return
+
         with engine.connect() as conn:
-            conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+            # 给 checkpoint 连接设置足够长的 busy timeout,等待其他连接释放锁
+            conn.execute(text("PRAGMA busy_timeout=30000"))
+            try:
+                result = conn.execute(
+                    text("PRAGMA wal_checkpoint(TRUNCATE)")
+                ).fetchone()
+                if result is not None:
+                    busy, log, checkpointed = result
+                    logger.info(
+                        f"SQLite WAL checkpoint: "
+                        f"busy={busy}, log={log}, checkpointed={checkpointed}"
+                    )
+                    if busy != 0:
+                        logger.warning(
+                            f"SQLite WAL checkpoint returned busy={busy}; "
+                            f"-wal may still contain uncheckpointed pages"
+                        )
+            except Exception as e:
+                logger.warning(f"WAL checkpoint failed: {e}")
             conn.commit()
+
         engine.dispose()
+        logger.info("SQLite WAL checkpoint completed on shutdown")
     except Exception as e:
         logger.warning(f"WAL checkpoint on shutdown failed: {e}")
 
@@ -390,8 +413,9 @@ def _enable_sqlite_wal_mode(db) -> None:
 
         engine = db.engine
         with engine.connect() as conn:
-            # 启用 WAL 模式 - 支持读写并发
-            conn.execute(text("PRAGMA journal_mode=WAL"))
+            # 启用 WAL 模式 - 支持读写并发,并确认返回值
+            result = conn.execute(text("PRAGMA journal_mode=WAL"))
+            current_mode = result.scalar()
             # 同步模式设为 NORMAL，平衡性能和安全性
             conn.execute(text("PRAGMA synchronous=NORMAL"))
             # 增加缓存大小到 64MB
@@ -401,7 +425,16 @@ def _enable_sqlite_wal_mode(db) -> None:
             # 设置 WAL 自动检查点，防止 WAL 文件过大
             conn.execute(text("PRAGMA wal_autocheckpoint=1000"))
             conn.commit()
-        logger.info("SQLite WAL mode enabled successfully with optimized settings")
+        if str(current_mode).upper() != "WAL":
+            logger.warning(
+                f"SQLite journal_mode is {current_mode!r}, not WAL; "
+                f"concurrent writes may corrupt the database"
+            )
+        else:
+            logger.info(
+                f"SQLite WAL mode enabled successfully with optimized settings "
+                f"(journal_mode={current_mode})"
+            )
     except Exception as e:
         logger.warning(f"Failed to enable SQLite WAL mode: {e}")
 

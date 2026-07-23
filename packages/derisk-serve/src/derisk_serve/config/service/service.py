@@ -77,12 +77,17 @@ class Service(BaseService[ServeEntity, ServeRequest, ServerResponse]):
                 if value:
                     logger.info(f"配置{config_res.name}更新成功！")
                     self._dao.complete_config_update(config_res, value, operator)
+                    return
                 else:
                     logger.info(f"配置{config_res.name}更新失败！")
             else:
                 logger.error(f"没有找到当前配置{config_res.name}的更新服务！{config_res.upload_cls}")
-        finally:
+        except Exception:
             self._dao.fail_config_update(config_res)
+            raise
+
+        # 只有真正失败(取不到值或 updater 不存在)才标记失败,避免成功更新被覆盖成失败状态
+        self._dao.fail_config_update(config_res)
 
     async def force_update(self, key: str, operator: str):
         logger.info(f"force update config,key={key},operator={operator}")

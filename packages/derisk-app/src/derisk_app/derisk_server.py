@@ -24,14 +24,17 @@ def init_json_config_manager():
     """Initialize the JSON config manager for UI configuration"""
     try:
         config_path = str(DEFAULT_JSON_CONFIG_PATH)
-        logger.info(f"Initializing JSON config manager at: {config_path}")
+        logger.info("=" * 80)
+        logger.info("[STARTUP] Loading configuration files...")
+        logger.info(f"[STARTUP] JSON config path: {config_path}")
+        logger.info(f"[STARTUP] JSON config exists: {DEFAULT_JSON_CONFIG_PATH.exists()}")
 
         from derisk_core.config import ConfigManager
 
         ConfigManager.init(config_path)
-        logger.info(
-            f"JSON config manager initialized: {ConfigManager.get_config_path()}"
-        )
+        actual_path = ConfigManager.get_config_path()
+        logger.info(f"[STARTUP] JSON config loaded from: {actual_path}")
+        logger.info("=" * 80)
     except Exception as e:
         logger.error(
             f"Failed to initialize JSON config manager: {e}", exc_info=True
