@@ -25,6 +25,7 @@ from derisk_serve.datasource.api.schemas import (
     TableSpecDetailResponse,
     TableSpecSummaryPageResponse,
     TableSpecSummaryResponse,
+    TableSpecUpdateRequest,
 )
 from derisk_serve.datasource.config import SERVE_SERVICE_COMPONENT_NAME, ServeConfig
 from derisk_serve.datasource.service.service import Service
@@ -514,6 +515,68 @@ async def refresh_table_sample_data(
         datasource_id,
         table_name,
     )
+    return Result.succ(TableSpecDetailResponse(**result))
+
+
+@router.put(
+    "/datasources/{datasource_id}/tables/{table_name}",
+    dependencies=[Depends(check_api_key)],
+    response_model=Result[Optional[TableSpecDetailResponse]],
+)
+async def update_table_spec(
+    datasource_id: str,
+    table_name: str,
+    request: TableSpecUpdateRequest,
+    service: Service = Depends(get_service),
+) -> Result[Optional[TableSpecDetailResponse]]:
+    """Edit a single table spec's learned content.
+
+    Updates editable fields: table comment, group name, and per-column
+    comment/type/nullable/default/pk (matched by column name). Columns
+    are not added or removed. The database-level spec summary is
+    regenerated to stay in sync.
+    """
+    result = await blocking_func_to_async(
+        global_system_app,
+        service.update_table_spec,
+        datasource_id,
+        table_name,
+        request.model_dump(exclude_none=True),
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="table spec not found")
+    return Result.succ(TableSpecDetailResponse(**result))
+
+
+@router.post(
+    "/datasources/{datasource_id}/tables/{table_name}/enrich",
+    dependencies=[Depends(check_api_key)],
+    response_model=Result[Optional[TableSpecDetailResponse]],
+)
+async def enrich_table_descriptions(
+    datasource_id: str,
+    table_name: str,
+    force: bool = Query(
+        False, description="Overwrite existing comments when true"
+    ),
+    service: Service = Depends(get_service),
+) -> Result[Optional[TableSpecDetailResponse]]:
+    """Generate or refresh LLM descriptions for a single table.
+
+    Asks the LLM for a table comment and per-column comments based on
+    the existing learned structure + sample data (does NOT re-fetch
+    structure from the database). When force is false, only empty
+    comments are filled; when true, all comments are overwritten.
+    """
+    result = await blocking_func_to_async(
+        global_system_app,
+        service.enrich_table_descriptions,
+        datasource_id,
+        table_name,
+        force,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="table spec not found")
     return Result.succ(TableSpecDetailResponse(**result))
 
 

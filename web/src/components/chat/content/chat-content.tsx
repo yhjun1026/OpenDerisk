@@ -370,7 +370,7 @@ const ChatContent: React.FC<{
                 .vis-fence-segment {
                   line-height: normal;
                 }
-                .compact-markdown-container pre {
+                .compact-markdown-container pre.uni-chat-md-pre {
                   padding: 0 !important;
                   margin: 0 !important;
                   background: transparent !important;

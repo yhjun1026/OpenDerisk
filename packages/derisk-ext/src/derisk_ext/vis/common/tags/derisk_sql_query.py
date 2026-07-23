@@ -85,6 +85,15 @@ class DeriskSqlQuery(Vis):
         csv_file = kwargs.get("csv_file")
         csv_export_reason = kwargs.get("csv_export_reason")
         raw_result = kwargs.get("raw_result")
+        # 文件模式三段信息
+        file_path = kwargs.get("file_path")
+        file_size = kwargs.get("file_size")
+        file_format = kwargs.get("file_format")
+        file_mode = kwargs.get("file_mode", False)
+        file_export_error = kwargs.get("file_export_error")
+        # 前端下载链接（AFS 统一入口生成）
+        download_url = kwargs.get("download_url")
+        preview_url = kwargs.get("preview_url")
 
         result = {
             "sql": sql,
@@ -104,6 +113,26 @@ class DeriskSqlQuery(Vis):
         if csv_file:
             result["csv_file"] = csv_file
             result["csv_export_reason"] = csv_export_reason
+
+        # 文件模式三段：数据量(total_rows+file_size)、样例 rows、路径 file_path
+        if file_path:
+            result["file_path"] = file_path
+            if file_size is not None:
+                result["file_size"] = file_size
+            if file_format:
+                result["file_format"] = file_format
+
+        if file_mode:
+            result["file_mode"] = True
+
+        if file_export_error:
+            result["file_export_error"] = file_export_error
+
+        # 前端下载链接：优先 download_url，回退 preview_url
+        if download_url:
+            result["download_url"] = download_url
+        if preview_url:
+            result["preview_url"] = preview_url
 
         if raw_result:
             result["raw_result"] = raw_result

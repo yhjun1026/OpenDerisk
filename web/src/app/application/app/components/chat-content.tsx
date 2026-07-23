@@ -5,7 +5,7 @@ import { ChartData, ChatHistoryResponse, UserChatContent} from '@/types/chat';
 import { useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { Layout } from 'antd';
 import ChatContentContainer from '@/components/chat/chat-content-container';
-import { buildVisErrorMarkdown } from '@/components/chat/chat-content-components/VisComponents/VisError';
+import { appendErrorToContext } from '@/components/chat/chat-content-components/VisComponents/VisError';
 import useChat from '@/hooks/use-chat';
 import { getInitMessage, transformFileMarkDown, transformFileUrl } from '@/utils';
 const { Content } = Layout;
@@ -151,7 +151,7 @@ function ChatContent() {
             setReplyLoading(false);
             setCanAbort(false);
             // 保留已流式产出的内容,在末尾追加错误卡片展示原因
-            tempHistory[index].context = (tempHistory[index].context || '') + buildVisErrorMarkdown(message);
+            tempHistory[index].context = appendErrorToContext(tempHistory[index].context, message);
             tempHistory[index].thinking = false;
             setHistory([...tempHistory]);
             resolve();

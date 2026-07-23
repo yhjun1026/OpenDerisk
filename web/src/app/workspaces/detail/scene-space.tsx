@@ -18,6 +18,7 @@ export interface SceneSpaceProps {
   workspaceCode: string;
   onBack: () => void;
   onSelectTask?: (taskId: number) => void;
+  onSelectArtifact?: (artifact: any) => void;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -194,6 +195,7 @@ export function SceneSpace({
   workspaceCode,
   onBack,
   onSelectTask,
+  onSelectArtifact,
 }: SceneSpaceProps) {
   const taskId = context === 'task-detail' && previewItem?.id ? previewItem.id : undefined;
   const task = activeTask;
@@ -211,6 +213,7 @@ export function SceneSpace({
           workspaceId={workspaceId}
           workspaceCode={workspaceCode}
           onSelectTask={onSelectTask || (() => {})}
+          onSelectArtifact={onSelectArtifact}
         />
       </div>
     );

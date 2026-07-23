@@ -7,7 +7,7 @@ import { useAsyncEffect, useDebounceFn, useRequest } from 'ahooks';
 import useChat, { WorkspaceEvent } from '@/hooks/use-chat';
 import useChatPolling from '@/hooks/use-chat-polling';
 import ChatContentContainer from '@/components/chat/chat-content-container';
-import { buildVisErrorMarkdown } from '@/components/chat/chat-content-components/VisComponents/VisError';
+import { appendErrorToContext } from '@/components/chat/chat-content-components/VisComponents/VisError';
 import { getInitMessage, transformFileMarkDown, transformFileUrl } from '@/utils';
 import { STORAGE_INIT_MESSAGE_KET } from '@/utils/constants/storage';
 import { Flex, Layout, message } from 'antd';
@@ -374,7 +374,7 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
             setReplyLoading(false);
             setCanAbort(false);
             // 保留已流式产出的内容,在末尾追加错误卡片展示原因
-            tempHistory[index].context = (tempHistory[index].context || '') + buildVisErrorMarkdown(message);
+            tempHistory[index].context = appendErrorToContext(tempHistory[index].context, message);
             tempHistory[index].thinking = false;
             setHistory([...tempHistory]);
             resolve();

@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 MAX_DISPLAY_ROWS = 200  # 默认显示行数
 MAX_EXPORT_ROWS = 200  # 超过此行数导出为 CSV
 PAGE_SIZE = 200  # 分页大小
+SAMPLE_SIZE = 20  # 文件模式下返回的样例行数
+MAX_VIS_OUTPUT_BYTES = 3 * 1024  # d-sql-query JSON 上限，为 manus-right-panel 留足空间
+SUPPORTED_FILE_FORMATS = {"csv", "json"}  # 文件模式支持的格式
 
 # SQL 写操作类型（DML 和 DDL）
 WRITE_SQL_TYPES = {
@@ -377,6 +380,9 @@ async def get_table_spec(
         "**重要**: SQL 语法必须完全符合目标数据库类型（db_type/dialect）。"
         "例如：SQLite 使用 LIMIT，MySQL 可用 LIMIT，Oracle 使用 ROWNUM，SQL Server 使用 TOP。"
         "执行前请先通过 get_table_spec 了解表结构。"
+        "**文件模式**: 设置 output_to_file=true 可将全量结果生成为文件并上传到沙箱，"
+        "返回数据量（行数+文件大小）、样例数据、沙箱文件路径三段信息，"
+        "完整数据可用 read_file 读取沙箱路径获取。适用于明细类大结果数据。"
     ),
     args={
         "db_name": {
@@ -405,6 +411,25 @@ async def get_table_spec(
             "description": (
                 "分页页码，从 1 开始。默认为 1。"
                 "当结果超过 50 行时，使用分页查看更多数据。"
+                "文件模式（output_to_file=true）下忽略分页。"
+            ),
+            "required": False,
+        },
+        "output_to_file": {
+            "type": "boolean",
+            "description": (
+                "是否启用文件模式，默认 false。"
+                "设为 true 时将全量查询结果生成为文件上传到沙箱，"
+                "返回数据量（行数+大小）、样例数据、沙箱文件路径，"
+                "完整数据可后续用 read_file 读取。适用于明细类大结果。"
+            ),
+            "required": False,
+        },
+        "file_format": {
+            "type": "string",
+            "description": (
+                "文件模式下的存储格式：\"csv\"（默认）或 \"json\"。"
+                "仅在 output_to_file=true 时生效。"
             ),
             "required": False,
         },
@@ -415,6 +440,8 @@ async def execute_sql(
     db_name: str,
     sql: str,
     page: int = 1,
+    output_to_file: bool = False,
+    file_format: str = "csv",
     context=None,
     **kwargs,
 ) -> str:
@@ -534,6 +561,55 @@ async def execute_sql(
                     total_pages=0,
                 )
 
+            # ===== 文件模式：全量结果上传沙箱文件，返回三段（数据量/样例/路径）=====
+            file_export_error = None
+            if output_to_file:
+                fmt = (file_format or "csv").lower()
+                if fmt not in SUPPORTED_FILE_FORMATS:
+                    fmt = "csv"
+                export_info = await _export_to_file(
+                    columns=columns,
+                    rows=all_rows,
+                    db_name=db_name,
+                    sql=sql,
+                    file_format=fmt,
+                    context=context,
+                    kwargs=kwargs,
+                )
+                if export_info is not None:
+                    # 样例数据：前 SAMPLE_SIZE 行，经 VIS 体积守卫
+                    sample_rows, _ = _fit_rows_for_vis(
+                        sql, db_name, db_type, dialect, columns, all_rows[:SAMPLE_SIZE]
+                    )
+                    return _format_sql_result(
+                        sql=sql,
+                        db_name=db_name,
+                        db_type=db_type,
+                        dialect=dialect,
+                        columns=columns,
+                        rows=sample_rows,
+                        total_rows=total_rows,
+                        page=1,
+                        total_pages=1,
+                        csv_file=export_info["path"],
+                        csv_export_reason=(
+                            f"文件模式：结果共 {total_rows} 行，已导出为 "
+                            f"{export_info['format'].upper()} 文件，"
+                            "可用 read_file 读取完整数据"
+                        ),
+                        file_path=export_info["path"],
+                        file_size=export_info["size"],
+                        file_format=export_info["format"],
+                        file_mode=True,
+                        download_url=export_info.get("download_url"),
+                        preview_url=export_info.get("preview_url"),
+                    )
+                # 无沙箱：降级为下方正常分页展示，并标注错误
+                logger.warning(
+                    "[execute_sql] file mode needs sandbox; none, inline fallback"
+                )
+                file_export_error = "文件模式需要沙箱，当前未初始化，已降级为内联展示"
+
             # 计算分页
             total_pages = (total_rows + PAGE_SIZE - 1) // PAGE_SIZE
             page = max(1, min(page, total_pages))  # 确保页码在有效范围内
@@ -541,23 +617,24 @@ async def execute_sql(
             end_idx = start_idx + PAGE_SIZE
             display_rows = all_rows[start_idx:end_idx]
 
-            # 如果结果超过 MAX_EXPORT_ROWS，需要导出 CSV
-            csv_file_path = None
+            # 如果结果超过 MAX_EXPORT_ROWS，需要导出到沙箱文件
+            export_info: Optional[Dict] = None
             csv_export_reason = None
             if total_rows > MAX_EXPORT_ROWS:
-                csv_file_path = await _export_to_csv(
+                export_info = await _export_to_file(
                     columns=columns,
                     rows=all_rows,
                     db_name=db_name,
                     sql=sql,
+                    file_format="csv",
+                    context=context,
                     kwargs=kwargs,
                 )
-                if csv_file_path:
+                if export_info:
                     csv_export_reason = f"结果共 {total_rows} 行，超过 {MAX_EXPORT_ROWS} 行，已导出为 CSV 文件"
 
             # 智能控制展示行数：确保 d-sql-query JSON 不会过大
             # （过大会导致嵌入 manus-right-panel 后整体 JSON 被截断）
-            MAX_VIS_OUTPUT_BYTES = 3 * 1024  # 3KB，为 manus-right-panel 留足空间
             vis_display_rows = display_rows
             display_truncated = False
 
@@ -587,16 +664,18 @@ async def execute_sql(
                         vis_display_rows = vis_display_rows[:5]
                         display_truncated = True
 
-                    # 如果因为展示截断而尚未导出 CSV，则导出完整结果
-                    if display_truncated and not csv_file_path:
-                        csv_file_path = await _export_to_csv(
+                    # 如果因为展示截断而尚未导出，则导出完整结果到沙箱
+                    if display_truncated and not export_info:
+                        export_info = await _export_to_file(
                             columns=columns,
                             rows=all_rows,
                             db_name=db_name,
                             sql=sql,
+                            file_format="csv",
+                            context=context,
                             kwargs=kwargs,
                         )
-                        if csv_file_path:
+                        if export_info:
                             csv_export_reason = (
                                 f"结果共 {total_rows} 行，展示数据因体积过大已缩减为 {len(vis_display_rows)} 行，"
                                 f"完整数据已导出为 CSV 文件"
@@ -622,13 +701,23 @@ async def execute_sql(
             if masked_columns:
                 result_data["masked_columns"] = masked_columns
 
-            if csv_file_path:
-                result_data["csv_file"] = csv_file_path
+            if export_info:
+                result_data["csv_file"] = export_info["path"]
                 result_data["csv_export_reason"] = csv_export_reason
+                result_data["file_path"] = export_info["path"]
+                result_data["file_size"] = export_info["size"]
+                result_data["file_format"] = export_info["format"]
+                if export_info.get("download_url"):
+                    result_data["download_url"] = export_info["download_url"]
+                if export_info.get("preview_url"):
+                    result_data["preview_url"] = export_info["preview_url"]
 
             if display_truncated:
                 result_data["display_truncated"] = True
                 result_data["display_row_count"] = len(vis_display_rows)
+
+            if file_export_error:
+                result_data["file_export_error"] = file_export_error
 
             # 返回结构化结果
             return _format_sql_result(**result_data)
@@ -655,91 +744,245 @@ async def execute_sql(
         )
 
 
-async def _export_to_csv(
+def _resolve_sandbox_client(context, kwargs: Dict) -> Any:
+    """从工具上下文解析沙箱 client（SandboxBase），无则返回 None。
+
+    对齐 tools/builtin/sandbox/base.py:_get_sandbox_client 的解析顺序：
+    V2 ToolContext.get_resource -> context.config -> dict 上下文 -> kwargs 兜底。
+    """
+    def _from_manager(sm: Any) -> Any:
+        if sm is None:
+            return None
+        if hasattr(sm, "client"):
+            return sm.client
+        if hasattr(sm, "get_client"):
+            return sm.get_client()
+        return None
+
+    # V2 ToolContext（非 dict）
+    if context is not None and not isinstance(context, dict):
+        get_resource = getattr(context, "get_resource", None)
+        if callable(get_resource):
+            client = get_resource("sandbox_client")
+            if client is not None:
+                return client
+        cfg = getattr(context, "config", None)
+        if isinstance(cfg, dict):
+            client = cfg.get("sandbox_client")
+            if client is not None:
+                return client
+            client = _from_manager(cfg.get("sandbox_manager"))
+            if client is not None:
+                return client
+        return None
+
+    # dict 上下文（BAIZE 兼容）
+    if isinstance(context, dict):
+        client = context.get("sandbox_client")
+        if client is not None:
+            return client
+        client = _from_manager(context.get("sandbox_manager"))
+        if client is not None:
+            return client
+        cfg = context.get("config", {})
+        if isinstance(cfg, dict):
+            client = cfg.get("sandbox_client")
+            if client is not None:
+                return client
+            client = _from_manager(cfg.get("sandbox_manager"))
+            if client is not None:
+                return client
+
+    # kwargs 兜底
+    client = kwargs.get("sandbox_client")
+    if client is not None:
+        return client
+    return _from_manager(kwargs.get("sandbox_manager"))
+
+
+async def _export_to_file(
     columns: List,
     rows: List,
     db_name: str,
     sql: str,
+    file_format: str,
+    context,
     kwargs: Dict,
-) -> Optional[str]:
-    """导出查询结果到 CSV 文件
+) -> Optional[Dict]:
+    """将查询结果上传到沙箱文件。
+
+    execute_sql 作为内置工具运行在应用服务进程，文件必须通过沙箱文件接口
+    （client.file.write）写入沙箱，返回的沙箱路径才能被 Agent 后续 read_file 读取。
+    本地 temp / AgentFileSystem 路径不在沙箱内，Agent 无法读取，故不再作为兜底。
 
     Returns:
-        CSV 文件路径，如果失败返回 None
+        {"path": sandbox_path, "size": bytes, "format": ext}，无沙箱或失败返回 None。
     """
     try:
+        client = _resolve_sandbox_client(context, kwargs)
+        if client is None:
+            return None
+
+        # 序列化内容
+        if file_format == "json":
+            records = [dict(zip(columns, row)) for row in rows]
+            content = json.dumps(records, ensure_ascii=False, default=str)
+            ext = "json"
+        else:
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(columns)
+            for row in rows:
+                writer.writerow([str(v) if v is not None else "NULL" for v in row])
+            content = buf.getvalue()
+            ext = "csv"
+
+        # 文件名
         import hashlib
         from datetime import datetime
 
-        # 生成文件名
         sql_hash = hashlib.md5(sql.encode()).hexdigest()[:8]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"query_{db_name}_{timestamp}_{sql_hash}.csv"
+        file_name = f"query_{db_name}_{timestamp}_{sql_hash}.{ext}"
 
-        # 尝试使用 AgentFileSystem 或 sandbox
-        agent_file_system = kwargs.get("agent_file_system")
-        sandbox_manager = kwargs.get("context", {}).get("sandbox_manager") if kwargs.get("context") else None
+        # 沙箱路径：{work_dir}/exports/{file_name}
+        work_dir = getattr(client, "work_dir", None) or "/home/user"
+        sandbox_path = f"{work_dir}/exports/{file_name}"
 
-        # 生成 CSV 内容
-        csv_content = io.StringIO()
-        writer = csv.writer(csv_content)
-        writer.writerow(columns)
-        for row in rows:
-            writer.writerow([str(v) if v is not None else "NULL" for v in row])
+        file_iface = getattr(client, "file", None)
+        if file_iface is None or not hasattr(file_iface, "write"):
+            logger.warning("[execute_sql] sandbox client has no file.write interface")
+            return None
 
-        csv_data = csv_content.getvalue()
+        # write 会自动创建所需目录
+        await file_iface.write(path=sandbox_path, data=content, overwrite=True)
+        size = len(content.encode("utf-8"))
+        logger.info(
+            f"[execute_sql] exported {len(rows)} rows to sandbox: {sandbox_path} "
+            f"({size} bytes, {ext})"
+        )
 
-        # 优先使用 sandbox
-        if sandbox_manager:
-            try:
-                work_dir = getattr(sandbox_manager, "work_dir", "/workspace")
-                goal_id = getattr(sandbox_manager, "goal_id", "default")
-                csv_dir = f"{work_dir}/{goal_id}/exports"
-                csv_path = f"{csv_dir}/{file_name}"
+        # 通过 AFS 统一入口转存并获取前端可用的下载链接（供 converter/前端渲染）
+        download_url, preview_url = await _resolve_download_url(
+            context, kwargs, client, sandbox_path, content, ext
+        )
 
-                # 创建目录并写入文件
-                sandbox_manager.run_command(f"mkdir -p {csv_dir}")
-                sandbox_manager.write_file(csv_path, csv_data)
-
-                logger.info(f"Exported query results to sandbox: {csv_path}")
-                return csv_path
-            except Exception as e:
-                logger.warning(f"Failed to export to sandbox: {e}")
-
-        # 使用 AgentFileSystem
-        if agent_file_system:
-            try:
-                from derisk.agent.core.memory.gpts.file_base import FileType
-
-                file_metadata = await agent_file_system.save_file(
-                    file_key=file_name,
-                    data=csv_data,
-                    file_type=FileType.QUERY_RESULT,
-                    extension="csv",
-                    tool_name="execute_sql",
-                )
-
-                logger.info(f"Exported query results via AgentFileSystem: {file_metadata.local_path}")
-                return file_metadata.local_path or file_name
-            except Exception as e:
-                logger.warning(f"Failed to export via AgentFileSystem: {e}")
-
-        # 回退到本地临时目录
-        import tempfile
-        import os
-
-        temp_dir = tempfile.gettempdir()
-        csv_path = os.path.join(temp_dir, file_name)
-
-        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-            f.write(csv_data)
-
-        logger.info(f"Exported query results to temp file: {csv_path}")
-        return csv_path
-
+        return {
+            "path": sandbox_path,
+            "size": size,
+            "format": ext,
+            "download_url": download_url,
+            "preview_url": preview_url,
+        }
     except Exception as e:
-        logger.error(f"Failed to export CSV: {e}")
+        logger.error(f"[execute_sql] _export_to_file failed: {e}")
         return None
+
+
+def _resolve_agent_file_system(context, kwargs: Dict, client: Any) -> Any:
+    """解析 AgentFileSystem（AFS），无则返回 None。
+
+    顺序：sandbox client.agent_file_system -> V2 context resource/config ->
+    dict 上下文 -> kwargs 兜底（对齐 media_gen_tools._get_agent_file_system）。
+    """
+    afs = getattr(client, "agent_file_system", None)
+    if afs is not None:
+        return afs
+
+    if context is not None and not isinstance(context, dict):
+        get_resource = getattr(context, "get_resource", None)
+        if callable(get_resource):
+            afs = get_resource("agent_file_system")
+            if afs is not None:
+                return afs
+        cfg = getattr(context, "config", None)
+        if isinstance(cfg, dict):
+            afs = cfg.get("agent_file_system")
+            if afs is not None:
+                return afs
+    elif isinstance(context, dict):
+        afs = context.get("agent_file_system")
+        if afs is not None:
+            return afs
+        cfg = context.get("config", {})
+        if isinstance(cfg, dict):
+            afs = cfg.get("agent_file_system")
+            if afs is not None:
+                return afs
+
+    return kwargs.get("agent_file_system")
+
+
+async def _resolve_download_url(
+    context, kwargs: Dict, client: Any, sandbox_path: str, content: str, ext: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """通过 AFS save_file_from_sandbox 获取统一下载链接。
+
+    工具结果仍以沙箱路径（file_path）为主供 Agent 读取；下载链接仅用于前端渲染。
+    AFS 不可用或失败时返回 (None, None)，不影响主流程。
+    """
+    try:
+        afs = _resolve_agent_file_system(context, kwargs, client)
+        if afs is None or not hasattr(afs, "save_file_from_sandbox"):
+            return None, None
+
+        from derisk.agent.core.memory.gpts.file_base import FileType
+
+        metadata = await afs.save_file_from_sandbox(
+            sandbox_path=sandbox_path,
+            file_type=FileType.TOOL_OUTPUT,
+            file_content=content,
+            is_deliverable=False,
+            tool_name="execute_sql",
+        )
+        if metadata is None:
+            return None, None
+        download_url = getattr(metadata, "download_url", None)
+        preview_url = getattr(metadata, "preview_url", None)
+        logger.info(
+            f"[execute_sql] AFS download_url resolved for {sandbox_path}: "
+            f"{download_url}"
+        )
+        return download_url, preview_url
+    except Exception as e:
+        logger.warning(f"[execute_sql] resolve download_url via AFS failed: {e}")
+        return None, None
+
+
+def _fit_rows_for_vis(
+    sql: str,
+    db_name: str,
+    db_type: str,
+    dialect: str,
+    columns: List,
+    rows: List,
+) -> Tuple[List, bool]:
+    """逐步缩减行数使 d-sql-query JSON 不超过 MAX_VIS_OUTPUT_BYTES。
+
+    Returns:
+        (缩减后的 rows, 是否发生过缩减)
+    """
+    if not rows:
+        return rows, False
+
+    def _size(r: List) -> int:
+        data = {
+            "sql": sql, "db_name": db_name, "db_type": db_type,
+            "dialect": dialect, "columns": columns, "rows": r,
+        }
+        return len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+    if _size(rows) <= MAX_VIS_OUTPUT_BYTES:
+        return rows, False
+
+    for limit in [100, 50, 20, 10, 5]:
+        if limit >= len(rows):
+            continue
+        candidate = rows[:limit]
+        if _size(candidate) <= MAX_VIS_OUTPUT_BYTES:
+            return candidate, True
+
+    return rows[:5], True
 
 
 def _format_sql_result(
@@ -760,6 +1003,13 @@ def _format_sql_result(
     display_truncated: bool = False,
     display_row_count: Optional[int] = None,
     masked_columns: Optional[List[str]] = None,
+    file_path: Optional[str] = None,
+    file_size: Optional[int] = None,
+    file_format: Optional[str] = None,
+    file_mode: bool = False,
+    file_export_error: Optional[str] = None,
+    download_url: Optional[str] = None,
+    preview_url: Optional[str] = None,
 ) -> str:
     """格式化 SQL 查询结果，返回 SQL 查询组件格式"""
 
@@ -783,6 +1033,27 @@ def _format_sql_result(
     if csv_file:
         result_data["csv_file"] = csv_file
         result_data["csv_export_reason"] = csv_export_reason
+
+    # 文件模式三段：数据量(total_rows+file_size)、样例 rows、路径 file_path
+    if file_path:
+        result_data["file_path"] = file_path
+        if file_size is not None:
+            result_data["file_size"] = file_size
+        if file_format:
+            result_data["file_format"] = file_format
+
+    # 前端下载链接（AFS 统一入口生成），与 file_path 共存：
+    # file_path 给 Agent 读取，download_url 给前端渲染下载
+    if download_url:
+        result_data["download_url"] = download_url
+    if preview_url:
+        result_data["preview_url"] = preview_url
+
+    if file_mode:
+        result_data["file_mode"] = True
+
+    if file_export_error:
+        result_data["file_export_error"] = file_export_error
 
     if raw_result:
         result_data["raw_result"] = raw_result

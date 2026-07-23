@@ -56,3 +56,55 @@ def test_render_workbench_includes_current_task():
     assert "当前任务详情" in result
     assert "launch_playbook" in result
     assert "list_interventions" in result
+
+
+def test_render_focus_block_with_meta_and_snippet():
+    ws = _make_workspace("Ops空间")
+    art = MagicMock(id=42, title="周报", type="report", content_text="正文内容")
+    ctx = WorkspaceContextSnapshot(
+        workspace=ws,
+        materialized_resources=MagicMock(dynamic_resources=[], extra_agents=[]),
+        focused_artifact=art,
+    )
+    result = render_scene_dynamic_context(ctx, mode="lobby")
+    assert "用户当前关注" in result
+    assert "周报" in result
+    assert "report" in result
+    assert "内容摘要" in result
+    assert "正文内容" in result
+
+
+def test_render_focus_block_truncates_long_content():
+    ws = _make_workspace("Ops空间")
+    art = MagicMock(id=1, title="t", type="report", content_text="x" * 1000)
+    ctx = WorkspaceContextSnapshot(
+        workspace=ws,
+        materialized_resources=MagicMock(dynamic_resources=[], extra_agents=[]),
+        focused_artifact=art,
+    )
+    result = render_scene_dynamic_context(ctx, mode="lobby")
+    assert "…" in result
+    assert "x" * 600 not in result
+
+
+def test_render_focus_block_no_snippet_when_content_empty():
+    ws = _make_workspace("Ops空间")
+    art = MagicMock(id=1, title="t", type="report", content_text=None)
+    ctx = WorkspaceContextSnapshot(
+        workspace=ws,
+        materialized_resources=MagicMock(dynamic_resources=[], extra_agents=[]),
+        focused_artifact=art,
+    )
+    result = render_scene_dynamic_context(ctx, mode="lobby")
+    assert "用户当前关注" in result
+    assert "内容摘要" not in result
+
+
+def test_render_no_focus_block_when_absent():
+    ws = _make_workspace("Ops空间")
+    ctx = WorkspaceContextSnapshot(
+        workspace=ws,
+        materialized_resources=MagicMock(dynamic_resources=[], extra_agents=[]),
+    )
+    result = render_scene_dynamic_context(ctx, mode="lobby")
+    assert "用户当前关注" not in result

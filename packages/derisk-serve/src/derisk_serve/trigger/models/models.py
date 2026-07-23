@@ -45,6 +45,7 @@ class TriggerSourceEntity(Model):
     name = Column(String(256), nullable=False)
     config_json = Column(Text, nullable=True)
     target_playbook_id = Column(Integer, nullable=False, index=True)
+    instruction = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     last_fired_at = Column(DateTime, nullable=True)
 
@@ -72,6 +73,7 @@ class TriggerSourceDao(BaseDao[TriggerSourceEntity, TriggerSourceRequest, Trigge
             name=entity.name,
             config=_load_json(entity.config_json),
             target_playbook_id=entity.target_playbook_id,
+            instruction=entity.instruction,
             is_active=entity.is_active,
         )
 
@@ -83,6 +85,7 @@ class TriggerSourceDao(BaseDao[TriggerSourceEntity, TriggerSourceRequest, Trigge
             name=entity.name,
             config=_load_json(entity.config_json),
             target_playbook_id=entity.target_playbook_id,
+            instruction=entity.instruction,
             is_active=entity.is_active,
             last_fired_at=entity.last_fired_at.isoformat() if entity.last_fired_at else None,
             gmt_created=entity.gmt_created.isoformat() if entity.gmt_created else "",

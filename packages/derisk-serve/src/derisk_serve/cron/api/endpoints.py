@@ -16,6 +16,7 @@ from ..config import SERVE_SERVICE_COMPONENT_NAME, ServeConfig
 from ..service.service import Service
 from .schemas import (
     CronStatusResponse,
+    CronValidateRequest,
     ServeRequest,
     ServerResponse,
 )
@@ -341,6 +342,49 @@ async def disable_job(
     )
     await service.update_job(job_id, disable_request)
     return Result.succ({"enabled": False, "job_id": job_id})
+
+
+@router.post(
+    "/validate",
+    response_model=Result,
+    dependencies=[Depends(check_api_key)],
+)
+async def validate_cron(request: CronValidateRequest) -> Result:
+    """校验 cron 表达式并返回下次 5 次执行时间。
+
+    Args:
+        request: 包含 expr(5/6 字段 cron) 和 tz(时区)。
+
+    Returns:
+        {valid, expr, next_runs[]} 或 {valid:false, error}。
+    """
+    from datetime import datetime
+    from apscheduler.triggers.cron import CronTrigger
+
+    expr = (request.expr or "").strip()
+    fields = expr.split()
+    try:
+        if len(fields) == 6:
+            trigger = CronTrigger(
+                second=fields[0], minute=fields[1], hour=fields[2],
+                day=fields[3], month=fields[4], day_of_week=fields[5],
+                timezone=request.tz,
+            )
+        elif len(fields) == 5:
+            trigger = CronTrigger.from_crontab(expr, timezone=request.tz)
+        else:
+            return Result.succ({"valid": False, "error": f"cron 表达式必须是 5 或 6 字段,当前 {len(fields)} 字段"})
+        now = datetime.now(trigger.timezone)
+        next_runs: List[str] = []
+        for _ in range(5):
+            nxt = trigger.get_next_fire_time(None, now)
+            if not nxt:
+                break
+            next_runs.append(nxt.isoformat())
+            now = nxt
+        return Result.succ({"valid": True, "expr": expr, "next_runs": next_runs})
+    except ValueError as e:
+        return Result.succ({"valid": False, "error": str(e)})
 
 
 def init_endpoints(system_app: SystemApp, config: ServeConfig) -> None:

@@ -137,31 +137,45 @@ class PlaybookService(BaseService[PlaybookEntity, PlaybookRequest, PlaybookRespo
         validation = self.validate_declaration(request.declaration or {})
         if not validation["valid"]:
             raise ValueError(f"invalid declaration DSL: {validation['errors']}")
-        existing = self._dao.get_raw_session().query(PlaybookEntity).filter(
-            PlaybookEntity.id == request.id
-        ).first()
-        if not existing:
-            raise ValueError(f"playbook {request.id} not found")
-        existing.name = request.name
-        existing.scenario_type = request.scenario_type
-        existing.task_type = request.task_type
-        existing.trigger_json = json.dumps(request.trigger or {}, ensure_ascii=False)
-        existing.declaration_dsl_json = json.dumps(
-            request.declaration or {}, ensure_ascii=False
-        )
-        if request.is_active is not None:
-            existing.is_active = request.is_active
-        # bump version
-        existing.current_version = (existing.current_version or 1) + 1
-        self._dao.get_raw_session().commit()
-        # record version
+        # 必须用局部 session 变量:db._session 是 sessionmaker(非 scoped_session),
+        # get_raw_session() 每次返回新 session。若写成 self._dao.get_raw_session()
+        # .commit() 会 commit 到另一个空 session,existing 的改动从未提交 -> 返回的
+        # 是内存新值但 DB 没落盘,页面重开就是旧数据。
+        session = self._dao.get_raw_session()
+        try:
+            existing = session.query(PlaybookEntity).filter(
+                PlaybookEntity.id == request.id
+            ).first()
+            if not existing:
+                raise ValueError(f"playbook {request.id} not found")
+            existing.name = request.name
+            existing.scenario_type = request.scenario_type
+            existing.task_type = request.task_type
+            existing.trigger_json = json.dumps(request.trigger or {}, ensure_ascii=False)
+            existing.declaration_dsl_json = json.dumps(
+                request.declaration or {}, ensure_ascii=False
+            )
+            if request.is_active is not None:
+                existing.is_active = request.is_active
+            # bump version
+            existing.current_version = (existing.current_version or 1) + 1
+            session.commit()
+            # commit 后属性 expire;close 前 refresh 防 to_response 读属性 DetachedInstanceError
+            session.refresh(existing)
+            response = self._dao.to_response(existing)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+        # record version(create_version 自管独立 session)
         self._version_dao.create_version(
-            playbook_id=existing.id,
-            version=existing.current_version,
+            playbook_id=response.id,
+            version=response.current_version,
             declaration=request.declaration or {},
             changelog="update",
         )
-        return self._dao.to_response(existing)
+        return response
 
     def get_by_id(self, playbook_id: int) -> Optional[PlaybookResponse]:
         entity = self._dao.get_raw_session().query(PlaybookEntity).filter(

@@ -36,4 +36,32 @@ export function buildVisErrorMarkdown(reason: string): string {
   return `\n\n\`\`\`d-error\n${JSON.stringify(data)}\n\`\`\``;
 }
 
+/**
+ * 将错误卡片注入到 context 末尾,兼容两种消息布局:
+ * - manus/incremental 布局:context 是 final_view JSON
+ *   ({planning_window, running_window, meta_window})。此时若直接把 d-error
+ *   围栏追加到 JSON 字符串末尾会破坏 JSON 结构,导致左面板 planning_window
+ *   解析失败降级成一大坨 raw JSON 文本、右面板 running_window 因 JSON.parse
+ *   失败而丢失。故这里把 d-error 围栏注入 planning_window 字段末尾,保持
+ *   JSON 结构完整。
+ * - 其他布局:context 是围栏 markdown,直接追加到末尾。
+ * JSON.parse 失败时回退到直接追加,不比现状差。
+ */
+export function appendErrorToContext(context: string, reason: string): string {
+  const errorMd = buildVisErrorMarkdown(reason);
+  const base = context || '';
+  if (base.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(base);
+      if (parsed && typeof parsed === 'object' && 'planning_window' in parsed) {
+        parsed.planning_window = (parsed.planning_window || '') + errorMd;
+        return JSON.stringify(parsed);
+      }
+    } catch {
+      // 非有效 JSON,回退到末尾追加
+    }
+  }
+  return base + errorMd;
+}
+
 export default VisError;

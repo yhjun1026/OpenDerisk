@@ -9,7 +9,7 @@ import { Button, Spin } from 'antd';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import { useCallback, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ThunderboltOutlined,
@@ -18,8 +18,10 @@ import {
   SettingOutlined,
   BookOutlined,
   AppstoreOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { SceneWorkspaceShell } from './scene-workspace-shell';
+import { ChatContext } from '@/contexts';
 import '../workspaces.css';
 
 export default function WorkspaceDetailPage() {
@@ -30,6 +32,12 @@ export default function WorkspaceDetailPage() {
   const [convLoadError, setConvLoadError] = useState<string | null>(null);
   const [convLoadKey, setConvLoadKey] = useState(0);
   const [listsRefreshKey, setListsRefreshKey] = useState(0);
+
+  // 场景空间三列布局需要宽度,进入时自动折叠左侧菜单
+  const { setIsMenuExpand } = useContext(ChatContext);
+  useEffect(() => {
+    setIsMenuExpand(false);
+  }, [setIsMenuExpand]);
 
   const { data: ws, loading: wsLoading } = useRequest(async () => {
     if (!workspaceCode) return null;
@@ -155,6 +163,9 @@ export default function WorkspaceDetailPage() {
             </Link>
             <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className="ws-console-nav-link">
               <ThunderboltOutlined />{t('workspaces.tasks') || 'Tasks'}
+            </Link>
+            <Link href={`/workspaces/detail/triggers?id=${workspaceCode}`} className="ws-console-nav-link">
+              <ClockCircleOutlined />{t('workspaces.triggers') || 'Triggers'}
             </Link>
             <Link href={`/workspaces/detail/deliveries?id=${workspaceCode}`} className="ws-console-nav-link ws-console-nav-link--accent">
               <DeliveredProcedureOutlined />{t('workspaces.deliveries') || 'Delivery Space'}

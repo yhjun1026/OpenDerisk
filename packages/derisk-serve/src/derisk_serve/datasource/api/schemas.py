@@ -209,6 +209,40 @@ class TableSpecDetailResponse(BaseModel):
     gmt_modified: Optional[str] = Field(None, description="Spec last modified time")
 
 
+class TableColumnUpdate(BaseModel):
+    """A single column's editable fields in a table spec update."""
+
+    name: str = Field(..., description="Column name (match key, not changed)")
+    comment: Optional[str] = Field(
+        None, description="Column comment / semantic description"
+    )
+    type: Optional[str] = Field(None, description="Column type")
+    nullable: Optional[bool] = Field(
+        None, description="Whether the column allows NULL"
+    )
+    default: Optional[str] = Field(None, description="Default value of the column")
+    pk: Optional[bool] = Field(
+        None, description="Whether the column is a primary key"
+    )
+
+
+class TableSpecUpdateRequest(BaseModel):
+    """Request to edit a single table spec's learned content.
+
+    Only the provided fields are updated. Columns are matched by name and
+    are not added or removed (the column set must match the real database).
+    """
+
+    table_comment: Optional[str] = Field(
+        None, description="Table comment / description"
+    )
+    group_name: Optional[str] = Field(None, description="Table group name")
+    columns: Optional[List[TableColumnUpdate]] = Field(
+        None,
+        description="Column edits matched by name. Columns are not added or removed.",
+    )
+
+
 class BatchTableRequest(BaseModel):
     """Request to fetch multiple table specs at once."""
 

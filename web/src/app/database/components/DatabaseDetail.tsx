@@ -18,12 +18,15 @@ import {
   updateSensitiveColumn,
   detectSensitiveColumns,
   refreshTableSampleData,
+  updateTableSpec,
+  enrichTableDescriptions,
 } from '@/client/api';
 import {
   IChatDbSchema,
   DbSpecResponse,
   TableSpecSummary,
   TableSpecDetail,
+  TableColumnUpdate,
   LearningTaskResponse,
   TableDataPreview,
   SensitiveColumnConfig,
@@ -46,6 +49,9 @@ import {
   PlusOutlined,
   SearchOutlined,
   EditOutlined,
+  CheckOutlined,
+  CloseOutlined,
+  ThunderboltOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
@@ -102,6 +108,10 @@ export default function DatabaseDetail({
   const datasourceId = String(datasource.id);
   const [tableDetailDrawerOpen, setTableDetailDrawerOpen] = useState(false);
   const [selectedTableName, setSelectedTableName] = useState<string>('');
+  const [editMode, setEditMode] = useState(false);
+  const [editComment, setEditComment] = useState('');
+  const [editGroup, setEditGroup] = useState('');
+  const [editColumns, setEditColumns] = useState<TableColumnUpdate[]>([]);
   const [addSensitiveModalOpen, setAddSensitiveModalOpen] = useState(false);
   const [editSensitiveModalOpen, setEditSensitiveModalOpen] = useState(false);
   const [editingColumn, setEditingColumn] = useState<SensitiveColumnConfig | null>(null);
@@ -292,6 +302,78 @@ export default function DatabaseDetail({
       },
       onError: () => {
         message.error('Failed to refresh sample data');
+      },
+    },
+  );
+
+  // Edit table spec (comment / group / columns)
+  const enterEdit = useCallback(() => {
+    if (!tableDetail) return;
+    setEditComment(tableDetail.table_comment || '');
+    setEditGroup(tableDetail.group_name || '');
+    setEditColumns(
+      (tableDetail.columns || []).map((c) => ({
+        name: c.name,
+        comment: c.comment ?? '',
+        type: c.type ?? '',
+        nullable: c.nullable,
+        default: c.default ?? '',
+        pk: c.pk,
+      })),
+    );
+    setEditMode(true);
+  }, [tableDetail]);
+
+  const { run: runUpdateSpec, loading: updateSpecLoading } = useRequest(
+    async () => {
+      if (!selectedTableName) return;
+      const [err] = await apiInterceptors(
+        updateTableSpec(datasourceId, selectedTableName, {
+          table_comment: editComment,
+          group_name: editGroup,
+          columns: editColumns,
+        }),
+      );
+      if (err) throw err;
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        message.success('Table spec updated');
+        setEditMode(false);
+        if (selectedTableName) {
+          fetchTableDetail(selectedTableName);
+        }
+        refreshSpec();
+        refreshTables();
+      },
+      onError: () => {
+        message.error('Failed to update table spec');
+      },
+    },
+  );
+
+  // Regenerate LLM descriptions for a single table (table + column comments)
+  const { run: runEnrich, loading: enrichLoading } = useRequest(
+    async () => {
+      if (!selectedTableName) return;
+      const [err] = await apiInterceptors(
+        enrichTableDescriptions(datasourceId, selectedTableName, true),
+      );
+      if (err) throw err;
+    },
+    {
+      manual: true,
+      onSuccess: () => {
+        message.success('Descriptions regenerated');
+        if (selectedTableName) {
+          fetchTableDetail(selectedTableName);
+        }
+        refreshSpec();
+        refreshTables();
+      },
+      onError: () => {
+        message.error('Failed to regenerate descriptions');
       },
     },
   );
@@ -1059,6 +1141,18 @@ export default function DatabaseDetail({
       }),
     );
 
+    const updateEditColumn = (
+      idx: number,
+      field: keyof TableColumnUpdate,
+      value: string | boolean,
+    ) => {
+      setEditColumns((prev) =>
+        prev.map((c, i) => (i === idx ? { ...c, [field]: value } : c)),
+      );
+    };
+
+    const editColumnRows = editColumns.map((c, i) => ({ ...c, key: i }));
+
     return (
       <Tabs
         defaultActiveKey="schema"
@@ -1075,6 +1169,7 @@ export default function DatabaseDetail({
                     loading={learnLoading}
                     onClick={() => runLearn('single_table', selectedTableName)}
                     size="small"
+                    disabled={editMode}
                   >
                     Refresh Schema
                   </Button>
@@ -1083,30 +1178,137 @@ export default function DatabaseDetail({
                     loading={refreshSampleLoading}
                     onClick={runRefreshSample}
                     size="small"
+                    disabled={editMode}
                   >
                     Refresh Sample Data
                   </Button>
+                  {editMode ? (
+                    <>
+                      <Button
+                        type="primary"
+                        icon={<CheckOutlined />}
+                        loading={updateSpecLoading}
+                        onClick={runUpdateSpec}
+                        size="small"
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        icon={<CloseOutlined />}
+                        onClick={() => setEditMode(false)}
+                        size="small"
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        icon={<EditOutlined />}
+                        onClick={enterEdit}
+                        size="small"
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        icon={<ThunderboltOutlined />}
+                        loading={enrichLoading}
+                        onClick={runEnrich}
+                        size="small"
+                      >
+                        Regenerate Descriptions
+                      </Button>
+                    </>
+                  )}
                 </Space>
 
                 <Descriptions bordered column={2} size="small" className="mb-4">
                   <Descriptions.Item label="Table">{tableDetail.table_name}</Descriptions.Item>
                   <Descriptions.Item label="Comment">
-                    {tableDetail.table_comment || '-'}
+                    {editMode ? (
+                      <Input.TextArea
+                        value={editComment}
+                        onChange={(e) => setEditComment(e.target.value)}
+                        autoSize={{ minRows: 1, maxRows: 4 }}
+                      />
+                    ) : (
+                      tableDetail.table_comment || '-'
+                    )}
                   </Descriptions.Item>
                   <Descriptions.Item label="Row Count">
                     {(tableData?.total ?? tableDetail.row_count)?.toLocaleString() ?? '-'}
                   </Descriptions.Item>
                   <Descriptions.Item label="Group">
-                    {tableDetail.group_name || '-'}
+                    {editMode ? (
+                      <Input
+                        value={editGroup}
+                        onChange={(e) => setEditGroup(e.target.value)}
+                        size="small"
+                      />
+                    ) : (
+                      tableDetail.group_name || '-'
+                    )}
                   </Descriptions.Item>
                 </Descriptions>
 
-                <h4 className="font-semibold mb-2">Columns ({columnTableData.length})</h4>
+                <h4 className="font-semibold mb-2">
+                  Columns ({editMode ? editColumns.length : columnTableData.length})
+                </h4>
                 <Table
-                  dataSource={columnTableData}
+                  dataSource={editMode ? editColumnRows : columnTableData}
                   pagination={false}
                   size="small"
-                  columns={[
+                  columns={editMode ? [
+                    { title: 'Name', dataIndex: 'name', key: 'name' },
+                    {
+                      title: 'Type',
+                      dataIndex: 'type',
+                      key: 'type',
+                      render: (v: string, _r: any, idx: number) => (
+                        <Input
+                          size="small"
+                          value={v ?? ''}
+                          onChange={(e) => updateEditColumn(idx, 'type', e.target.value)}
+                        />
+                      ),
+                    },
+                    {
+                      title: 'Nullable',
+                      dataIndex: 'nullable',
+                      key: 'nullable',
+                      render: (v: boolean, _r: any, idx: number) => (
+                        <Switch
+                          size="small"
+                          checked={!!v}
+                          onChange={(c) => updateEditColumn(idx, 'nullable', c)}
+                        />
+                      ),
+                    },
+                    {
+                      title: 'PK',
+                      dataIndex: 'pk',
+                      key: 'pk',
+                      render: (v: boolean, _r: any, idx: number) => (
+                        <Switch
+                          size="small"
+                          checked={!!v}
+                          onChange={(c) => updateEditColumn(idx, 'pk', c)}
+                        />
+                      ),
+                    },
+                    {
+                      title: 'Comment',
+                      dataIndex: 'comment',
+                      key: 'comment',
+                      render: (v: string, _r: any, idx: number) => (
+                        <Input
+                          size="small"
+                          value={v ?? ''}
+                          onChange={(e) => updateEditColumn(idx, 'comment', e.target.value)}
+                        />
+                      ),
+                    },
+                  ] : [
                     { title: 'Name', dataIndex: 'name', key: 'name' },
                     { title: 'Type', dataIndex: 'type', key: 'type' },
                     {

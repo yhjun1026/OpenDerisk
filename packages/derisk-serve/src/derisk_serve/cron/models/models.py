@@ -160,6 +160,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
             "tool_args": getattr(payload, "tool_args", None),
             "text": getattr(payload, "text", None),
             "timeout_seconds": payload.timeout_seconds,
+            "trigger_id": payload.trigger_id,
+            "workspace_id": payload.workspace_id,
         }
 
         # Session configuration
@@ -210,6 +212,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 else None,
                 session_mode=entity.session_mode,
                 conv_session_id=entity.conv_session_id,
+                trigger_id=entity.payload_data.get("trigger_id") if entity.payload_data else None,
+                workspace_id=entity.payload_data.get("workspace_id") if entity.payload_data else None,
             ),
         )
 
@@ -262,6 +266,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 else None,
                 session_mode=entity.session_mode,
                 conv_session_id=entity.conv_session_id,
+                trigger_id=entity.payload_data.get("trigger_id") if entity.payload_data else None,
+                workspace_id=entity.payload_data.get("workspace_id") if entity.payload_data else None,
             ),
             state=CronJobStateSchema(
                 next_run_at_ms=entity.next_run_at_ms,
@@ -327,6 +333,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 "tool_args": getattr(payload, "tool_args", None),
                 "text": getattr(payload, "text", None),
                 "timeout_seconds": payload.timeout_seconds,
+                "trigger_id": payload.trigger_id,
+                "workspace_id": payload.workspace_id,
             }
             # Update session configuration
             if payload.session_mode is not None:

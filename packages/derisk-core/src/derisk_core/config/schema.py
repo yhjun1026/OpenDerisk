@@ -371,19 +371,6 @@ class FeaturePluginEntry(BaseModel):
     settings: Dict[str, Any] = Field(default_factory=dict)
 
 
-class MemoryStorageConfig(BaseModel):
-    """Memory storage configuration for the memory module."""
-
-    type: str = "simple_sqlite"
-    palace_path: Optional[str] = None
-    enable_kg: bool = True
-    default_wing: Optional[str] = None
-    use_builtin_embedding: bool = False
-    auto_memory: bool = True
-    auto_memory_top_k: int = 5
-    auto_memory_max_distance: float = 0.4
-
-
 class VectorStorageConfig(BaseModel):
     """Vector storage configuration."""
 
@@ -411,7 +398,6 @@ class StorageConfig(BaseModel):
     vector: VectorStorageConfig = Field(default_factory=VectorStorageConfig)
     graph: GraphStorageConfig = Field(default_factory=GraphStorageConfig)
     full_text: FullTextStorageConfig = Field(default_factory=FullTextStorageConfig)
-    memory: MemoryStorageConfig = Field(default_factory=MemoryStorageConfig)
 
 
 class RagConfig(BaseModel):

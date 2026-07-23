@@ -64,6 +64,71 @@ def scan_configs():
     scan_storage_configs()
 
 
+def _apply_json_database_config(app_config: ApplicationConfig) -> None:
+    """系统设置(JSON config/pydantic schema)优先于 TOML:用 pydantic
+    DatabaseConfig 覆盖 dataclass 连接配置,使系统设置 UI 的数据库配置生效。
+
+    password_ref 通过 secrets(encryption.get_secret)解析为明文。失败则静默
+    回退 TOML(不影响启动)。
+    """
+    try:
+        from derisk_core.config import ConfigManager
+        from derisk_core.config.encryption import get_secret as get_secret_value
+
+        cfg = ConfigManager.get()
+        if (
+            not cfg
+            or not getattr(cfg, "web", None)
+            or not getattr(cfg.web, "database", None)
+        ):
+            return
+        db = cfg.web.database
+        db_type = (db.type or "sqlite").lower()
+
+        password = "${env:DERISK_DB_PASSWORD}"
+        if getattr(db, "password_ref", ""):
+            resolved = get_secret_value(db.password_ref)
+            if resolved:
+                password = resolved
+
+        if db_type == "sqlite":
+            from derisk_ext.datasource.rdbms.conn_sqlite import (
+                SQLiteConnectorParameters,
+            )
+
+            app_config.service.web.database = SQLiteConnectorParameters(
+                path=db.path or "pilot/meta_data/derisk.db",
+                check_same_thread=False,
+            )
+        elif db_type == "mysql":
+            from derisk_ext.datasource.rdbms.conn_mysql import MySQLParameters
+
+            app_config.service.web.database = MySQLParameters(
+                host=db.host or "localhost",
+                port=int(db.port or 3306),
+                user=db.user or "root",
+                password=password,
+                database=db.name or "derisk",
+            )
+        elif db_type == "postgresql":
+            from derisk_ext.datasource.rdbms.conn_postgresql import (
+                PostgreSQLParameters,
+            )
+
+            app_config.service.web.database = PostgreSQLParameters(
+                host=db.host or "localhost",
+                port=int(db.port or 5432),
+                user=db.user or "postgres",
+                password=password,
+                database=db.name or "derisk",
+            )
+        logger.info(f"[Startup] Applied system-setting database: {db_type}")
+    except Exception as e:
+        logger.warning(
+            f"[Startup] Failed to apply system-setting database, fallback to TOML: {e}"
+        )
+
+
 def load_config(config_file: str = None) -> ApplicationConfig:
     from derisk.configs.model_config import ROOT_PATH as DERISK_ROOT_PATH
     from derisk_ext.datasource.rdbms.conn_sqlite import SQLiteConnectorParameters
@@ -122,6 +187,7 @@ def load_config(config_file: str = None) -> ApplicationConfig:
         logger.info(
             f"Service ready. Open http://localhost:{app_config.service.web.port} to configure."
         )
+        _apply_json_database_config(app_config)
         return app_config
 
     logger.info(f"Loading configuration from: {config_file}")
@@ -141,6 +207,7 @@ def load_config(config_file: str = None) -> ApplicationConfig:
     if env_host:
         app_config.service.web.host = env_host
 
+    _apply_json_database_config(app_config)
     return app_config
 
 
@@ -557,6 +624,7 @@ def initialize_app(param: ApplicationConfig, app: FastAPI, system_app: SystemApp
     # Migration db storage, so you db models must be imported before this
     # Import cron module to register CronJobEntity before create_all
     from derisk_serve.cron.models.models import CronJobEntity  # noqa: F401
+    from derisk_serve.trigger.models.models import TriggerSourceEntity  # noqa: F401
 
     _migration_db_storage(
         param.service.web.database, web_config.disable_alembic_upgrade

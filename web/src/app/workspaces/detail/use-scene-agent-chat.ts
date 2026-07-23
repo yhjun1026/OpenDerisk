@@ -19,6 +19,7 @@ interface UseSceneAgentChatOptions {
   appCode?: string;
   workspaceId?: number | string;
   taskId?: number | string;
+  focusArtifactId?: number | string;
   onWorkspaceEvent?: (event: WorkspaceEvent) => void;
 }
 
@@ -51,6 +52,7 @@ export function useSceneAgentChat({
   appCode,
   workspaceId,
   taskId,
+  focusArtifactId,
   onWorkspaceEvent,
 }: UseSceneAgentChatOptions): UseSceneAgentChatResult {
   const [steps, setSteps] = useState<AgentStep[]>([]);
@@ -109,7 +111,7 @@ export function useSceneAgentChat({
       setLastInput(payload);
       setError(null);
 
-      const data = buildSceneAgentSendData(payload, { workspaceId, taskId }, convUid);
+      const data = buildSceneAgentSendData(payload, { workspaceId, taskId, focusArtifactId }, convUid);
 
       chat({
         ctrl,
@@ -176,7 +178,7 @@ export function useSceneAgentChat({
         onWorkspaceEvent,
       });
     },
-    [convUid, workspaceId, taskId, chat, appendStep, onWorkspaceEvent],
+    [convUid, workspaceId, taskId, focusArtifactId, chat, appendStep, onWorkspaceEvent],
   );
 
   const abort = useCallback(() => {

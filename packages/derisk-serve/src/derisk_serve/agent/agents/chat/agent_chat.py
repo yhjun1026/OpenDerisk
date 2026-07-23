@@ -150,6 +150,7 @@ def _inject_workspace_context(
     user_id: Optional[str],
     conv_uid: Optional[str],
     task_id: Optional[int],
+    focus_artifact_id: Optional[int] = None,
     system_prompt: List[str],
     extra_agents: List,
     ext_info: Optional[Dict[str, Any]] = None,
@@ -190,6 +191,7 @@ def _inject_workspace_context(
             workspace_id=int(workspace_id),
             user_id=user_id,
             task_id=int(task_id) if task_id else None,
+            focus_artifact_id=focus_artifact_id,
             mode=mode,
         )
         summary = render_workspace_context_summary(ctx, mode=mode)
@@ -1074,6 +1076,7 @@ class AgentChat(BaseComponent, ABC):
             user_id=user_code,
             conv_uid=conv_id,
             task_id=ext_info.get("task_id"),
+            focus_artifact_id=ext_info.get("focus_artifact_id"),
             system_prompt=system_prompt_parts,
             extra_agents=ext_info.setdefault("extra_agents", []),
             ext_info=ext_info,

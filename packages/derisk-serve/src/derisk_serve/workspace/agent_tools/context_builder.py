@@ -42,6 +42,7 @@ class WorkspaceContextSnapshot:
     task_id: Optional[int] = None
     playbooks: List[Any] = field(default_factory=list)
     active_tasks: List[Any] = field(default_factory=list)
+    focused_artifact: Optional[Any] = None  # 用户当前关注的交付物(隐式上下文)
 
 
 def get_workspace_service(system_app) -> WorkspaceService:
@@ -74,11 +75,24 @@ def get_playbook_service(system_app):
     )
 
 
+def get_artifact_service(system_app):
+    """Resolve the artifact service from ``system_app``."""
+    from derisk_serve.artifact.service.service import (
+        ARTIFACT_SERVICE_COMPONENT_NAME,
+        ArtifactService,
+    )
+
+    return system_app.get_component(
+        ARTIFACT_SERVICE_COMPONENT_NAME, ArtifactService
+    )
+
+
 def build_workspace_context(
     system_app,
     workspace_id: int,
     user_id: Optional[str] = None,
     task_id: Optional[int] = None,
+    focus_artifact_id: Optional[int] = None,
     mode: str = "lobby",
 ) -> WorkspaceContextSnapshot:
     """Build a workspace context snapshot.
@@ -159,6 +173,19 @@ def build_workspace_context(
         except Exception:
             pass
 
+    # 用户当前关注的交付物(隐式上下文):加载失败降级为 None,不阻断对话
+    focused_artifact = None
+    if focus_artifact_id is not None:
+        try:
+            artifact_service = get_artifact_service(system_app)
+            focused_artifact = artifact_service.get_by_id(int(focus_artifact_id))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Failed to load focused artifact {focus_artifact_id}",
+                exc_info=True,
+            )
+
     return WorkspaceContextSnapshot(
         workspace=workspace,
         materialized_resources=materialized,
@@ -170,6 +197,7 @@ def build_workspace_context(
         task_id=task_id,
         active_tasks=active_tasks,
         playbooks=playbooks,
+        focused_artifact=focused_artifact,
     )
 
 

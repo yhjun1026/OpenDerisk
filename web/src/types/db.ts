@@ -161,6 +161,21 @@ export type TableSpecDetail = {
   gmt_modified: string | null;
 };
 
+export type TableColumnUpdate = {
+  name: string;
+  comment?: string;
+  type?: string;
+  nullable?: boolean;
+  default?: string;
+  pk?: boolean;
+};
+
+export type TableSpecUpdateRequest = {
+  table_comment?: string;
+  group_name?: string;
+  columns?: TableColumnUpdate[];
+};
+
 export type TableDataPreview = {
   columns: string[];
   first_rows: any[][];

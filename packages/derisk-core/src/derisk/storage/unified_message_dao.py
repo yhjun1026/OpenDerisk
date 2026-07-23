@@ -462,6 +462,11 @@ class UnifiedMessageDAO:
 
                 entities = query.all()
 
+                # chat_history 用本地时间(naive), gpts_conversations 用 UTC(naive)。
+                # 统一减去时区偏移转为 UTC, 否则两表混合排序时 v1 恒领先一个偏移量,
+                # 导致较旧的 chat_history 会话被顶到列表最上方。
+                tz_offset = datetime.now() - datetime.utcnow()
+
                 result = []
                 for entity in entities:
                     result.append(
@@ -472,8 +477,12 @@ class UnifiedMessageDAO:
                             chat_mode=entity.chat_mode or "chat_normal",
                             state="complete",
                             app_code=entity.app_code,
-                            created_at=entity.gmt_created,
-                            updated_at=entity.gmt_modified,
+                            created_at=(entity.gmt_created - tz_offset)
+                            if entity.gmt_created
+                            else None,
+                            updated_at=(entity.gmt_modified - tz_offset)
+                            if entity.gmt_modified
+                            else None,
                             source="v1",
                         )
                     )

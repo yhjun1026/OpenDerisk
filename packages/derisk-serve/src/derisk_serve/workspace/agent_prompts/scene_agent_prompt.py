@@ -46,6 +46,21 @@ def render_scene_dynamic_context(ctx: WorkspaceContextSnapshot, mode: str = "lob
         if getattr(task, "status", None):
             lines.append(f"- 状态：{task.status}")
 
+    # Layer 2.5: user's currently focused artifact (implicit context)
+    if ctx.focused_artifact:
+        lines.append("## 用户当前关注")
+        art = ctx.focused_artifact
+        art_id = getattr(art, "id", "")
+        art_title = getattr(art, "title", "") or f"artifact_{art_id}"
+        art_type = getattr(art, "type", "") or ""
+        lines.append(f"- id={art_id} 标题：{art_title} 类型：{art_type}")
+        content = getattr(art, "content_text", None)
+        if content:
+            snippet = content[:500]
+            if len(content) > 500:
+                snippet += "…"
+            lines.append(f"- 内容摘要：{snippet}")
+
     # Layer 3: available tools
     tool_names = _LOBBY_TOOLS if mode == "lobby" else _WORKBENCH_TOOLS
     lines.append("## 当前可用工具")

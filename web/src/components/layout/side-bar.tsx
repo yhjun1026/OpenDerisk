@@ -25,7 +25,6 @@ import Icon, {
   ExperimentOutlined,
   SafetyOutlined,
   TeamOutlined,
-  UserOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { authService } from '@/services/auth';
@@ -42,7 +41,6 @@ import ModelSvg from '../icons/model-svg';
 import ChatIcon from '../icons/chat-icon';
 import MenuList from './menlist';
 import UserBar from './user-bar';
-import { WorkspaceSwitcher } from './workspace-switcher';
 import copy from 'copy-to-clipboard';
 import { useUserPermissions } from '@/hooks/use-user-permissions';
 
@@ -267,7 +265,7 @@ function SideBar() {
               dialogue: dialogue,
             }),
           );
-          setDialogueLists(di);
+          setDialogueLists(dedupByConvUid(di));
         } else {
           setDialogueLists([]);
         }
@@ -446,7 +444,7 @@ function SideBar() {
           dialogue: dialogue,
         }),
       );
-     setDialogueLists(di);
+     setDialogueLists(dedupByConvUid(di));
     }
 
   }, [dialogueList]);
@@ -617,14 +615,7 @@ function SideBar() {
         name: t('workspaces') || 'Workspaces',
         icon: <TeamOutlined className='w-5 h-5 text-gray-500' />,
         path: '/workspaces',
-        isActive: pathname.startsWith('/workspaces') || pathname.startsWith('/me'),
-      },
-      {
-        key: 'me',
-        name: t('me') || 'My View',
-        icon: <UserOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/me',
-        isActive: pathname === '/me',
+        isActive: pathname.startsWith('/workspaces'),
       },
     ];
     return items;
@@ -654,7 +645,7 @@ function SideBar() {
             dialogue: dialogue,
           }),
         );
-        setDialogueLists(di);
+        setDialogueLists(dedupByConvUid(di));
       }
     }
   };
@@ -676,9 +667,32 @@ function SideBar() {
     return `${weeksAgo} ${t('weeks_ago')}`;
   };
 
+  // 去重:同一 conv_uid 只保留最后活动时间最新的一条(防御后端偶发重复)
+  const dedupByConvUid = (items: DialogueListItem[]): DialogueListItem[] => {
+    const map = new Map<string, DialogueListItem>();
+    for (const item of items) {
+      const key = item.dialogue.conv_uid;
+      if (!key) {
+        map.set(`__no_key_${map.size}`, item);
+        continue;
+      }
+      const prev = map.get(key);
+      if (!prev) {
+        map.set(key, item);
+        continue;
+      }
+      const prevTime = prev.dialogue.gmt_modified || prev.dialogue.gmt_created || '';
+      const curTime = item.dialogue.gmt_modified || item.dialogue.gmt_created || '';
+      if (curTime > prevTime) {
+        map.set(key, item);
+      }
+    }
+    return Array.from(map.values());
+  };
+
   const groupDialoguesByWeek = (dialogues: DialogueListItem[]): GroupedDialogues => {
     return dialogues.reduce((groups, item) => {
-      const date = item.dialogue.gmt_created || item.dialogue.gmt_modified;
+      const date = item.dialogue.gmt_modified || item.dialogue.gmt_created;
       if (date) {
         const weekRange = getWeekRange(date);
         if (!groups[weekRange]) {
@@ -695,13 +709,13 @@ function SideBar() {
     }, {} as GroupedDialogues);
   };
 
-  // Sort items within each group by created time descending
+  // Sort items within each group by last activity time descending
   const sortGroupedDialogues = (grouped: GroupedDialogues): GroupedDialogues => {
     const sorted: GroupedDialogues = {};
     for (const [key, items] of Object.entries(grouped)) {
       sorted[key] = [...items].sort((a, b) => {
-        const aTime = a.dialogue.gmt_created || a.dialogue.gmt_modified || '';
-        const bTime = b.dialogue.gmt_created || b.dialogue.gmt_modified || '';
+        const aTime = a.dialogue.gmt_modified || a.dialogue.gmt_created || '';
+        const bTime = b.dialogue.gmt_modified || b.dialogue.gmt_created || '';
         return bTime.localeCompare(aTime);
       });
     }
@@ -821,11 +835,6 @@ function SideBar() {
         <Link href='/' className='flex flex-row justify-between items-center mb-2 pl-1'>
           <Image src={isMenuExpand ? logo : '/LOGO_SMALL.png'} alt='DB-GPT' width={120} height={30} className="object-contain" />
         </Link>
-
-        {/* Workspace Switcher */}
-        <div className="side-bar-workspace-switcher w-full mb-3 px-1">
-          <WorkspaceSwitcher />
-        </div>
 
         {/* New Chat Button */}
         <Link 

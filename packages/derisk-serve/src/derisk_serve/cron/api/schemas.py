@@ -82,6 +82,14 @@ class CronPayloadSchema(BaseModel):
         default=None,
         description="Conversation session ID for shared session mode or when created from a chat session",
     )
+    trigger_id: Optional[int] = Field(
+        default=None,
+        description="Trigger source ID for triggerFire payload kind",
+    )
+    workspace_id: Optional[int] = Field(
+        default=None,
+        description="Workspace ID for triggerFire payload kind (context passthrough)",
+    )
 
     def to_dict(self, **kwargs) -> Dict[str, Any]:
         """Convert the model to a dictionary."""
@@ -125,6 +133,15 @@ class CronJobStateSchema(BaseModel):
     def to_dict(self, **kwargs) -> Dict[str, Any]:
         """Convert the model to a dictionary."""
         return model_to_dict(self, **kwargs)
+
+
+class CronValidateRequest(BaseModel):
+    """Request schema for validating a cron expression."""
+
+    model_config = ConfigDict(title=f"CronValidate for {SERVE_APP_NAME_HUMP}")
+
+    expr: str = Field(..., description="Cron expression (5 or 6 fields)", examples=["0 9 * * 1"])
+    tz: Optional[str] = Field(default="Asia/Shanghai", description="Timezone")
 
 
 class ServeRequest(BaseModel):

@@ -1769,6 +1769,27 @@ async def get_web_config():
     )
 
 
+def _apply_database_config(web_params, db_dict: Dict[str, Any]) -> None:
+    """更新 web.database(pydantic DatabaseConfig)。
+
+    config_api 操作的是 pydantic schema(schema.py WebServiceConfig),database
+    是 pydantic DatabaseConfig(type/path/host/port/user/password_ref/name),
+    而非 dataclass BaseDatasourceParameters。保留未传入字段的原值,用前端传入
+    值覆盖;密码用 password_ref 引用 secrets 中的密码。
+    """
+    from derisk_core.config.schema import DatabaseConfig
+
+    existing = web_params.database.model_dump() if web_params.database else {}
+    merged = {
+        **existing,
+        **{k: v for k, v in db_dict.items() if v not in (None, "")},
+    }
+    # pydantic DatabaseConfig 无 driver/password/database 字段,过滤前端多传的
+    for k in ("driver", "password", "database"):
+        merged.pop(k, None)
+    web_params.database = DatabaseConfig(**merged)
+
+
 @router.post("/web")
 async def update_web_config(request: Dict[str, Any]):
     try:
@@ -1776,6 +1797,10 @@ async def update_web_config(request: Dict[str, Any]):
         config = manager.get()
 
         for key, value in request.items():
+            # database 是多态参数类,需按 type 构造实例,不能用通用 setattr
+            if key == "database" and isinstance(value, dict):
+                _apply_database_config(config.web, value)
+                continue
             if hasattr(config.web, key):
                 setattr(config.web, key, value)
 
@@ -1847,54 +1872,6 @@ async def update_rag_config(request: Dict[str, Any]):
         return JSONResponse(content={
             "success": True,
             "message": "RAG配置已更新" + ("并保存" if saved else "（保存失败）"),
-            "saved_to_file": saved,
-        })
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.get("/rag/storage/memory")
-async def get_memory_storage_config():
-    """Get memory storage configuration."""
-    manager = get_config_manager()
-    config = manager.get()
-    memory_cfg = getattr(config.rag.storage, "memory", None)
-    if memory_cfg is None:
-        return JSONResponse(content={"success": True, "data": {
-            "type": "simple_sqlite", "enable_kg": True,
-            "use_builtin_embedding": False, "auto_memory": True,
-            "auto_memory_top_k": 5, "auto_memory_max_distance": 0.4,
-        }})
-    if hasattr(memory_cfg, "model_dump"):
-        data = memory_cfg.model_dump()
-    else:
-        data = {k: v for k, v in memory_cfg.__dict__.items() if not k.startswith("_")}
-    return JSONResponse(content={"success": True, "data": data})
-
-
-@router.post("/rag/storage/memory")
-async def update_memory_storage_config(request: Dict[str, Any]):
-    """Update memory storage configuration."""
-    try:
-        manager = get_config_manager()
-        config = manager.get()
-        memory_cfg = config.rag.storage.memory
-        allowed = {
-            "type", "palace_path", "enable_kg", "default_wing",
-            "use_builtin_embedding", "auto_memory",
-            "auto_memory_top_k", "auto_memory_max_distance",
-        }
-        for key, value in request.items():
-            if key in allowed and hasattr(memory_cfg, key):
-                setattr(memory_cfg, key, value)
-        saved = save_config_with_error_handling(manager, "记忆存储配置")
-        data = memory_cfg.model_dump() if hasattr(memory_cfg, "model_dump") else {
-            k: v for k, v in memory_cfg.__dict__.items() if not k.startswith("_")
-        }
-        return JSONResponse(content={
-            "success": True,
-            "message": "记忆存储配置已更新" + ("并保存" if saved else "（保存失败）"),
-            "data": data,
             "saved_to_file": saved,
         })
     except Exception as e:

@@ -23,6 +23,7 @@ class PayloadKind(str, Enum):
     """Payload kind for cron jobs."""
 
     AGENT_TURN = "agentTurn"  # Call an Agent
+    TRIGGER_FIRE = "triggerFire"  # Fire a TriggerSource (run its playbook + instruction)
 
 
 class SessionMode(str, Enum):
@@ -100,6 +101,14 @@ class CronPayload(BaseModel):
     conv_session_id: Optional[str] = Field(
         default=None,
         description="Conversation session ID for shared session mode or when created from a chat session",
+    )
+    trigger_id: Optional[int] = Field(
+        default=None,
+        description="Trigger source ID for triggerFire payload kind",
+    )
+    workspace_id: Optional[int] = Field(
+        default=None,
+        description="Workspace ID for triggerFire payload kind (context passthrough)",
     )
 
 

@@ -11,7 +11,7 @@ export interface CronSchedule {
 }
 
 export interface CronPayload {
-  kind: 'agentTurn' | 'toolCall' | 'systemEvent';
+  kind: 'agentTurn' | 'toolCall' | 'systemEvent' | 'triggerFire';
   message?: string;
   agent_id?: string;
   tool_name?: string;
@@ -20,6 +20,8 @@ export interface CronPayload {
   timeout_seconds?: number;
   session_mode?: 'isolated' | 'shared';
   conv_session_id?: string;
+  trigger_id?: number;
+  workspace_id?: number;
 }
 
 export interface CronJobState {
@@ -151,4 +153,18 @@ export const disableCronJob = (jobId: string) => {
   return POST<{}, { enabled: boolean; job_id: string }>(
     `${API_PREFIX}/jobs/${jobId}/disable`
   );
+};
+
+export interface CronValidateResult {
+  valid: boolean;
+  expr?: string;
+  next_runs?: string[];
+  error?: string;
+}
+
+/**
+ * Validate a cron expression and preview next run times
+ */
+export const validateCron = (expr: string, tz = 'Asia/Shanghai') => {
+  return POST<{ expr: string; tz: string }, CronValidateResult>(`${API_PREFIX}/validate`, { expr, tz });
 };

@@ -134,3 +134,24 @@ def test_link_without_user_id_does_not_auto_set_current(service):
     WorkspaceConversationLinkDao().link(workspace_id=1, conv_uid="conv-1", user_id=None)
     current = service.get_current_conversation(workspace_id=1, user_id=None)
     assert current is None
+
+
+def test_service_set_current_unowned_link_with_real_user(service, db_session):
+    """无主 link(user_id=None) + 真实 user_id 调 set-current 应成功。
+
+    回归 _set_current_internal(set 用 user_id == X 严格匹配)与 get_current
+    (OR 含 NULL)语义不对称导致的 'Failed to set current conversation' 报错:
+    set 匹配不到无主 link -> is_current 没置位 -> get 查不到 -> 抛错。
+    """
+    WorkspaceConversationLinkDao().link(workspace_id=1, conv_uid="conv-1", user_id=None)
+    WorkspaceConversationLinkDao().link(workspace_id=1, conv_uid="conv-2", user_id=None)
+
+    # 真实 user_id=1 切换到无主 link conv-2
+    service.set_current_conversation(workspace_id=1, user_id=1, conv_uid="conv-2")
+
+    current = service.get_current_conversation(workspace_id=1, user_id=1)
+    assert current is not None
+    assert current["conv_uid"] == "conv-2"
+    assert current["is_current"] is True
+    # 同域其他无主 link 被清 False
+    assert _refresh(db_session, "conv-1").is_current is False

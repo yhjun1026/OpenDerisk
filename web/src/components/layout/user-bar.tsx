@@ -3,11 +3,12 @@ import { UserInfoResponse } from '@/types/userinfo';
 import { STORAGE_USERINFO_KEY } from '@/utils/constants/index';
 import { authService } from '@/services/auth';
 import { Dropdown } from 'antd';
-import { LogoutOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import UserAvatar from '@/components/common/user-avatar';
 import cls from 'classnames';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'next/navigation';
 
 interface UserBarProps {
   onlyAvatar?: boolean;
@@ -15,6 +16,7 @@ interface UserBarProps {
 
 function UserBar({ onlyAvatar = false }: UserBarProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [userInfo, setUserInfo] = useState<UserInfoResponse>();
   const [oauthEnabled, setOauthEnabled] = useState(false);
 
@@ -39,17 +41,25 @@ function UserBar({ onlyAvatar = false }: UserBarProps) {
     window.location.href = '/login';
   };
 
-  const menuItems = oauthEnabled
-    ? [
-        {
-          key: 'logout',
-          icon: <LogoutOutlined />,
-          label: t('logout') || '退出登录',
-          onClick: handleLogout,
-          danger: true,
-        },
-      ]
-    : [];
+  const menuItems = [
+    {
+      key: 'me',
+      icon: <UserOutlined />,
+      label: t('me') || '我的视图',
+      onClick: () => router.push('/me'),
+    },
+    ...(oauthEnabled
+      ? [
+          {
+            key: 'logout',
+            icon: <LogoutOutlined />,
+            label: t('logout') || '退出登录',
+            onClick: handleLogout,
+            danger: true,
+          },
+        ]
+      : []),
+  ];
 
   const avatarEl = (
     <UserAvatar
@@ -71,7 +81,7 @@ function UserBar({ onlyAvatar = false }: UserBarProps) {
         })}
       >
         <span className='flex gap-2 items-center overflow-hidden'>
-          {oauthEnabled ? (
+          {menuItems.length > 0 ? (
             <Dropdown menu={{ items: menuItems }} placement="topRight" trigger={['click']}>
               {avatarEl}
             </Dropdown>

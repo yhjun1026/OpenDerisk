@@ -1,9 +1,10 @@
 'use client';
 
 import { STORAGE_USERINFO_KEY } from '@/utils/constants/index';
-import { LogoutOutlined } from '@ant-design/icons';
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { Dropdown, Typography } from 'antd';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { authService } from '@/services/auth';
 import UserAvatar from '@/components/common/user-avatar';
 
@@ -14,6 +15,7 @@ interface UserInfo {
 }
 
 function TopHeader() {
+  const router = useRouter();
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const [ready, setReady] = useState(false);
@@ -74,17 +76,25 @@ function TopHeader() {
   const displayName = userInfo?.nick_name || '用户';
   const avatarSrc = oauthEnabled ? (userInfo?.avatar_url || undefined) : undefined;
 
-  const menuItems = oauthEnabled
-    ? [
-        {
-          key: 'logout',
-          icon: <LogoutOutlined />,
-          label: '退出登录',
-          onClick: handleLogout,
-          danger: true,
-        },
-      ]
-    : [];
+  const menuItems = [
+    {
+      key: 'me',
+      icon: <UserOutlined />,
+      label: '我的视图',
+      onClick: () => router.push('/me'),
+    },
+    ...(oauthEnabled
+      ? [
+          {
+            key: 'logout',
+            icon: <LogoutOutlined />,
+            label: '退出登录',
+            onClick: handleLogout,
+            danger: true,
+          },
+        ]
+      : []),
+  ];
 
   const avatarEl = (
     <span className="flex items-center gap-2 cursor-pointer select-none">
@@ -113,7 +123,7 @@ function TopHeader() {
                     transition-all duration-300 ease-out
                     hover:shadow-[0_12px_40px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.06)]
                     dark:hover:shadow-[0_12px_40px_rgba(0,0,0,0.4),0_4px_12px_rgba(0,0,0,0.2)]">
-      {oauthEnabled && menuItems.length > 0 ? (
+      {menuItems.length > 0 ? (
         <Dropdown menu={{ items: menuItems }} placement="bottomRight" trigger={['click']}>
           {avatarEl}
         </Dropdown>

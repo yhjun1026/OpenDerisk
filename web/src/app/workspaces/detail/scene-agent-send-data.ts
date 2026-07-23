@@ -10,6 +10,7 @@ export interface SceneAgentSendPayload {
 export interface SendDataOptions {
   workspaceId?: number | string;
   taskId?: number | string;
+  focusArtifactId?: number | string;
 }
 
 export interface ChatInParam {
@@ -45,7 +46,7 @@ export function buildSceneAgentSendData(
   convUid: string,
 ): SceneAgentSendData {
   const { text, resources = [], model, playbookCommand } = payload;
-  const { workspaceId, taskId } = options;
+  const { workspaceId, taskId, focusArtifactId } = options;
   const trimmed = text.trim();
 
   const userInput =
@@ -85,6 +86,7 @@ export function buildSceneAgentSendData(
       vis_render: 'scene_agent_workspace',
       ...(workspaceId !== undefined ? { workspace_id: Number(workspaceId) } : {}),
       ...(taskId !== undefined ? { task_id: Number(taskId) } : {}),
+      ...(focusArtifactId !== undefined ? { focus_artifact_id: Number(focusArtifactId) } : {}),
     },
   };
 }

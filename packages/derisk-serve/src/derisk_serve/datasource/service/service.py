@@ -494,6 +494,28 @@ class Service(
         """Get a single table spec."""
         return self.spec_service.get_table_spec(int(datasource_id), table_name)
 
+    def update_table_spec(
+        self,
+        datasource_id: str,
+        table_name: str,
+        update: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Edit editable fields of a single table spec."""
+        return self.learning_service.update_table_spec(
+            int(datasource_id), table_name, update
+        )
+
+    def enrich_table_descriptions(
+        self,
+        datasource_id: str,
+        table_name: str,
+        force: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Generate/refresh LLM descriptions for a single table."""
+        return self.learning_service.enrich_table_descriptions(
+            int(datasource_id), table_name, force
+        )
+
     def get_table_specs_batch(
         self, datasource_id: str, table_names: List[str]
     ) -> List[Dict[str, Any]]:

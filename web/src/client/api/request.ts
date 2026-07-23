@@ -35,6 +35,7 @@ import {
   TableDataPreview,
   TableSpecDetail,
   TableSpecSummary,
+  TableSpecUpdateRequest,
 } from '@/types/db';
 import {
   GetEditorSQLRoundRequest,
@@ -184,6 +185,25 @@ export const refreshTableSampleData = (
 ) => {
   return POST<null, TableSpecDetail>(
     `/api/v2/serve/datasources/${id}/tables/${tableName}/refresh-sample`,
+  );
+};
+export const updateTableSpec = (
+  id: string | number,
+  tableName: string,
+  data: TableSpecUpdateRequest,
+) => {
+  return PUT<TableSpecUpdateRequest, TableSpecDetail>(
+    `/api/v2/serve/datasources/${id}/tables/${tableName}`,
+    data,
+  );
+};
+export const enrichTableDescriptions = (
+  id: string | number,
+  tableName: string,
+  force: boolean = true,
+) => {
+  return POST<null, TableSpecDetail>(
+    `/api/v2/serve/datasources/${id}/tables/${tableName}/enrich?force=${force}`,
   );
 };
 

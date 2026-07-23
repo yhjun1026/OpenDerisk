@@ -23,6 +23,7 @@ export interface LobbyProps {
   workspaceId: number;
   workspaceCode: string;
   onSelectTask: (taskId: number) => void;
+  onSelectArtifact?: (artifact: any) => void;
 }
 
 function SectionHead({
@@ -58,6 +59,7 @@ function EmptyState({ title, hint }: { title: string; hint?: string }) {
 export function Lobby({
   workspaceId,
   onSelectTask,
+  onSelectArtifact,
 }: LobbyProps) {
   const handleQuickStart = async (playbookId: number) => {
     const [err, task] = await apiInterceptors(
@@ -138,7 +140,14 @@ export function Lobby({
                 <EmptyState title="暂无产出物" hint="任务产出的报告、数据集会沉淀在这里" />
               )}
               {recentArtifacts.map((a: any) => (
-                <div key={a.id} className="ws-lobby__hosted-card">
+                <div
+                  key={a.id}
+                  className="ws-lobby__hosted-card"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectArtifact?.(a)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectArtifact?.(a); }}
+                >
                   <span className="ws-lobby__hosted-title">{a.title || `artifact_${a.id}`}</span>
                   <Tag color="blue">{a.type}</Tag>
                 </div>

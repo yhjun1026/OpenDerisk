@@ -18,6 +18,7 @@ interface TriggerRow {
   workspace_id: number;
   name: string;
   type: string;
+  instruction?: string;
   target_playbook_id: number;
   is_active: boolean;
   last_fired_at?: string;
@@ -85,10 +86,17 @@ export default function TriggerListPage() {
       title: t('triggers.name') || 'Name',
       dataIndex: 'name',
       render: (v: string, r: TriggerRow) => (
-        <Link href={`/workspaces/detail/triggers/create?id=${workspaceCode}&trigger_id=${r.id}`} className="ws-table-link">
+        <Link href={`/workspaces/detail/tasks/create?id=${workspaceCode}&trigger_id=${r.id}&type=${r.type}`} className="ws-table-link">
           {v}
         </Link>
       ),
+    },
+    {
+      title: '指令',
+      dataIndex: 'instruction',
+      render: (v?: string) => v ? (
+        <span title={v} style={{ color: 'var(--ws-ink-2)' }}>{v.length > 26 ? v.slice(0, 26) + '…' : v}</span>
+      ) : <span style={{ color: 'var(--ws-ink-3)' }}>—</span>,
     },
     {
       title: t('triggers.type') || 'Type',
@@ -130,7 +138,7 @@ export default function TriggerListPage() {
           <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} onClick={() => handleFire(r)}>
             {t('triggers.fire') || 'Fire'}
           </Button>
-          <Link href={`/workspaces/detail/triggers/create?id=${workspaceCode}&trigger_id=${r.id}`}>
+          <Link href={`/workspaces/detail/tasks/create?id=${workspaceCode}&trigger_id=${r.id}&type=${r.type}`}>
             <Button size="small">{t('edit') || 'Edit'}</Button>
           </Link>
           <Button size="small" danger onClick={() => handleDelete(r.id)}>{t('delete') || 'Delete'}</Button>
@@ -163,7 +171,7 @@ export default function TriggerListPage() {
             <Link href={`/workspaces/detail?id=${workspaceCode}`}>
               <Button icon={<ArrowLeftOutlined />}>{t('back') || 'Back'}</Button>
             </Link>
-            <Link href={`/workspaces/detail/triggers/create?id=${workspaceCode}`}>
+            <Link href={`/workspaces/detail/tasks/create?id=${workspaceCode}&type=timer`}>
               <Button type="primary" icon={<PlusOutlined />}>{t('triggers.create') || 'New Trigger'}</Button>
             </Link>
           </div>

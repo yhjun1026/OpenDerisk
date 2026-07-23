@@ -213,17 +213,32 @@ class WorkspaceConversationLinkDao(
         finally:
             session.close()
 
+    def _user_scope_filter(self, user_id: Optional[int]):
+        """用户可见域,与 get_current 对称:无主 link(user_id IS NULL)对所有用户可见。
+
+        set_current 与 get_current 必须共用同一域,否则会出现"设了 current 却查不到"
+        的不对称:set 用 user_id == X 严格匹配会漏掉无主 link(NULL != X),而 get 又
+        把无主 link 视为可见 -> 永远查不到 is_current=True -> "Failed to set current"。
+        """
+        if user_id is None:
+            return WorkspaceConversationLinkEntity.user_id.is_(None)
+        return or_(
+            WorkspaceConversationLinkEntity.user_id == user_id,
+            WorkspaceConversationLinkEntity.user_id.is_(None),
+        )
+
     def _set_current_internal(
         self,
         workspace_id: int,
         user_id: Optional[int],
         conv_uid: str,
     ) -> None:
+        scope = self._user_scope_filter(user_id)
         session = self.get_raw_session()
         try:
             session.query(WorkspaceConversationLinkEntity).filter(
                 WorkspaceConversationLinkEntity.workspace_id == workspace_id,
-                WorkspaceConversationLinkEntity.user_id == user_id,
+                scope,
                 WorkspaceConversationLinkEntity.conv_uid != conv_uid,
             ).update(
                 {WorkspaceConversationLinkEntity.is_current: False},
@@ -231,7 +246,7 @@ class WorkspaceConversationLinkDao(
             )
             session.query(WorkspaceConversationLinkEntity).filter(
                 WorkspaceConversationLinkEntity.workspace_id == workspace_id,
-                WorkspaceConversationLinkEntity.user_id == user_id,
+                scope,
                 WorkspaceConversationLinkEntity.conv_uid == conv_uid,
             ).update(
                 {WorkspaceConversationLinkEntity.is_current: True},
@@ -261,20 +276,8 @@ class WorkspaceConversationLinkDao(
             q = session.query(WorkspaceConversationLinkEntity).filter(
                 WorkspaceConversationLinkEntity.workspace_id == workspace_id,
                 WorkspaceConversationLinkEntity.is_current.is_(True),
+                self._user_scope_filter(user_id),
             )
-            if user_id is None:
-                q = q.filter(WorkspaceConversationLinkEntity.user_id.is_(None))
-            else:
-                # 兼容历史无主的 link(user_id 为 None):视为当前用户可见
-                # 注意:不能用 in_([user_id, None]),NULL 在 IN 中不匹配
-                from sqlalchemy import or_
-
-                q = q.filter(
-                    or_(
-                        WorkspaceConversationLinkEntity.user_id == user_id,
-                        WorkspaceConversationLinkEntity.user_id.is_(None),
-                    )
-                )
             return q.order_by(
                 WorkspaceConversationLinkEntity.gmt_modified.desc()
             ).first()

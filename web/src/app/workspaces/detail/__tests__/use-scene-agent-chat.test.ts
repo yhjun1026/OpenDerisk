@@ -48,6 +48,18 @@ describe('buildSceneAgentSendData', () => {
     // ext_info 仍含 vis_render
     expect(data.ext_info).toMatchObject({ vis_render: 'scene_agent_workspace', workspace_id: 9 });
   });
+
+  test('focusArtifactId 写入 ext_info.focus_artifact_id', () => {
+    const payload: SceneAgentSendPayload = { text: '你好' };
+    const data = buildSceneAgentSendData(payload, { workspaceId: 9, focusArtifactId: 42 }, 'c1');
+    expect(data.ext_info).toMatchObject({ focus_artifact_id: 42 });
+  });
+
+  test('未传 focusArtifactId 时 ext_info 不含 focus_artifact_id', () => {
+    const payload: SceneAgentSendPayload = { text: '你好' };
+    const data = buildSceneAgentSendData(payload, { workspaceId: 9 }, 'c1');
+    expect(data.ext_info).not.toHaveProperty('focus_artifact_id');
+  });
 });
 
 describe('parseSceneAgentWorkspaceString', () => {

@@ -16,6 +16,8 @@ export interface AgentWorkspaceProps {
   appCode?: string;
   workspaceId?: number | string;
   taskId?: number | string;
+  focus?: { id: number; title: string } | null;
+  onClearFocus?: () => void;
   onStepClick?: (step: AgentStep) => void;
   onWorkspaceEvent?: (event: WorkspaceEvent) => void;
   onConvChanged?: (convUid: string) => void;
@@ -31,6 +33,8 @@ export function AgentWorkspace({
   appCode,
   workspaceId,
   taskId,
+  focus,
+  onClearFocus,
   onStepClick,
   onWorkspaceEvent,
   onConvChanged,
@@ -47,6 +51,7 @@ export function AgentWorkspace({
     appCode,
     workspaceId,
     taskId,
+    focusArtifactId: focus?.id,
     onWorkspaceEvent,
   });
 
@@ -128,6 +133,8 @@ export function AgentWorkspace({
           lastInput={lastInput ? { text: typeof lastInput.text === 'string' ? lastInput.text : '' } : null}
           onRetry={lastInput ? () => send(lastInput) : undefined}
           playbooks={playbooks}
+          focus={focus}
+          onClearFocus={onClearFocus}
         />
       </div>
     </div>

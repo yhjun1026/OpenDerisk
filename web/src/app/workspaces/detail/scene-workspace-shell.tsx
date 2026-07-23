@@ -1,7 +1,7 @@
 'use client';
 
 import './scene-workspace.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
@@ -52,8 +52,22 @@ export function SceneWorkspaceShell({
   // rail 抽屉(中屏)与单列 tab(小屏)状态
   const [railOpen, setRailOpen] = useState(true);
   const [mobilePane, setMobilePane] = useState<'rail' | 'space' | 'agent'>('space');
+  // 隐式上下文:用户点 × 取消带入当前关注的交付物
+  const [focusDismissed, setFocusDismissed] = useState(false);
   const prevActiveTaskId = useRef<number | null>(null);
   const agentInputRef = useRef<AgentWorkspaceInputHandle>(null);
+
+  // 隐式上下文:用户当前在中间区域查看的交付物(artifact),发消息时自动带入 agent 上下文。
+  // 仅 file-preview/entity-card 且有 artifact_id 时生效;点 chip × 设 focusDismissed 取消带入。
+  const focus = useMemo<{ id: number; title: string } | null>(() => {
+    if (focusDismissed) return null;
+    if (detailContext !== 'file-preview' && detailContext !== 'entity-card') return null;
+    const p = previewItem;
+    const id = p?.payload?.artifact_id || p?.payload?.file_id || p?.artifact_id;
+    if (!id) return null;
+    const title = p?.payload?.title || p?.title || `artifact_${id}`;
+    return { id: Number(id), title };
+  }, [detailContext, previewItem, focusDismissed]);
 
   // 双向联动:把场景内容(任务)引用进 Agent 输入框
   const handleReference = (task: any) => {
@@ -139,6 +153,7 @@ export function SceneWorkspaceShell({
   };
 
   const handleStepClick = (step: AgentStep) => {
+    setFocusDismissed(false);
     if (step.type === 'tool_call' || step.type === 'llm') {
       setPreviewItem(step);
       setDetailContext('tool-result');
@@ -161,6 +176,7 @@ export function SceneWorkspaceShell({
         if (event.payload?.file_id || event.payload?.artifact_id) {
           setPreviewItem(event);
           setDetailContext(event.payload?.file_id ? 'file-preview' : 'entity-card');
+          setFocusDismissed(false);
         }
         break;
       case 'task_created':
@@ -170,6 +186,7 @@ export function SceneWorkspaceShell({
       case 'asset_referenced':
         setPreviewItem(event);
         setDetailContext('entity-card');
+        setFocusDismissed(false);
         break;
       case 'intervention_triggered':
         onRefreshLists?.();
@@ -228,9 +245,11 @@ export function SceneWorkspaceShell({
         <SceneTaskRail
           tasks={tasks}
           interventions={interventions}
+          workspaceId={workspaceId}
           activeTaskId={activeTaskId}
           disabled={switchingTask}
           playbooks={playbooks}
+          onRefreshLists={onRefreshLists}
           onPreview={(item, kind) => {
             handlePreview(item, kind);
             setMobilePane('space');
@@ -255,6 +274,11 @@ export function SceneWorkspaceShell({
             const task = tasks.find((t) => t.id === taskId);
             if (task) handlePreview(task, 'task');
           }}
+          onSelectArtifact={(artifact) => {
+            setPreviewItem({ payload: { artifact_id: artifact.id, title: artifact.title, type: artifact.type } });
+            setDetailContext('entity-card');
+            setFocusDismissed(false);
+          }}
         />
       </div>
       <div className="ws-scene-shell__agent">
@@ -269,6 +293,8 @@ export function SceneWorkspaceShell({
           appCode={appCode}
           workspaceId={workspaceId}
           taskId={rightTaskId}
+          focus={focus}
+          onClearFocus={() => setFocusDismissed(true)}
           onStepClick={handleStepClick}
           onWorkspaceEvent={handleWorkspaceEvent}
           onConvChanged={onConvChanged}

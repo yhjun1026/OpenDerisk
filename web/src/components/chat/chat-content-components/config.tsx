@@ -399,7 +399,7 @@ export const basicComponents: { [key: string]: (props: any) => React.ReactNode }
     return <p>{children}</p>;
   },
   pre({ children }) {
-    return <pre className='whitespace-pre' style={{ margin: 0, padding: 0 }}>{children}</pre>;
+    return <pre className='whitespace-pre uni-chat-md-pre' style={{ margin: 0, padding: 0 }}>{children}</pre>;
   },
   a({ children, href }) {
     return (

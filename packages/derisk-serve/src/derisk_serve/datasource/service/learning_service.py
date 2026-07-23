@@ -1005,7 +1005,9 @@ class SchemaLearningService:
             self._llm_config_cache = None
             return None
 
-    def _call_llm(self, prompt: str) -> Optional[str]:
+    def _call_llm(
+        self, prompt: str, max_tokens: int = 200
+    ) -> Optional[str]:
         """Call LLM via OpenAI-compatible API using config from ModelConfigCache."""
         import httpx
 
@@ -1022,7 +1024,7 @@ class SchemaLearningService:
             "model": config["model"],
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
-            "max_tokens": 200,
+            "max_tokens": max_tokens,
         }
 
         try:
@@ -1177,6 +1179,115 @@ class SchemaLearningService:
             f"[LLM-GEN] No summary generated for {table_name}"
         )
         return None
+
+    def _parse_llm_json(
+        self, text: str
+    ) -> Optional[Dict[str, Any]]:
+        """Best-effort parse of an LLM response into a JSON object.
+
+        Strips markdown code fences and extracts the outermost {...}.
+        """
+        if not text:
+            return None
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines)
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            return json.loads(text[start : end + 1])
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    def _generate_table_and_column_comments(
+        self,
+        datasource_id: int,
+        table_name: str,
+        columns: List[Dict[str, Any]],
+        existing_comment: str,
+        sample_rows: List,
+    ) -> Optional[Dict[str, Any]]:
+        """Ask the LLM for a table comment + per-column comments.
+
+        Returns a dict {table_comment: str, columns: [{name, comment}]}
+        parsed from the LLM JSON response, or None if unavailable.
+        """
+        if not self._get_llm_config():
+            return None
+
+        db_section = ""
+        try:
+            config = self._config_dao.get_one({"id": datasource_id})
+            if config:
+                db_context = self._build_db_context(
+                    datasource_id, config.db_name, config.db_type, [table_name]
+                )
+                db_section = (
+                    f"数据库: {db_context.get('db_name', '')} "
+                    f"(类型: {db_context.get('db_type', '')})\n"
+                )
+        except Exception:
+            pass
+
+        col_lines = []
+        for c in columns[:30]:
+            name = c.get("name", "")
+            ctype = c.get("type", "")
+            pk = " [PK]" if c.get("pk") else ""
+            col_lines.append(f"{name}({ctype}{pk})")
+        col_desc = "\n".join(col_lines)
+        if len(columns) > 30:
+            col_desc += f"\n... (共{len(columns)}列)"
+
+        sample_section = ""
+        if sample_rows:
+            col_names = [c.get("name", "") for c in columns[:10]]
+            sample_section = (
+                f"样例数据 (列: {', '.join(col_names)}):\n"
+            )
+            for row in sample_rows[:3]:
+                vals = [
+                    str(v)[:50] if v is not None else "NULL"
+                    for v in list(row)[:10]
+                ]
+                sample_section += f"  {vals}\n"
+
+        prompt = (
+            f"你是一个数据库专家。根据以下表结构和样例数据，为这个表生成中文描述。\n"
+            f"要求：输出严格的 JSON，不要输出任何其他内容，不要使用 markdown 代码块。\n"
+            f"JSON 格式："
+            f"{{\"table_comment\": \"表的一句话描述(不超过80字)\", "
+            f"\"columns\": [{{\"name\": \"列名\", \"comment\": \"该列的中文说明(不超过30字)\"}}]}}\n"
+            f"columns 数组必须包含下面列出的所有列，每列给出一个 comment。\n\n"
+            f"{db_section}"
+            f"表名: {table_name}\n"
+            f"已有表注释: {existing_comment or '(无)'}\n"
+            f"字段:\n{col_desc}\n"
+            f"{sample_section}"
+        )
+
+        raw = self._call_llm(prompt, max_tokens=1500)
+        if not raw:
+            logger.warning(
+                f"[LLM-GEN] No enrichment output for {table_name}"
+            )
+            return None
+        parsed = self._parse_llm_json(raw)
+        if not parsed:
+            logger.warning(
+                f"[LLM-GEN] Failed to parse enrichment JSON for "
+                f"{table_name}: {raw[:120]}"
+            )
+            return None
+        logger.info(f"[LLM-GEN] Enrichment OK for {table_name}")
+        return parsed
 
     def _detect_table_relations(
         self, datasource_id: int
@@ -1535,6 +1646,163 @@ class SchemaLearningService:
         self._regenerate_db_spec(datasource_id, db_name)
 
         return result
+
+    def update_table_spec(
+        self,
+        datasource_id: int,
+        table_name: str,
+        update: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Update editable fields of a single table spec.
+
+        Supports editing table_comment, group_name, and per-column
+        comment/type/nullable/default/pk. Columns are matched by name;
+        columns are neither added nor removed, and non-editable fields
+        (e.g. distribution) are preserved. After the update, the
+        database-level spec summary is regenerated to stay in sync.
+
+        Args:
+            datasource_id: The datasource config ID.
+            table_name: The table whose spec is edited.
+            update: Dict with optional keys table_comment, group_name,
+                columns (list of {name, comment?, type?, nullable?,
+                default?, pk?}).
+
+        Returns:
+            The updated table spec dict, or None if the table spec
+            does not exist.
+        """
+        existing = self._table_spec_dao.get_by_datasource_and_table(
+            datasource_id, table_name
+        )
+        if not existing:
+            return None
+
+        data: Dict[str, Any] = {}
+
+        if update.get("table_comment") is not None:
+            data["table_comment"] = update["table_comment"]
+        if update.get("group_name") is not None:
+            data["group_name"] = update["group_name"]
+
+        col_updates = update.get("columns") or []
+        if col_updates:
+            patch_map: Dict[str, Dict[str, Any]] = {
+                c["name"]: c for c in col_updates if c.get("name")
+            }
+            merged = []
+            for col in existing.get("columns") or []:
+                name = col.get("name", "")
+                patch = patch_map.get(name)
+                if patch:
+                    new_col = dict(col)
+                    for key in ("comment", "type", "nullable", "default", "pk"):
+                        if patch.get(key) is not None:
+                            new_col[key] = patch[key]
+                    merged.append(new_col)
+                else:
+                    merged.append(col)
+            data["columns_json"] = json.dumps(merged, ensure_ascii=False)
+
+        if not data:
+            return existing
+
+        self._table_spec_dao.upsert(datasource_id, table_name, data)
+
+        # Regenerate db-level spec so the table summary stays in sync.
+        config = self._config_dao.get_one({"id": datasource_id})
+        db_name = config.db_name if config else ""
+        if db_name:
+            self._regenerate_db_spec(datasource_id, db_name)
+
+        return self._table_spec_dao.get_by_datasource_and_table(
+            datasource_id, table_name
+        )
+
+    def enrich_table_descriptions(
+        self, datasource_id: int, table_name: str, force: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """Generate or refresh LLM descriptions for a table and its columns.
+
+        Uses the table's existing learned structure + stored sample data
+        to ask the LLM for a table comment and per-column comments,
+        WITHOUT re-fetching structure from the database.
+
+        When force is False, only empty comments are filled in. When
+        force is True, all comments are overwritten with the LLM output.
+        The database-level spec summary is regenerated afterwards.
+
+        Args:
+            datasource_id: The datasource config ID.
+            table_name: The table to enrich.
+            force: Overwrite existing comments when True.
+
+        Returns:
+            The updated table spec dict, or None if the table spec does
+            not exist. Returns the unchanged spec if the LLM is
+            unavailable or produces no usable output.
+        """
+        existing = self._table_spec_dao.get_by_datasource_and_table(
+            datasource_id, table_name
+        )
+        if not existing:
+            return None
+
+        columns = existing.get("columns") or []
+        sample_rows = (existing.get("sample_data") or {}).get("rows") or []
+
+        generated = self._generate_table_and_column_comments(
+            datasource_id=datasource_id,
+            table_name=table_name,
+            columns=columns,
+            existing_comment=existing.get("table_comment") or "",
+            sample_rows=sample_rows,
+        )
+        if not generated:
+            return existing
+
+        data: Dict[str, Any] = {}
+
+        new_table_comment = generated.get("table_comment")
+        if new_table_comment and (force or not existing.get("table_comment")):
+            data["table_comment"] = new_table_comment
+
+        col_comments: Dict[str, str] = {
+            c["name"]: (c.get("comment") or "")
+            for c in (generated.get("columns") or [])
+            if c.get("name")
+        }
+        if col_comments:
+            merged = []
+            changed = False
+            for col in columns:
+                name = col.get("name", "")
+                llm_comment = col_comments.get(name)
+                if llm_comment and (force or not col.get("comment")):
+                    new_col = dict(col)
+                    new_col["comment"] = llm_comment
+                    merged.append(new_col)
+                    changed = True
+                else:
+                    merged.append(col)
+            if changed:
+                data["columns_json"] = json.dumps(
+                    merged, ensure_ascii=False
+                )
+
+        if not data:
+            return existing
+
+        self._table_spec_dao.upsert(datasource_id, table_name, data)
+
+        config = self._config_dao.get_one({"id": datasource_id})
+        db_name = config.db_name if config else ""
+        if db_name:
+            self._regenerate_db_spec(datasource_id, db_name)
+
+        return self._table_spec_dao.get_by_datasource_and_table(
+            datasource_id, table_name
+        )
 
     def refresh_sample_data(
         self, datasource_id: int, connector, table_name: str

@@ -592,6 +592,8 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
 
         if kind == PayloadKind.AGENT_TURN:
             return await self._execute_agent_turn(job)
+        elif kind == PayloadKind.TRIGGER_FIRE:
+            return await self._execute_trigger_fire(job)
         else:
             logger.error(f"Unknown payload kind: {kind}")
             return False
@@ -678,6 +680,41 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
             raise
 
     
+    async def _execute_trigger_fire(self, job: CronJob) -> bool:
+        """Fire a TriggerSource - create+run its playbook+instruction task.
+
+        定时触发器到点时由 cron 调用:取 payload 里的 trigger_id/workspace_id,
+        调 TriggerService.fire,后者创建 task(用 trigger.instruction 作 title)
+        并 detached 执行 run_task。
+        """
+        payload = job.payload
+        if not payload.trigger_id or not payload.workspace_id:
+            logger.error(
+                f"triggerFire job {job.id} missing trigger_id/workspace_id in payload"
+            )
+            return False
+        try:
+            from derisk_serve.trigger.service.service import (
+                TRIGGER_SERVICE_COMPONENT_NAME, TriggerService,
+            )
+            from derisk_serve.trigger.api.schemas import TriggerFireRequest
+
+            trigger_service: TriggerService = self._system_app.get_component(
+                TRIGGER_SERVICE_COMPONENT_NAME, TriggerService,
+            )
+            trigger_service.fire(TriggerFireRequest(
+                workspace_id=payload.workspace_id,
+                trigger_id=payload.trigger_id,
+                payload={},
+            ))
+            logger.info(
+                f"triggerFire job {job.id} fired trigger {payload.trigger_id}"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"triggerFire job {job.id} failed: {e}")
+            raise
+
     def _update_job_state(
         self,
         job_id: str,
@@ -757,6 +794,8 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
                 timeout_seconds=entity.payload_data.get("timeout_seconds") if entity.payload_data else None,
                 session_mode=SessionMode(entity.session_mode) if entity.session_mode else SessionMode.ISOLATED,
                 conv_session_id=entity.conv_session_id,
+                trigger_id=entity.payload_data.get("trigger_id") if entity.payload_data else None,
+                workspace_id=entity.payload_data.get("workspace_id") if entity.payload_data else None,
             ),
             state=CronJobState(
                 next_run_at_ms=entity.next_run_at_ms,
@@ -803,6 +842,8 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
                 timeout_seconds=job.payload.timeout_seconds,
                 session_mode=job.payload.session_mode.value if job.payload.session_mode else SessionMode.ISOLATED.value,
                 conv_session_id=job.payload.conv_session_id,
+                trigger_id=job.payload.trigger_id,
+                workspace_id=job.payload.workspace_id,
             ),
         )
 
@@ -839,6 +880,8 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
                 timeout_seconds=patch.payload.timeout_seconds if patch.payload else (entity.payload_data.get("timeout_seconds") if entity.payload_data else None),
                 session_mode=patch.payload.session_mode.value if patch.payload and patch.payload.session_mode else entity.session_mode,
                 conv_session_id=patch.payload.conv_session_id if patch.payload else entity.conv_session_id,
+                trigger_id=patch.payload.trigger_id if patch.payload else (entity.payload_data.get("trigger_id") if entity.payload_data else None),
+                workspace_id=patch.payload.workspace_id if patch.payload else (entity.payload_data.get("workspace_id") if entity.payload_data else None),
             ),
         )
 

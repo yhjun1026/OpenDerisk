@@ -40,10 +40,12 @@ interface AgentWorkspaceInputProps {
   lastInput?: { text: string } | null;
   onRetry?: () => void;
   playbooks?: { playbook_id: number; playbook_name: string }[];
+  focus?: { id: number; title: string } | null;
+  onClearFocus?: () => void;
 }
 
 export const AgentWorkspaceInput = forwardRef<AgentWorkspaceInputHandle, AgentWorkspaceInputProps>(
-  function AgentWorkspaceInput({ convUid, onSend, loading, disabled, lastInput, onRetry, playbooks }, ref) {
+  function AgentWorkspaceInput({ convUid, onSend, loading, disabled, lastInput, onRetry, playbooks, focus, onClearFocus }, ref) {
     const [text, setText] = useState('');
     const [resources, setResources] = useState<ResourceItem[]>([]);
     const [uploading, setUploading] = useState<UploadingFile[]>([]);
@@ -290,6 +292,25 @@ export const AgentWorkspaceInput = forwardRef<AgentWorkspaceInputHandle, AgentWo
             </div>
           )}
 
+          {/* SECTION 1.4 - focused artifact chip (implicit context, removable) */}
+          {focus && (
+            <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-amber-600 dark:text-amber-300 rounded-md px-2 py-1 text-sm">
+                <FileOutlined className="text-xs" />
+                <span className="text-xs text-amber-400">当前关注</span>
+                <span className="font-medium max-w-[200px] truncate">{focus.title}</span>
+                {onClearFocus && (
+                  <button
+                    className="ml-0.5 text-amber-400 hover:text-red-500 transition-colors"
+                    onClick={onClearFocus}
+                    title="取消带入当前关注"
+                  >
+                    <CloseOutlined className="text-[11px]" />
+                  </button>
+                )}
+              </span>
+            </div>
+          )}
           {/* SECTION 1.5 — selected playbook command chip (single, removable) */}
           {playbookCommand && (
             <div className="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">

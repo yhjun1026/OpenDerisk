@@ -43,4 +43,29 @@ describe('AgentWorkspaceInput', () => {
       }),
     );
   });
+
+  test('focus 存在时渲染当前关注 chip, 点 × 调 onClearFocus', () => {
+    const onSend = jest.fn();
+    const onClearFocus = jest.fn();
+    render(
+      <AgentWorkspaceInput
+        convUid="c1"
+        onSend={onSend}
+        focus={{ id: 42, title: '周报' }}
+        onClearFocus={onClearFocus}
+      />,
+    );
+    expect(screen.getByText('周报')).toBeInTheDocument();
+    expect(screen.getByText('当前关注')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('取消带入当前关注'));
+    expect(onClearFocus).toHaveBeenCalled();
+  });
+
+  test('focus 为 null 时不渲染关注 chip', () => {
+    const onSend = jest.fn();
+    render(
+      <AgentWorkspaceInput convUid="c1" onSend={onSend} focus={null} />,
+    );
+    expect(screen.queryByText('当前关注')).not.toBeInTheDocument();
+  });
 });
