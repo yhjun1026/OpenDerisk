@@ -75,10 +75,16 @@ def _apply_json_database_config(app_config: ApplicationConfig) -> None:
         from derisk_core.config import ConfigManager
         from derisk_core.config.encryption import get_secret as get_secret_value
         from derisk_core.config.home import get_derisk_home
+        from pathlib import Path
 
         # 输出 JSON 配置文件路径
         json_config_path = ConfigManager.get_config_path()
-        json_config_exists = json_config_path and json_config_path.exists() if json_config_path else False
+        if json_config_path:
+            json_config_path_obj = Path(json_config_path)
+            json_config_exists = json_config_path_obj.exists()
+        else:
+            json_config_exists = False
+
         logger.info("=" * 80)
         logger.info(f"[DB Config] JSON config file: {json_config_path}")
         logger.info(f"[DB Config] JSON config exists: {json_config_exists}")
