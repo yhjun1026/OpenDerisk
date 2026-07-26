@@ -66,12 +66,12 @@ export default function VerticalNav() {
               className={[
                 'relative w-full flex flex-col items-center justify-center gap-1 rounded-md py-2 px-1 transition-colors',
                 active
-                  ? 'text-[#0C75FC] bg-[#0C75FC]/5'
+                  ? 'text-[#4f46e5] bg-[#4f46e5]/5'
                   : 'text-[#8A8F98] hover:text-[#151622] hover:bg-[#F4F2EC]',
               ].join(' ')}
             >
               {active && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r bg-[#0C75FC]" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r bg-[#4f46e5]" />
               )}
               <span className="text-lg leading-none">{item.icon}</span>
               <span className="text-[10px] font-medium leading-none">{item.label}</span>

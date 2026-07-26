@@ -249,18 +249,38 @@ class AgentMessageHandler(MessageHandler):
             "is_group": message.is_group,
         }
 
+        # Send an immediate acknowledgment so the IM user knows the request is
+        # being processed. The actual agent response is delivered asynchronously
+        # by _deliver_to_channel_if_configured in the agent_chat path.
+        receiver_id = (
+            message.conversation_id
+            if message.is_group
+            else message.sender.user_id
+        )
+        if receiver_id and channel_handler:
+            try:
+                await channel_handler.send_message(
+                    receiver_id=receiver_id,
+                    content="正在处理您的请求，请稍候...",
+                    reply_to=message.message_id,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send channel acknowledgment: {e}")
+
         if self._get_agent_response:
             try:
-                response = await self._get_agent_response(
+                await self._get_agent_response(
                     message=message,
                     history=history,
                     agent_app_code=self._agent_app_code,
                     channel_context=channel_context,
                 )
-                return response
+                # Return None to avoid double-sending the final response here.
+                # The final response is delivered via _deliver_to_channel_if_configured.
+                return None
             except Exception as e:
                 logger.error(f"Error getting agent response: {e}")
-                return f"Error processing message: {str(e)}"
+                return f"抱歉，处理请求时出错：{str(e)}"
         else:
             return f"Received your message: {message.content}"
 

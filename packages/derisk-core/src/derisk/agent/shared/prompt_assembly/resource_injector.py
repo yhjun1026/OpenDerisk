@@ -1053,7 +1053,7 @@ class ResourceInjector:
 
         lines.append("</available_agents>")
         lines.append("")
-        lines.append("**调用方式：** 使用 `agent_start` 工具启动子代理。")
+        lines.append("**调用方式：** 使用 `SubAgent` 工具启动子代理。")
 
         return "\n".join(lines)
 

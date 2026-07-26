@@ -230,7 +230,7 @@ export default function GraphSearchPanel() {
                 <Tooltip title="清除选择">
                   <button
                     onClick={() => setSelectedGraphEntity(null)}
-                    className="text-xs text-gray-400 hover:text-[#0C75FC]"
+                    className="text-xs text-gray-400 hover:text-[#4f46e5]"
                   >
                     清除
                   </button>

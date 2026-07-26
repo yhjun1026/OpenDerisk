@@ -138,6 +138,27 @@ class TaskService(BaseService[TaskEntity, TaskRequest, TaskResponse]):
     def start(self, task_id: int) -> TaskResponse:
         return self.transition(task_id, "running")
 
+    def delete(self, task_id: int) -> None:
+        """Hard-delete a task and its relation rows."""
+        session = self._dao.get_raw_session()
+        try:
+            entity = session.query(TaskEntity).filter(
+                TaskEntity.id == task_id
+            ).first()
+            if not entity:
+                raise ValueError(f"task {task_id} not found")
+            session.query(TaskRelationEntity).filter(
+                (TaskRelationEntity.parent_task_id == task_id)
+                | (TaskRelationEntity.child_task_id == task_id)
+            ).delete(synchronize_session=False)
+            session.delete(entity)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def close(self, request: TaskCloseRequest) -> TaskResponse:
         """Close a task. Server enforces distill completion."""
         if not request.distill_completed:

@@ -187,6 +187,8 @@ class ClaudeProvider(LLMProvider):
             accumulated_content = ""
             accumulated_tool_calls = []
             _last_progress_time = time.time()
+            _input_tokens = None
+            _output_tokens = None
 
             async with self.client.messages.stream(**params) as stream:
                 async for event in stream:
@@ -204,6 +206,14 @@ class ClaudeProvider(LLMProvider):
                             f"elapsed={_now - _last_progress_time:.1f}s"
                         )
                         _last_progress_time = _now
+
+                    # 捕获 usage：input_tokens 在 message_start，output_tokens 在 message_delta
+                    if event.type == "message_start" and getattr(event, "message", None):
+                        _msg_usage = getattr(event.message, "usage", None)
+                        if _msg_usage:
+                            _input_tokens = getattr(_msg_usage, "input_tokens", None)
+                    elif event.type == "message_delta" and getattr(event, "usage", None):
+                        _output_tokens = getattr(event.usage, "output_tokens", None)
 
                     if event.type == "content_block_delta" and event.delta.type == "text_delta":
                         accumulated_content += event.delta.text
@@ -233,6 +243,22 @@ class ClaudeProvider(LLMProvider):
                         }
                         logger.info(f"ClaudeProvider generate_stream response: {json.dumps(log_response, ensure_ascii=False)}")
 
+            # 流结束后补一个带 usage 的终止 chunk，供上层采集 token
+            # 注意: 必须携带累积的 tool_calls,否则上层(按最后一帧取值)拿不到工具调用
+            if _input_tokens is not None or _output_tokens is not None:
+                _pt = _input_tokens or 0
+                _ct = _output_tokens or 0
+                yield ModelOutput(
+                    error_code=0,
+                    text="",
+                    usage={
+                        "prompt_tokens": _pt,
+                        "completion_tokens": _ct,
+                        "total_tokens": _pt + _ct,
+                    },
+                    tool_calls=accumulated_tool_calls or None,
+                    incremental=True,
+                )
         except Exception as e:
             logger.exception(f"Claude stream error: {e}")
             yield ModelOutput(error_code=1, text=str(e))

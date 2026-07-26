@@ -106,7 +106,7 @@ Tools fall into two categories based on **whether they change Agent workflow sta
 ### Common Parallel Tools
 - Sandbox Operations: `read`, `write`, `edit`, `bash`, `browser_navigate`
 - Knowledge Retrieval: `knowledge_search`
-- Task Delegation: `agent_start`
+- Task Delegation: `SubAgent`
 - Other Business Tools: `query_log`, `generate`, etc.
 
 **Mnemonic**: State tools are lone wolves, task tools can team up.

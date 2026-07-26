@@ -1472,17 +1472,23 @@ class GptsMemory(LifeCycle, FileMetadataStorage, WorkLogStorage, KanbanStorage, 
         **kwargs,
     ):
         try:
-            final_view = await self.vis_messages(
-                conv_id,
-                gpt_msg=gpt_msg,
-                stream_msg=stream_msg,
-                new_plans=new_plans,
-                is_first_chunk=is_first_chunk,
-                incremental=incremental,
-                senders_map=dict(cache.senders),
-                incr_type=incr_type,
-                **kwargs,
-            )
+            if isinstance(stream_msg, str):
+                # str 透传（如 d-todo-list 围栏），不走 converter：
+                # GptVisConverter.agent_stream_message 只认 dict，对 str 调 .get() 抛
+                # AttributeError 会被本 except 吞掉，导致前端收不到帧
+                final_view = stream_msg
+            else:
+                final_view = await self.vis_messages(
+                    conv_id,
+                    gpt_msg=gpt_msg,
+                    stream_msg=stream_msg,
+                    new_plans=new_plans,
+                    is_first_chunk=is_first_chunk,
+                    incremental=incremental,
+                    senders_map=dict(cache.senders),
+                    incr_type=incr_type,
+                    **kwargs,
+                )
             if final_view:
                 ## 如果消息通道满了 直接抛弃，不阻塞后续执行
                 cache.channel.put_nowait(final_view)

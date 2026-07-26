@@ -211,7 +211,7 @@ const ChatContextProvider = ({ children }: { children: React.ReactElement }) => 
   }, [refreshDialogList, fetchDialogueListIfUserReady]);
 
   useEffect(() => {
-    // setMode(getDefaultTheme());
+    setMode(getDefaultTheme());
     try {
       const dialogInfo = JSON.parse(localStorage.getItem('cur_dialog_info') || '');
       setCurrentDialogInfo(dialogInfo);

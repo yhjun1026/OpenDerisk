@@ -18,9 +18,10 @@ export interface AgentWorkspaceProps {
   taskId?: number | string;
   focus?: { id: number; title: string } | null;
   onClearFocus?: () => void;
+  onClearContext?: () => void;
   onStepClick?: (step: AgentStep) => void;
   onWorkspaceEvent?: (event: WorkspaceEvent) => void;
-  onConvChanged?: (convUid: string) => void;
+  onConvChanged?: (convUid: string, taskId?: number | null) => void;
   inputRef?: React.Ref<AgentWorkspaceInputHandle>;
   switchingTask?: boolean;
   convLoadError?: string | null;
@@ -35,6 +36,7 @@ export function AgentWorkspace({
   taskId,
   focus,
   onClearFocus,
+  onClearContext,
   onStepClick,
   onWorkspaceEvent,
   onConvChanged,
@@ -135,6 +137,7 @@ export function AgentWorkspace({
           playbooks={playbooks}
           focus={focus}
           onClearFocus={onClearFocus}
+          onClearContext={onClearContext}
         />
       </div>
     </div>

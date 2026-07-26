@@ -111,6 +111,10 @@ class Vis:
             ),
             "plan": ("derisk_ext.vis.common.tags.derisk_plan", "AgentPlan"),
             "todo_list": ("derisk_ext.vis.common.tags.derisk_todo_list", "TodoList"),
+            "subagent_board": (
+                "derisk_ext.vis.common.tags.derisk_subagent_board",
+                "SubagentBoard",
+            ),
             "d-attach": ("derisk_ext.vis.common.tags.derisk_attach", "DeriskAttach"),
             "d-sql-query": ("derisk_ext.vis.common.tags.derisk_sql_query", "DeriskSqlQuery"),
         }

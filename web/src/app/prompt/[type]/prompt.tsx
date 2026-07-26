@@ -373,7 +373,7 @@ const AddOrEditPrompt: React.FC = () => {
       <header className='flex items-center justify-between px-6 py-2 h-14 border-b border-[#edeeef]'>
         <Space className='flex items-center'>
           <LeftOutlined
-            className='text-base cursor-pointer hover:text-[#0c75fc]'
+            className='text-base cursor-pointer hover:text-[#4f46e5]'
             onClick={() => {
               localStorage.removeItem('edit_prompt_data');
               router.replace('/prompt');

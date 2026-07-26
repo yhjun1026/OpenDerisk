@@ -31,6 +31,14 @@ class ChannelRequest(BaseModel):
         default=True,
         description="Whether the channel is enabled",
     )
+    agent_app_code: Optional[str] = Field(
+        default=None,
+        description="Agent app code to use for messages from this channel",
+    )
+    workspace_id: Optional[int] = Field(
+        default=None,
+        description="Workspace ID to bind this channel to",
+    )
     config: Dict[str, Any] = Field(
         ...,
         description="Platform-specific configuration (e.g., DingTalkConfig, FeishuConfig)",
@@ -63,6 +71,14 @@ class ChannelResponse(BaseModel):
     enabled: bool = Field(
         default=True,
         description="Whether the channel is enabled",
+    )
+    agent_app_code: Optional[str] = Field(
+        default=None,
+        description="Agent app code for this channel",
+    )
+    workspace_id: Optional[int] = Field(
+        default=None,
+        description="Bound workspace ID",
     )
     config: Dict[str, Any] = Field(
         ...,

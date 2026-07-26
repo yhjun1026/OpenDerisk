@@ -218,6 +218,27 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
             except Exception:
                 logger.exception("failed to post message back after execution")
 
+            # P1: 若 intervention 带主会话引用，通知主 agent 子任务授权已完成 ->
+            # coordinator 标记子任务 done 并在全部完成时触发主 resume。
+            if entity.parent_conv_id:
+                try:
+                    from derisk_serve.agent.subagent_coordinator import (
+                        get_subagent_coordinator,
+                    )
+                    coordinator = get_subagent_coordinator()
+                    if coordinator is not None and entity.conv_uid:
+                        result_str = (
+                            result.get("summary") if isinstance(result, dict)
+                            else str(result)
+                        ) or f"工具[{tool_name}]已执行（用户已授权）"
+                        await coordinator.on_subagent_done(
+                            main_conv_id=entity.parent_conv_id,
+                            sub_conv_id=entity.conv_uid,
+                            result=result_str,
+                        )
+                except Exception:
+                    logger.exception("failed to notify main agent after intervention resolve")
+
             return entity
         except Exception:
             session.rollback()

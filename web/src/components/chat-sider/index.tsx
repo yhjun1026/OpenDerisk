@@ -1,7 +1,7 @@
 import { ChatContext } from '@/contexts';
 import { apiInterceptors, delDialogue } from '@/client/api';
 import { IChatDialogueSchema } from '@/types/chat';
-import { CaretLeftOutlined, CaretRightOutlined, DeleteOutlined, ShareAltOutlined, SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined } from '@ant-design/icons';
+import { CaretLeftOutlined, CaretRightOutlined, DeleteOutlined, ShareAltOutlined, SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, BarChartOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import {App, Flex, Layout, Spin, Tooltip, Typography, message, Badge } from 'antd';
 import copy from 'copy-to-clipboard';
@@ -149,6 +149,17 @@ const MenuItem: React.FC<{
       <StatusIcon state={item.state} />
       {!item.default && (
         <div className='flex gap-1 ml-1'>
+          <Tooltip title={t('usage_conversation_analysis')}>
+            <div
+              className='group-hover/item:opacity-100 cursor-pointer opacity-0'
+              onClick={e => {
+                e.stopPropagation();
+                router.push(`/usage?conv_id=${item.conv_uid}`);
+              }}
+            >
+              <BarChartOutlined style={{ fontSize: 16 }} />
+            </div>
+          </Tooltip>
           <div
             className='group-hover/item:opacity-100 cursor-pointer opacity-0'
             onClick={e => {
@@ -175,7 +186,7 @@ const MenuItem: React.FC<{
         </div>
       )}
       <div
-        className={` w-1 rounded-sm bg-[#0c75fc] absolute top-1/2 left-0 -translate-y-1/2 transition-all duration-500 ease-in-out ${
+        className={` w-1 rounded-sm bg-[#4f46e5] absolute top-1/2 left-0 -translate-y-1/2 transition-all duration-500 ease-in-out ${
           active ? 'h-5' : 'w-0 h-0'
         }`}
       />

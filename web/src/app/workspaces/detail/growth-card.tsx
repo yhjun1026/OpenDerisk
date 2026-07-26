@@ -16,7 +16,7 @@ interface GrowthData {
 }
 
 export function GrowthCard({ workspaceId }: GrowthCardProps) {
-  const { data } = useRequest(
+  const { data, loading } = useRequest(
     async () => {
       const res = await GET<null, GrowthData>(
         `/api/v1/serve_workspace_service/workspaces/${workspaceId}/growth`,
@@ -34,15 +34,26 @@ export function GrowthCard({ workspaceId }: GrowthCardProps) {
     { refreshDeps: [workspaceId] },
   );
 
+  const totalTasks = (data?.tasks_trend || []).reduce((sum, t) => sum + t.count, 0);
+  // 全部为 0 时不渲染占位大 0,避免空态噪声 —— 空间还没有沉淀时引导交给快捷发起区
+  const allZero =
+    !loading &&
+    (data?.assets_count ?? 0) === 0 &&
+    (data?.evolution_proposals_count ?? 0) === 0 &&
+    (data?.knowledge_graph_nodes ?? 0) === 0 &&
+    totalTasks === 0;
+
+  if (allZero) return null;
+
   return (
-    <Card size="small" title="本月空间成长" className="ws-growth-card">
+    <Card size="small" title="本月空间成长" className="ws-growth-card" loading={loading}>
       <Statistic title="沉淀 Asset" value={data?.assets_count ?? 0} />
       <Statistic title="Playbook 演化提议" value={data?.evolution_proposals_count ?? 0} />
       <Statistic title="知识图谱节点" value={data?.knowledge_graph_nodes ?? 0} />
       <div className="ws-growth-card__trend">
         <span className="ws-growth-card__trend-label">任务趋势</span>
         <span className="ws-growth-card__trend-value">
-          {(data?.tasks_trend || []).reduce((sum, t) => sum + t.count, 0)} 次 (30 天)
+          {totalTasks} 次 (30 天)
         </span>
       </div>
     </Card>

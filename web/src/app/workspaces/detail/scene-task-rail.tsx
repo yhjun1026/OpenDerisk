@@ -1,13 +1,39 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Form, Input, Modal, message } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Form, Input, Modal, message } from 'antd';
+import { CommentOutlined, LinkOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { apiInterceptors, createAsset, resolveAndExecuteIntervention, abortIntervention } from '@/client/api';
+import { apiInterceptors, createAsset, resolveAndExecuteIntervention, abortIntervention, terminateTask, deleteTask } from '@/client/api';
 import { getUserId } from '@/utils';
 
 export type TaskTabKey = 'all' | 'running' | 'awaiting' | 'done' | 'failed';
+
+/** 每次渲染的卡片数,避免任务多了一次渲染全部导致卡顿 */
+const PAGE_SIZE = 20;
+
+/** 时间分段标签:今天/昨天/本周/更早(列表已按 updatedAt 倒序) */
+function segLabel(iso: string): string {
+  const d = dayjs(iso);
+  const now = dayjs();
+  if (d.isSame(now, 'day')) return '今天';
+  if (d.isSame(now.subtract(1, 'day'), 'day')) return '昨天';
+  if (d.isAfter(now.startOf('week'))) return '本周';
+  return '更早';
+}
+
+const TRIGGER_LABEL: Record<string, string> = {
+  manual: '手动',
+  timer: '定时',
+  webhook: 'Webhook',
+  alert: '告警',
+};
+
+function triggerLabel(task: any): string {
+  return TRIGGER_LABEL[task?.triggered_by] || task?.triggered_by || '手动';
+}
+
+export { triggerLabel };
 
 export function statusToTab(status: string | undefined): TaskTabKey {
   switch (status) {
@@ -111,9 +137,13 @@ export function SceneTaskRail({
 }: SceneTaskRailProps) {
   const [filter, setFilter] = useState('');
   const [tab, setTab] = useState<TaskTabKey>('all');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [resolveOpen, setResolveOpen] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+
+  // 切换 tab/搜索时回到第一页
+  useEffect(() => setVisibleCount(PAGE_SIZE), [tab, filter]);
 
   const pbNameById = useMemo(() => {
     const m = new Map<number, string>();
@@ -196,6 +226,52 @@ export function SceneTaskRail({
       return t.toLowerCase().includes(q) || String(it.raw.id).includes(q);
     });
   }, [merged, tab, filter]);
+
+  // 渐进渲染 + 时间分段:在 visible 窗口内插入段头(数据已按 updatedAt 倒序)
+  const grouped = useMemo(() => {
+    const shown = filtered.slice(0, visibleCount);
+    const rows: Array<{ type: 'seg'; label: string } | { type: 'item'; item: (typeof shown)[number] }> = [];
+    let last = '';
+    shown.forEach((item) => {
+      const seg = segLabel(item.updatedAt);
+      if (seg !== last) {
+        rows.push({ type: 'seg', label: seg });
+        last = seg;
+      }
+      rows.push({ type: 'item', item });
+    });
+    return rows;
+  }, [filtered, visibleCount]);
+
+  const handleTerminate = (id: number) => {
+    Modal.confirm({
+      title: '终止任务',
+      content: '会停止对应 Agent 的运行,任务标记为已关闭。',
+      okText: '终止',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const [err] = await apiInterceptors(terminateTask(id));
+        if (err) { message.error(err.message); return; }
+        message.success('已终止');
+        onRefreshLists?.();
+      },
+    });
+  };
+
+  const handleDelete = (id: number) => {
+    Modal.confirm({
+      title: '删除任务',
+      content: '删除后任务记录不可恢复(运行中/待介入的任务需先终止)。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const [err] = await apiInterceptors(deleteTask(id));
+        if (err) { message.error(err.message); return; }
+        message.success('已删除');
+        onRefreshLists?.();
+      },
+    });
+  };
 
   const handleAbort = async (id: number) => {
     const [err] = await apiInterceptors(abortIntervention(id));
@@ -295,19 +371,25 @@ export function SceneTaskRail({
             <div className="ws-rail-empty-h">在右侧输入发起任务,选剧本 + 写目标,Agent 会跑起来。</div>
           </div>
         )}
-        {filtered.map((it) => {
+        {grouped.map((row) => {
+          if (row.type === 'seg') {
+            return <div key={`seg-${row.label}`} className="ws-rail-seg">{row.label}</div>;
+          }
+          const it = row.item;
           if (it.kind === 'orphan-intervention') {
             const iv = it.raw;
             return (
               <div key={`orphan-${iv.id}`} className="ws-rail-card ws-rail-card--int ws-rail-card--orphan">
-                <div className="ws-rail-card-head">
-                  <span className="ws-rail-status ws-rail-status--requested"><span className="ws-rail-dot" />待响应</span>
-                  <span className="ws-rail-pb">无关联任务</span>
-                </div>
                 <div className="ws-rail-ttl">{questionToText(iv.question) || `intervention_${iv.id}`}</div>
+                <div className="ws-rail-meta">
+                  <span className="ws-rail-status ws-rail-status--requested"><span className="ws-rail-dot" />待响应</span>
+                  <span className="ws-rail-meta-sep">·</span>
+                  <span className="ws-rail-meta-pb">无关联任务</span>
+                </div>
                 <div className="ws-rail-foot">
-                  <span className="ws-rail-src">人工 · 介入</span>
                   <span className="ws-rail-tm">{dayjs(it.updatedAt).format('MM-DD HH:mm')}</span>
+                  <span className="ws-rail-meta-sep">·</span>
+                  <span className="ws-rail-src">人工介入</span>
                 </div>
                 {renderInterventionSub(iv)}
               </div>
@@ -316,6 +398,10 @@ export function SceneTaskRail({
           const t = it.raw;
           const pbName = t.playbook_id ? pbNameById.get(t.playbook_id) : null;
           const isActive = activeTaskId === t.id;
+          const canTerminate = t.status === 'running' || t.status === 'awaiting_human';
+          const moreItems = canTerminate
+            ? [{ key: 'terminate', danger: true, label: '终止任务' }]
+            : [{ key: 'delete', danger: true, label: '删除任务' }];
           return (
             <div
               key={`task-${t.id}`}
@@ -326,36 +412,61 @@ export function SceneTaskRail({
               onClick={() => !disabled && onPreview(t, 'task')}
               onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onPreview(t, 'task'); } }}
             >
-              <div className="ws-rail-card-head">
+              <div className="ws-rail-ttl">{t.title || `task_${t.id}`}</div>
+              <div className="ws-rail-meta">
                 <span className={`ws-rail-status ws-rail-status--${t.status || 'draft'}`}>
                   <span className="ws-rail-dot" />
                   {statusLabel(t.status)}
                 </span>
-                {pbName && <span className="ws-rail-pb">📖 {pbName}</span>}
-                <ElapsedTimer task={t} />
+                {pbName && (
+                  <>
+                    <span className="ws-rail-meta-sep">·</span>
+                    <span className="ws-rail-meta-pb" title={pbName}>{pbName}</span>
+                  </>
+                )}
               </div>
-              <div className="ws-rail-ttl">{t.title || `task_${t.id}`}</div>
               <div className="ws-rail-foot">
-                <span className="ws-rail-src">{`${t.triggered_by || '手动'} · ${t.type || 'adhoc'}`}</span>
                 <span className="ws-rail-tm">{dayjs(it.updatedAt).format('MM-DD HH:mm')}</span>
-                <span
-                  className="ws-rail-enter"
-                  role="button"
-                  tabIndex={disabled ? -1 : 0}
-                  onClick={(e) => { e.stopPropagation(); if (!disabled) onReference?.(t); }}
-                  onKeyDown={(e) => { if (!disabled && e.key === 'Enter') { e.preventDefault(); onReference?.(t); } }}
-                >
-                  引用
-                </span>
-                <span
-                  className="ws-rail-enter"
-                  role="button"
-                  tabIndex={disabled ? -1 : 0}
-                  onClick={(e) => { e.stopPropagation(); if (!disabled) onEnterConversation(t.id); }}
-                  onKeyDown={(e) => { if (!disabled && e.key === 'Enter') { e.preventDefault(); onEnterConversation(t.id); } }}
-                >
-                  进入对话 -&gt;
-                </span>
+                <span className="ws-rail-meta-sep">·</span>
+                <span className="ws-rail-src">{triggerLabel(t)}</span>
+                <ElapsedTimer task={t} />
+                <div className="ws-rail-card-actions">
+                  <span
+                    className="ws-rail-card-act"
+                    title="引用到输入框"
+                    role="button"
+                    tabIndex={disabled ? -1 : 0}
+                    onClick={(e) => { e.stopPropagation(); if (!disabled) onReference?.(t); }}
+                    onKeyDown={(e) => { if (!disabled && e.key === 'Enter') { e.preventDefault(); onReference?.(t); } }}
+                  >
+                    <LinkOutlined />
+                  </span>
+                  <span
+                    className="ws-rail-card-act"
+                    title="进入对话"
+                    role="button"
+                    tabIndex={disabled ? -1 : 0}
+                    onClick={(e) => { e.stopPropagation(); if (!disabled) onEnterConversation(t.id); }}
+                    onKeyDown={(e) => { if (!disabled && e.key === 'Enter') { e.preventDefault(); onEnterConversation(t.id); } }}
+                  >
+                    <CommentOutlined />
+                  </span>
+                  <Dropdown
+                    menu={{
+                      items: moreItems,
+                      onClick: ({ key, domEvent }) => {
+                        domEvent.stopPropagation();
+                        if (key === 'terminate') handleTerminate(t.id);
+                        else handleDelete(t.id);
+                      },
+                    }}
+                    trigger={['click']}
+                  >
+                    <span className="ws-rail-card-act" title="更多" onClick={(e) => e.stopPropagation()}>
+                      <MoreOutlined />
+                    </span>
+                  </Dropdown>
+                </div>
               </div>
               {it.interventions.length > 0 && (
                 <div className="ws-rail-interventions">
@@ -365,6 +476,17 @@ export function SceneTaskRail({
             </div>
           );
         })}
+        {filtered.length > visibleCount && (
+          <div
+            className="ws-rail-more"
+            role="button"
+            tabIndex={0}
+            onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setVisibleCount((n) => n + PAGE_SIZE); }}
+          >
+            加载更多(还有 {filtered.length - visibleCount} 条)
+          </div>
+        )}
       </div>
 
       <Modal

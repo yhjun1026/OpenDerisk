@@ -100,6 +100,16 @@ class Service(BaseService[ChannelEntity, ChannelRequest, ChannelResponse]):
             if channel_context:
                 ext_info["channel"] = channel_context
 
+            # If the channel is bound to a workspace, inject workspace_id so the
+            # agent can access workspace resources and tools.
+            workspace_id = None
+            if channel_context and channel_context.get("channel_id"):
+                channel_entity = await self.get_channel(channel_context["channel_id"])
+                if channel_entity and channel_entity.workspace_id:
+                    workspace_id = channel_entity.workspace_id
+            if workspace_id:
+                ext_info["workspace_id"] = workspace_id
+
             # Create a callback to ensure final_report is populated
             # This is needed for channel message delivery to work correctly
             async def channel_callback(
@@ -123,17 +133,20 @@ class Service(BaseService[ChannelEntity, ChannelRequest, ChannelResponse]):
                     logger.info(f"Channel agent execution completed for session {conv_session_id}")
 
             # Call the agent chat with callback
-            result, agent_conv_id = await multi_agents.app_chat_v3(
+            # app_chat_v3 returns immediately and runs the agent in the background.
+            # The actual response is delivered to the IM channel via
+            # _deliver_to_channel_if_configured in save_conversation.
+            await multi_agents.app_chat_v3(
                 conv_uid=conv_session_id,
                 gpts_name=agent_app_code,
                 user_query=message.content,
-                stream=False,  # Non-streaming for channel messages
+                stream=True,  # Background streaming; response delivered via callback
                 background_tasks=None,
                 chat_call_back=channel_callback,  # Add callback for final_report
                 **ext_info,
             )
 
-            return result or "处理完成"
+            return None
         except Exception as e:
             logger.error(f"Error getting agent response: {e}")
             raise
@@ -429,6 +442,21 @@ class Service(BaseService[ChannelEntity, ChannelRequest, ChannelResponse]):
         )
 
         if success:
+            # Register per-channel agent handler so each channel can route to its own agent
+            agent_app_code = channel.agent_app_code or "main-orchestrator"
+            from derisk.channel.router import AgentMessageHandler
+
+            channel_handler = AgentMessageHandler(
+                agent_app_code=agent_app_code,
+                get_agent_response=self._get_agent_response_with_channel_context,
+            )
+            self._connection_manager.register_message_handler(
+                channel_id, channel_handler
+            )
+            logger.info(
+                f"Registered message handler for channel {channel_id} "
+                f"with agent {agent_app_code}"
+            )
             await self.update_channel_status(channel_id, "connected")
         else:
             await self.update_channel_status(channel_id, "error", "Failed to start")
@@ -451,6 +479,8 @@ class Service(BaseService[ChannelEntity, ChannelRequest, ChannelResponse]):
         success = await self._connection_manager.stop_channel(channel_id)
 
         if success:
+            self._connection_manager._message_router.unregister_handler(channel_id)
+            logger.info(f"Unregistered message handler for channel {channel_id}")
             await self.update_channel_status(channel_id, "disconnected")
 
         return success

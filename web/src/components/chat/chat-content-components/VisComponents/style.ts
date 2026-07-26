@@ -1899,7 +1899,7 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     border-style: none !important;
   }
 
-  .border-\[\#0c75fc\] {
+  .border-\[\#4f46e5\] {
     --tw-border-opacity: 1 !important;
     border-color: rgb(12 117 252 / var(--tw-border-opacity)) !important;
   }
@@ -1993,12 +1993,12 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     border-color: rgb(255 255 255 / var(--tw-border-opacity)) !important;
   }
 
-  .bg-\[\#0C75FC\] {
+  .bg-\[\#4f46e5\] {
     --tw-bg-opacity: 1 !important;
     background-color: rgb(12 117 252 / var(--tw-bg-opacity)) !important;
   }
 
-  .bg-\[\#0c75fc\] {
+  .bg-\[\#4f46e5\] {
     --tw-bg-opacity: 1 !important;
     background-color: rgb(12 117 252 / var(--tw-bg-opacity)) !important;
   }
@@ -2175,8 +2175,8 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
   }
 
-  .to-\[\#1677ff\] {
-    --tw-gradient-to: #1677ff var(--tw-gradient-to-position) !important;
+  .to-\[\#4f46e5\] {
+    --tw-gradient-to: #4f46e5 var(--tw-gradient-to-position) !important;
   }
 
   .bg-cover {
@@ -2502,17 +2502,17 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     color: rgb(0 0 0 / var(--tw-text-opacity)) !important;
   }
 
-  .text-\[\#0069fe\] {
+  .text-\[\#4f46e5\] {
     --tw-text-opacity: 1 !important;
     color: rgb(0 105 254 / var(--tw-text-opacity)) !important;
   }
 
-  .text-\[\#0C75FC\] {
+  .text-\[\#4f46e5\] {
     --tw-text-opacity: 1 !important;
     color: rgb(12 117 252 / var(--tw-text-opacity)) !important;
   }
 
-  .text-\[\#0c75fc\] {
+  .text-\[\#4f46e5\] {
     --tw-text-opacity: 1 !important;
     color: rgb(12 117 252 / var(--tw-text-opacity)) !important;
   }
@@ -2522,7 +2522,7 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     color: rgb(18 20 23 / var(--tw-text-opacity)) !important;
   }
 
-  .text-\[\#1677ff\] {
+  .text-\[\#4f46e5\] {
     --tw-text-opacity: 1 !important;
     color: rgb(22 119 255 / var(--tw-text-opacity)) !important;
   }
@@ -2871,7 +2871,7 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
       var(--joy-Josefin Sans, sans-serif)
     );
     line-height: var(--joy-lineHeight-md, 1.5);
-    --antd-primary-color: #0069fe;
+    --antd-primary-color: #4f46e5;
     -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
     -webkit-appearance: none;
   }
@@ -3051,7 +3051,7 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     border-radius: 0.75rem !important;
   }
 
-  .hover\:border-\[\#0c75fc\]:hover {
+  .hover\:border-\[\#4f46e5\]:hover {
     --tw-border-opacity: 1 !important;
     border-color: rgb(12 117 252 / var(--tw-border-opacity)) !important;
   }
@@ -3090,12 +3090,12 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     color: rgb(229 231 235 / var(--tw-text-opacity)) !important;
   }
 
-  .hover\:text-\[\#0c75fc\]:hover {
+  .hover\:text-\[\#4f46e5\]:hover {
     --tw-text-opacity: 1 !important;
     color: rgb(12 117 252 / var(--tw-text-opacity)) !important;
   }
 
-  .hover\:text-\[\#1677ff\]:hover {
+  .hover\:text-\[\#4f46e5\]:hover {
     --tw-text-opacity: 1 !important;
     color: rgb(22 119 255 / var(--tw-text-opacity)) !important;
   }
@@ -3155,7 +3155,7 @@ Constrain images and videos to the parent width and preserve their intrinsic asp
     opacity: 0.7 !important;
   }
 
-  :is(.dark .dark\:border-\[\#0c75fc\]) {
+  :is(.dark .dark\:border-\[\#4f46e5\]) {
     --tw-border-opacity: 1 !important;
     border-color: rgb(12 117 252 / var(--tw-border-opacity)) !important;
   }

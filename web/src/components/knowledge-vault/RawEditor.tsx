@@ -165,7 +165,7 @@ export default function RawEditor() {
     <Spin spinning={loading} wrapperClassName="h-full">
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
-          <EditOutlined className="text-[#0C75FC]" />
+          <EditOutlined className="text-[#4f46e5]" />
           <span className="text-sm font-medium text-gray-800 truncate" title={selectedRaw || undefined}>
             {displayPath}
           </span>

@@ -40,16 +40,16 @@ interface GroupData {
 const statusIcon = (status?: string) => {
   switch (status) {
     case 'running':
-      return <LoadingOutlined style={{ color: '#1677ff', fontSize: 12 }} spin />;
+      return <LoadingOutlined style={{ color: '#4f46e5', fontSize: 12 }} spin />;
     case 'failed':
-      return <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 12 }} />;
+      return <ExclamationCircleOutlined style={{ color: '#ef4444', fontSize: 12 }} />;
     case 'waiting':
-      return <PauseCircleOutlined style={{ color: '#f5a623', fontSize: 12 }} />;
+      return <PauseCircleOutlined style={{ color: '#f59e0b', fontSize: 12 }} />;
     case 'retrying':
-      return <SyncOutlined style={{ color: '#1677ff', fontSize: 12 }} />;
+      return <SyncOutlined style={{ color: '#f59e0b', fontSize: 12 }} />;
     case 'complete':
     default:
-      return <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 12 }} />;
+      return <CheckCircleOutlined style={{ color: '#22c55e', fontSize: 12 }} />;
   }
 };
 
@@ -75,7 +75,7 @@ const VisAgentPlanGroupCard: React.FC<{ data: GroupData }> = ({ data }) => {
   };
 
   return (
-    <div className="w-fit max-w-[85%] rounded-[10px] border border-slate-200/80 bg-white/70 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-all hover:bg-white">
+    <div className="w-fit max-w-[85%] rounded-[10px] bg-white dark:bg-[#232734] shadow-[0_1px_2px_rgba(16,24,40,0.05)] dark:shadow-none transition-colors hover:bg-[#f7f8fa] dark:hover:bg-[#2a2f3e]">
       {/* Summary row — always visible, toggles the group */}
       <button
         className="flex items-center gap-1.5 w-full pl-1 pr-2.5 py-[3px]"
@@ -131,8 +131,8 @@ const VisAgentPlanGroupCard: React.FC<{ data: GroupData }> = ({ data }) => {
                 <button
                   className={classNames(
                     'flex items-center gap-1.5 flex-1 min-w-0 ml-1.5 px-1.5 py-[5px] rounded-md text-left transition-colors',
-                    'hover:bg-slate-50',
-                    item.status === 'running' && 'bg-blue-50/60',
+                    'hover:bg-[#eceef3]',
+                    item.status === 'running' && 'bg-[#eef0fe]/70',
                   )}
                   onClick={() => handleItemClick(item.uid)}
                 >

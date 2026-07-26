@@ -4,8 +4,6 @@ import React, { FC, useMemo, useState, useEffect, useRef, useCallback } from 're
 import classNames from 'classnames';
 import {
   LoadingOutlined,
-  CheckCircleFilled,
-  CloseCircleFilled,
   GlobalOutlined,
   DownOutlined,
   UpOutlined,
@@ -83,41 +81,36 @@ const getStepTypeIcon = (type: ManusStepType) => {
 };
 
 const getIconBgClass = (type: ManusStepType): string => {
-  const map: Record<string, string> = {
-    read: 'bg-emerald-50', edit: 'bg-amber-50', write: 'bg-amber-50',
-    bash: 'bg-purple-50', grep: 'bg-cyan-50', glob: 'bg-cyan-50',
-    python: 'bg-blue-50', html: 'bg-orange-50',
-    task: 'bg-indigo-50', skill: 'bg-violet-50', sql: 'bg-emerald-50',
-  };
-  return map[type] || 'bg-gray-50';
+  // 统一中性底色,避免彩虹色图标墙;类型区分靠图标本身
+  return 'bg-[#f2f4f8] text-[#5d6577]';
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   Status badge
+   Status badge — 点状语义色 + 文字,替代彩色胶囊
    ═══════════════════════════════════════════════════════════════ */
 
 const StatusBadge: FC<{ status: ManusStepStatus; isRunning?: boolean }> = ({ status, isRunning }) => {
   if (isRunning || status === 'running') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-medium">
-        <LoadingOutlined spin className="text-[10px]" />
-        Running
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#4f46e5]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#4f46e5] animate-pulse" />
+        运行中
       </span>
     );
   }
   if (status === 'completed') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-medium">
-        <CheckCircleFilled className="text-[10px]" />
-        Completed
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#22c55e]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
+        已完成
       </span>
     );
   }
   if (status === 'error') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-500 text-[10px] font-medium">
-        <CloseCircleFilled className="text-[10px]" />
-        Error
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#ef4444]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
+        失败
       </span>
     );
   }
@@ -196,15 +189,15 @@ const TabItem: FC<{
     className={classNames(
       'relative flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-medium transition-colors whitespace-nowrap',
       active
-        ? 'text-gray-900'
-        : 'text-gray-400 hover:text-gray-600'
+        ? 'text-[#4f46e5]'
+        : 'text-[#8a92a6] hover:text-[#3b4154]'
     )}
   >
     <span className="text-xs">{icon}</span>
     <span>{label}</span>
     {/* Active underline indicator */}
     {active && (
-      <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-gray-900 rounded-full" />
+      <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-[#4f46e5] rounded-full" />
     )}
   </button>
 );
@@ -1052,8 +1045,18 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
     if (is_running) {
       return (
         <div className="flex flex-col items-center justify-center h-full">
-          <LoadingOutlined spin className="text-2xl text-blue-400 mb-3" />
-          <div className="text-sm text-gray-500">执行中...</div>
+          <div className="relative w-16 h-16 mb-5">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
+              <DesktopOutlined className="text-3xl text-blue-400" />
+            </div>
+            <div className="absolute inset-0 rounded-2xl border-2 border-blue-200 animate-ping opacity-30" />
+          </div>
+          <div className="text-sm font-medium mb-2 text-gray-700">执行中</div>
+          <div className="flex items-center gap-1.5 h-5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+          </div>
         </div>
       );
     }
@@ -1064,7 +1067,7 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 56px)' }}>
       {/* ── Tab bar (underline style, matching DB-GPT original) ── */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-1">
+      <div className="flex items-center justify-between border-b border-[#eff1f6] px-1">
         <div className="flex items-center overflow-x-auto">
           {/* 1. 执行步骤 */}
           <TabItem
@@ -1111,7 +1114,7 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
                 className={classNames(
                   'flex items-center gap-1 px-2.5 py-1 rounded text-xs transition-colors',
                   exporting
-                    ? 'text-blue-500 cursor-wait'
+                    ? 'text-[#4f46e5] cursor-wait'
                     : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
                 )}
                 disabled={exporting}
@@ -1125,7 +1128,7 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
       </div>
 
       {/* ── Tab content ── */}
-      <div className="flex-1 overflow-y-auto bg-white" ref={contentRef}>
+      <div className="flex-1 overflow-y-auto" ref={contentRef}>
         {activeTab === 'task_files' && hasTaskFiles ? (
           <TaskFilesView files={task_files} />
         ) : activeTab === 'summary' && hasSummary ? (

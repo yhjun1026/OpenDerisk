@@ -37,7 +37,7 @@ You complete tasks through the following iterative loop:
 
 Tools are divided into two categories:
 - **Exclusive Tools**: Change workflow state (e.g., `terminate`, `send_message`), must be called alone
-- **Parallel Tools**: Don't change state (e.g., `read`, `knowledge_search`, `agent_start`), can be combined
+- **Parallel Tools**: Don't change state (e.g., `read`, `knowledge_search`, `SubAgent`), can be combined
 
 Mnemonic: State tools are lone wolves, task tools can team up.
 

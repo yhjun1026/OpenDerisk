@@ -5,6 +5,8 @@ export const listTasks = (data: any) => POST('/api/v1/serve_task_service/tasks/l
 export const getTaskInfo = (task_id: number) => GET(`/api/v1/serve_task_service/tasks/info?task_id=${task_id}`);
 export const updateTask = (data: any) => POST('/api/v1/serve_task_service/tasks/update', data);
 export const startTask = (task_id: number) => POST(`/api/v1/serve_task_service/tasks/${task_id}/start`, {});
+export const terminateTask = (task_id: number) => POST(`/api/v1/serve_task_service/tasks/${task_id}/terminate`, {});
+export const deleteTask = (task_id: number) => POST(`/api/v1/serve_task_service/tasks/${task_id}/delete`, {});
 export const closeTask = (data: any) => POST('/api/v1/serve_task_service/tasks/close', data);
 export const archiveTask = (task_id: number) => POST(`/api/v1/serve_task_service/tasks/${task_id}/archive`, {});
 export const spawnTask = (data: any) => POST('/api/v1/serve_task_service/tasks/spawn', data);

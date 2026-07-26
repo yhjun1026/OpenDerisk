@@ -6,12 +6,15 @@ import { IChatDialogueMessageSchema } from '@/types/chat';
 import React, { memo, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import ChatHeader from '../header/chat-header';
 import UnifiedChatInput from '../input/unified-chat-input';
+import AppDefaultIcon from '../../icons/app-default-icon';
 import { Tooltip } from 'antd';
-import { LeftOutlined, DesktopOutlined } from '@ant-design/icons';
+import { LeftOutlined, DesktopOutlined, CloseOutlined } from '@ant-design/icons';
 import classNames from 'classnames';
 import { ee, EVENTS } from '@/utils/event-emitter';
 import markdownComponents, { markdownPlugins } from '@/components/chat/chat-content-components/config';
 import VisSystemEvents from '@/components/chat/chat-content-components/VisComponents/VisSystemEvents';
+import VisTodoList from '@/components/chat/chat-content-components/VisComponents/VisTodoList';
+import VisSubagentBoard from '@/components/chat/chat-content-components/VisComponents/VisSubagentBoard';
 import { GPTVis } from '@antv/gpt-vis';
 import { useSearchParams } from 'next/navigation';
 
@@ -212,7 +215,7 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
   const searchParams = useSearchParams();
   const shareMode = (searchParams?.get('share_mode') as ShareMode) || null;
   const isSharedView = !!shareMode;
-  const { history, replyLoading } = useContext(ChatContentContext);
+  const { history, replyLoading, todoList, subagentBoard, appInfo, handleChat } = useContext(ChatContentContext);
   const [userClosedPanel, setUserClosedPanel] = useState(false);
   const [overrideRunningWindow, setOverrideRunningWindow] = useState<string | null>(null);
   // 状态事件 badge 数据(由 SystemEventsBridge 从消息流中桥接出来)
@@ -246,6 +249,17 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
 
   // The running window shown in right panel: override (from deliverable click) or latest
   const displayRunningWindow = overrideRunningWindow || latestRunningWindow;
+
+  // Agent 预设提问:优先取 appInfo.recommend_questions,兼容多种字段形态
+  const recommendQuestions = useMemo(() => {
+    const raw = appInfo?.recommend_questions || [];
+    return raw
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        return item?.content || item?.question || item?.title || item?.text || String(item);
+      })
+      .filter((q): q is string => typeof q === 'string' && q.length > 0);
+  }, [appInfo?.recommend_questions]);
 
   // When hideRightPanel is true, always hide the right panel (for workspace mode)
   const effectiveHideRightPanel = hideRightPanel || userClosedPanel;
@@ -369,12 +383,12 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
   const isRightPanelVisible = hideRightPanel ? false
     : shareMode === 'conversation' ? false
     : shareMode === 'report' ? true
-    : !userClosedPanel;
+    : !userClosedPanel && latestHasData;
   const showLeftPanel = shareMode !== 'report';
   const showInput = !isSharedView;
 
   return (
-    <div className="flex h-full w-full overflow-hidden" style={{ background: 'linear-gradient(160deg, #fdfcfb 0%, #fbfaf8 40%, #faf9f6 100%)' }}>
+    <div className="flex h-full w-full overflow-hidden bg-[#f7f7f8] dark:bg-[#151622]">
       {/* ═══ Left panel — conversation on canvas ═══ */}
       {showLeftPanel && (
         <div className={classNames(
@@ -395,12 +409,12 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
           {/* Chat messages */}
           <div className="flex-1 overflow-y-auto min-w-0" ref={scrollRef}>
             {hasMessages ? (
-              <div className={classNames("w-full px-3 py-2", !isRightPanelVisible && "max-w-3xl mx-auto")}>
-                <div className="w-full space-y-0.5">
+              <div className={classNames("w-full px-4 py-3", !isRightPanelVisible && "max-w-[768px] mx-auto")}>
+                <div className="w-full space-y-1.5">
                   {showMessages.map((content) => (
                     // content-visibility:auto 让浏览器跳过屏外消息的渲染,
                     // 长会话(200 条滑动窗口)下大幅降低布局/绘制成本
-                    <div key={content.key} className="[content-visibility:auto] [contain-intrinsic-size:auto_200px]">
+                    <div key={content.key} className="[content-visibility:auto] [contain-intrinsic-size:auto_200px] animate-rise">
                       <ChatContent content={content} messages={showMessages} compact />
                     </div>
                   ))}
@@ -408,13 +422,36 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
                 </div>
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                    <span className="text-2xl text-white font-bold">M</span>
+              <div className="h-full flex items-center justify-center px-6">
+                <div className="text-center max-w-md">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white flex items-center justify-center overflow-hidden shadow-sm border border-[#eeeff3]">
+                    {appInfo?.icon && appInfo.icon !== 'smart-plugin' ? (
+                      <img src={appInfo.icon} alt={appInfo.app_name} className="w-full h-full object-cover" />
+                    ) : appInfo?.icon === 'smart-plugin' ? (
+                      <img src="/icons/colorful-plugin.png" alt={appInfo.app_name} className="w-full h-full object-cover" />
+                    ) : (
+                      <AppDefaultIcon scene={appInfo?.team_context?.chat_scene || 'chat_agent'} width={32} height={32} />
+                    )}
                   </div>
-                  <h3 className="text-base font-medium text-gray-600 mb-1">Manus Workspace</h3>
-                  <p className="text-gray-400 text-sm">输入消息开始对话</p>
+                  <h3 className="text-[16px] font-medium text-[#3b4154] mb-1">{appInfo?.app_name || 'Agent 工作台'}</h3>
+                  <p className="text-[#8a92a6] text-[13px] mb-6">
+                    {appInfo?.app_describe || '输入消息开始对话'}
+                  </p>
+                  {recommendQuestions.length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {recommendQuestions.map((q, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleChat?.(q)}
+                          className="max-w-[260px] px-3 py-2 text-[13px] text-[#3b4154] bg-white border border-[#e5e8ef] rounded-lg hover:border-[#4f46e5] hover:text-[#4f46e5] transition-colors text-left truncate"
+                          title={q}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -429,6 +466,16 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
                   <VisSystemEvents
                     data={{ ...systemEvents, is_running: !!systemEvents.is_running && isProcessing }}
                   />
+                </div>
+              )}
+              {todoList && todoList.items && todoList.items.length > 0 && (
+                <div className="w-full mb-2">
+                  <VisTodoList data={todoList} />
+                </div>
+              )}
+              {subagentBoard && subagentBoard.items && subagentBoard.items.length > 0 && (
+                <div className="w-full mb-2">
+                  <VisSubagentBoard data={subagentBoard} />
                 </div>
               )}
               <div className="w-full">
@@ -448,8 +495,8 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
           )}
         >
           <div
-            className="flex flex-col h-full bg-white rounded-xl overflow-hidden"
-            style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.05)' }}
+            className="flex flex-col h-full glass-panel rounded-2xl overflow-hidden border border-[#eeeff3]"
+            style={{ boxShadow: '0 2px 8px rgba(16,24,40,0.04), 0 16px 40px rgba(16,24,40,0.08)' }}
           >
             <WorkspaceHeader shareMode={shareMode} showLeftPanel={showLeftPanel} />
             <ManusRightPanelContent runningWindow={displayRunningWindow} isProcessing={!!isProcessing} />
@@ -475,7 +522,7 @@ const ManusChatContent: React.FC<ManusChatContentProps> = ({ ctrl, hideRightPane
 };
 
 /**
- * Workspace header — macOS-style title bar, height-matched with ChatHeader.
+ * Workspace header — 产品化标题栏(原 macOS 窗口灯改为品牌图标 + 关闭按钮)。
  */
 const WorkspaceHeader: React.FC<{ shareMode: ShareMode; showLeftPanel: boolean }> = memo(({ shareMode, showLeftPanel }) => {
   const { appInfo } = useContext(ChatContentContext);
@@ -485,26 +532,25 @@ const WorkspaceHeader: React.FC<{ shareMode: ShareMode; showLeftPanel: boolean }
 
   const headerTitle = useMemo(() => {
     const name = appInfo?.app_name;
-    return name ? `${name}的电脑` : 'OpenDerisk Computer';
+    return name ? `${name} · 工作台` : 'OpenDerisk 工作台';
   }, [appInfo?.app_name]);
 
   return (
-    <div className="flex items-center px-4 h-8 flex-shrink-0 bg-[#f6f6f6] border-b border-gray-200/50">
-      <div className="flex items-center gap-2.5 flex-1">
-        <div className="flex items-center gap-1.5">
-          <div
-            className="w-3 h-3 rounded-full bg-[#ff5f57] cursor-pointer hover:brightness-90 transition-all"
-            onClick={handleClose}
-          />
-          <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
-          <div className="w-3 h-3 rounded-full bg-[#28c840]" />
-        </div>
+    <div className="flex items-center px-3 h-10 flex-shrink-0 border-b border-[#eff1f6]">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <span className="w-5 h-5 rounded-md bg-[#eef0fe] inline-flex items-center justify-center flex-shrink-0">
+          <DesktopOutlined className="text-[#4f46e5] text-[11px]" />
+        </span>
+        <span className="text-[13px] font-medium text-[#3b4154] truncate">{headerTitle}</span>
       </div>
-      <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
-        <DesktopOutlined className="text-gray-400 text-[11px]" />
-        <span className="font-medium">{headerTitle}</span>
-      </div>
-      <div className="flex-1" />
+      <Tooltip title="收起面板" placement="left">
+        <button
+          onClick={handleClose}
+          className="w-6 h-6 rounded-md inline-flex items-center justify-center text-[#8a92a6] hover:text-[#3b4154] hover:bg-[#f2f4f8] transition-colors flex-shrink-0"
+        >
+          <CloseOutlined className="text-[11px]" />
+        </button>
+      </Tooltip>
     </div>
   );
 });

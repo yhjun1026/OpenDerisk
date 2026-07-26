@@ -61,6 +61,8 @@ export function useSceneAgentChat({
   const [lastInput, setLastInput] = useState<SceneAgentSendPayload | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(EMPTY_WORKSPACE_VIEW);
   const abortRef = useRef<AbortController | null>(null);
+  // 乐观插入的用户消息:发送即上屏,服务端回显同文本 user 步骤后移除,避免重复
+  const optimisticUserRef = useRef<{ id: string; text: string } | null>(null);
   const { chat } = useChat({ app_code: appCode || '' });
 
   const appendStep = useCallback((step: AgentStep) => {
@@ -74,19 +76,24 @@ export function useSceneAgentChat({
   const clearSteps = useCallback(() => {
     setSteps([]);
     setWorkspaceView(EMPTY_WORKSPACE_VIEW);
+    optimisticUserRef.current = null;
   }, []);
 
-  const clearWorkspaceView = useCallback(() => setWorkspaceView(EMPTY_WORKSPACE_VIEW), []);
+  const clearWorkspaceView = useCallback(() => {
+    setWorkspaceView(EMPTY_WORKSPACE_VIEW);
+    optimisticUserRef.current = null;
+  }, []);
 
   // 历史恢复:重开已有会话时,拉取 vis_final 还原步骤与总结。
   // query_chat 后端按 session_id 兜底取最新一轮 agent 会话,
   // 未产生过对话的会话返回空视图,天然幂等。
   useEffect(() => {
     if (!convUid) return;
+    optimisticUserRef.current = null;
     let cancelled = false;
     (async () => {
       try {
-        const res = await queryChatStatus(convUid);
+        const res = await queryChatStatus(convUid, 'scene_agent_workspace');
         const parsed = parseSceneAgentWorkspaceString(res?.data?.data?.vis_final);
         if (!cancelled && parsed && Array.isArray(parsed.execution)) {
           setWorkspaceView((prev) => parseWorkspaceView(parsed, prev));
@@ -110,6 +117,31 @@ export function useSceneAgentChat({
       setLoading(true);
       setLastInput(payload);
       setError(null);
+
+      // 乐观上屏:不等 SSE 首帧,先把用户消息插入视图;服务端回显同文本
+      // user 步骤时在 routeObject 里去重(服务端 output 会截断,用前缀匹配)
+      const optimisticId = `user-optimistic-${Date.now()}`;
+      optimisticUserRef.current = { id: optimisticId, text: text.trim() };
+      setWorkspaceView((prev) =>
+        parseWorkspaceView(
+          {
+            render_name: 'scene_agent_workspace',
+            planning: null,
+            execution: [
+              {
+                id: optimisticId,
+                type: 'user',
+                title: '我',
+                status: 'done',
+                output: text.trim(),
+                ts: new Date().toISOString(),
+              },
+            ],
+            summary: null,
+          },
+          prev,
+        ),
+      );
 
       const data = buildSceneAgentSendData(payload, { workspaceId, taskId, focusArtifactId }, convUid);
 
@@ -138,7 +170,25 @@ export function useSceneAgentChat({
             }
             const mv = obj as Record<string, unknown>;
             if (mv.render_name === 'scene_agent_workspace' || Array.isArray(mv.execution)) {
-              setWorkspaceView((prev) => parseWorkspaceView(obj, prev));
+              setWorkspaceView((prev) => {
+                // 服务端回显了同文本 user 步骤 → 先移除乐观步骤再合并,避免重复
+                const opt = optimisticUserRef.current;
+                let base = prev;
+                if (opt && Array.isArray(mv.execution)) {
+                  const echoed = (mv.execution as any[]).some(
+                    (e) =>
+                      e?.type === 'user' &&
+                      typeof e?.output === 'string' &&
+                      e.output.length > 0 &&
+                      (opt.text === e.output || opt.text.startsWith(e.output)),
+                  );
+                  if (echoed) {
+                    base = { ...prev, execution: prev.execution.filter((s) => s.id !== opt.id) };
+                    optimisticUserRef.current = null;
+                  }
+                }
+                return parseWorkspaceView(obj, base);
+              });
             }
           };
 

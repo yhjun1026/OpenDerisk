@@ -1,20 +1,17 @@
 'use client';
 
-import { Button, Tag, message } from 'antd';
+import { Tag } from 'antd';
 import { useRequest } from 'ahooks';
 import {
   ThunderboltOutlined,
   CloudServerOutlined,
   SendOutlined,
-  RocketOutlined,
 } from '@ant-design/icons';
 import {
   apiInterceptors,
-  createTask,
   listTasks,
   listArtifacts,
   listDeliveries,
-  listPlaybooks,
 } from '@/client/api';
 import { GrowthCard } from './growth-card';
 import './lobby.css';
@@ -61,16 +58,6 @@ export function Lobby({
   onSelectTask,
   onSelectArtifact,
 }: LobbyProps) {
-  const handleQuickStart = async (playbookId: number) => {
-    const [err, task] = await apiInterceptors(
-      createTask({ workspace_id: workspaceId, playbook_id: playbookId })
-    );
-    if (err || !task) {
-      message.error('创建任务失败，请重试');
-      return;
-    }
-    onSelectTask(task.id);
-  };
   const { data: tasksRes } = useRequest(
     async () => apiInterceptors(listTasks({ workspace_id: workspaceId, status: 'running' })),
     { refreshDeps: [workspaceId] },
@@ -89,12 +76,6 @@ export function Lobby({
   );
   const artifacts = artifactsRes?.[1];
 
-  const { data: playbooksRes } = useRequest(
-    async () => apiInterceptors(listPlaybooks({ workspace_id: workspaceId })),
-    { refreshDeps: [workspaceId] },
-  );
-  const playbooks = playbooksRes?.[1];
-
   const runningTasks = (tasks || []).slice(0, 5);
   const recentDeliveries = (deliveries || []).slice(0, 3);
   const recentArtifacts = (artifacts || []).slice(0, 4);
@@ -111,7 +92,7 @@ export function Lobby({
             <SectionHead icon={<ThunderboltOutlined />} title="进行中任务" count={runningTasks.length} />
             <div className="ws-lobby__section-body">
               {runningTasks.length === 0 && (
-                <EmptyState title="暂无进行中任务" hint="在下方输入指令,或从快捷发起选择一个剧本" />
+                <EmptyState title="暂无进行中任务" hint="在下方输入指令开始任务" />
               )}
               {runningTasks.map((t: any) => (
                 <div
@@ -169,31 +150,6 @@ export function Lobby({
                   <span className="ws-lobby__delivery-status">{d.status}</span>
                 </div>
               ))}
-            </div>
-          </section>
-
-          {/* 快捷发起 */}
-          <section className="ws-lobby__section">
-            <SectionHead icon={<RocketOutlined />} title="快捷发起" sub="选择剧本,一键发起任务" />
-            <div className="ws-lobby__section-body ws-lobby__quick">
-              {(playbooks || []).slice(0, 4).map((p: any) => (
-                <Button
-                  key={p.id}
-                  className="ws-lobby__quick-btn"
-                  onClick={() => handleQuickStart(p.id)}
-                >
-                  <span className="ws-lobby__quick-name">发起: {p.name}</span>
-                  {(p.scenario_type || p.task_type) && (
-                    <span className="ws-lobby__quick-desc">{p.scenario_type || p.task_type}</span>
-                  )}
-                </Button>
-              ))}
-              {(playbooks || []).length === 0 && (
-                <EmptyState
-                  title="空间还没有剧本"
-                  hint="去剧本管理创建一个,或直接在底部输入框下指令"
-                />
-              )}
             </div>
           </section>
         </div>

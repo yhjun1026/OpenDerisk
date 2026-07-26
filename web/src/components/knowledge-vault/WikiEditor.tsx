@@ -108,7 +108,7 @@ export default function WikiEditor() {
     <Spin spinning={loading} wrapperClassName="h-full">
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-white">
-          <FileTextOutlined className="text-[#0C75FC]" />
+          <FileTextOutlined className="text-[#4f46e5]" />
           <Title level={5} className="!mb-0 text-sm truncate" title={selectedDoc}>
             {doc?.title || selectedDoc}
           </Title>

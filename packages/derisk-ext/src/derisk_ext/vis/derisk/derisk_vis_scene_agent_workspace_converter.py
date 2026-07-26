@@ -52,7 +52,9 @@ class SceneAgentWorkspaceConverter(DeriskIncrVisManusConverter):
 
     @property
     def reuse_name(self):
-        return "scene_agent_workspace"
+        # 通用页(/chat 历史会话、应用详情)不认识 scene_agent_workspace 协议,
+        # 声明回退到 vis_manus 布局:通用页用 manus converter 实时组装同一份消息数据
+        return "vis_manus"
 
     @property
     def render_name(self):

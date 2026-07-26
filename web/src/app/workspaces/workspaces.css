@@ -91,7 +91,7 @@
   width: 40px;
   height: 40px;
   border-radius: var(--ws-radius-sm);
-  background: linear-gradient(135deg, var(--ws-accent), #4d9fff);
+  background: linear-gradient(135deg, var(--ws-accent), #6366f1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -444,7 +444,7 @@
   }
 }
 
-/* Console header bar */
+/* Console header bar — 独立卡片(与下方三栏有间距) */
 .ws-console-header {
   display: flex;
   align-items: center;
@@ -452,9 +452,8 @@
   gap: 12px;
   padding: 12px 16px;
   background: var(--ws-surface);
-  border: 1px solid var(--ws-border);
-  border-bottom: none;
-  border-radius: var(--ws-radius) var(--ws-radius) 0 0;
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius);
   flex-wrap: wrap;
 }
 
@@ -469,7 +468,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--ws-radius-xs);
-  background: linear-gradient(135deg, var(--ws-accent), #4d9fff);
+  background: linear-gradient(135deg, var(--ws-accent), #6366f1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -522,28 +521,31 @@
 .ws-console-nav-link .anticon { font-size: 13px; }
 
 .ws-console-nav-link:hover {
-  background: var(--ws-accent-light);
+  color: var(--ws-ink);
+  background: var(--ws-bg);
+}
+
+/* 当前路由激活态：品牌浅底 + 品牌色文字(白 header 上白底阴影看不出激活) */
+.ws-console-nav-link--active,
+.ws-console-nav-link--accent {
   color: var(--ws-accent);
+  background: var(--ws-accent-light);
+  font-weight: 500;
+}
+
+.ws-console-nav-link--active:hover,
+.ws-console-nav-link--accent:hover {
+  color: var(--ws-accent);
+  background: var(--ws-accent-light);
 }
 
 .ws-console-nav-link--attention {
   color: var(--ws-attention);
-  background: var(--ws-attention-light);
 }
 
 .ws-console-nav-link--attention:hover {
   color: var(--ws-attention);
-  background: rgba(var(--ws-attention-rgb), 0.16);
-}
-
-.ws-console-nav-link--accent {
-  color: var(--ws-accent);
-  background: var(--ws-accent-light);
-}
-
-.ws-console-nav-link--accent:hover {
-  color: var(--ws-accent);
-  background: rgba(var(--ws-accent-rgb), 0.16);
+  background: var(--ws-attention-light);
 }
 
 .ws-chat-loading {

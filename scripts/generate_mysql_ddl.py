@@ -26,6 +26,29 @@ def get_project_version(project_root: Path) -> str:
     return "0.0.0"
 
 
+def get_ddl_metadata(ddl_path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """Extract version and generation time from DDL file header.
+
+    Returns:
+        Tuple of (version, generated_datetime) or (None, None) if not found
+    """
+    if not ddl_path.exists():
+        return None, None
+
+    content = ddl_path.read_text(encoding='utf-8')
+
+    # Extract version
+    version_match = re.search(r'-- Version:\s*(\S+)', content)
+    version = version_match.group(1) if version_match else None
+
+    # Extract generation time
+    # Format: -- Generated: 2026-07-23 23:39:18
+    generated_match = re.search(r'-- Generated:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})', content)
+    generated_datetime = generated_match.group(1) if generated_match else None
+
+    return version, generated_datetime
+
+
 def parse_column_from_text(text, class_start, class_end):
     """Parse columns from a class definition text."""
     columns = []
@@ -578,79 +601,98 @@ def find_model_files(root_dir):
 def parse_ddl_file(ddl_path: Path) -> Dict[str, Dict[str, Any]]:
     """Parse a DDL file and extract table structures."""
     tables = {}
-    
+
     if not ddl_path.exists():
         return tables
-    
+
     content = ddl_path.read_text(encoding='utf-8')
-    
-    table_pattern = r'CREATE TABLE\s+`(\w+)`\s*\((.*?)\)\s*ENGINE=InnoDB'
-    
+
+    # Updated pattern to match "CREATE TABLE IF NOT EXISTS" or "CREATE TABLE"
+    table_pattern = r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`(\w+)`\s*\((.*?)\)\s*ENGINE=InnoDB'
+
     for match in re.finditer(table_pattern, content, re.DOTALL | re.IGNORECASE):
         table_name = match.group(1)
         table_body = match.group(2)
-        
+
         columns = {}
         indexes = {}
         unique_keys = {}
         primary_key = None
-        
+
         lines = table_body.split('\n')
-        
+
         for line in lines:
             line = line.strip().rstrip(',')
             if not line or line.startswith('--'):
                 continue
-            
+
             col_match = re.match(r'`(\w+)`\s+(\w+(?:\([^)]*\))?)\s*(.*)', line)
             if col_match:
                 col_name = col_match.group(1)
                 col_type = col_match.group(2)
                 col_attrs = col_match.group(3)
-                
+
                 columns[col_name] = {
                     'type': col_type,
                     'attrs': col_attrs,
                     'full_def': line
                 }
-                
+
                 if 'PRIMARY KEY' in col_attrs.upper():
                     primary_key = col_name
-            
+
             pk_match = re.match(r'PRIMARY KEY\s*\(([^)]+)\)', line, re.IGNORECASE)
             if pk_match:
                 primary_key = pk_match.group(1)
-            
+
             idx_match = re.match(r'(?:KEY|INDEX)\s+`(\w+)`\s*\(([^)]+)\)', line, re.IGNORECASE)
             if idx_match:
                 idx_name = idx_match.group(1)
                 idx_cols = idx_match.group(2)
                 indexes[idx_name] = idx_cols
-            
+
             uk_match = re.match(r'UNIQUE(?:\s+KEY)?\s+`(\w+)`\s*\(([^)]+)\)', line, re.IGNORECASE)
             if uk_match:
                 uk_name = uk_match.group(1)
                 uk_cols = uk_match.group(2)
                 unique_keys[uk_name] = uk_cols
-        
+
         tables[table_name] = {
             'columns': columns,
             'indexes': indexes,
             'unique_keys': unique_keys,
             'primary_key': primary_key
         }
-    
+
     return tables
 
 
-def generate_incremental_ddl(old_tables: Dict, new_tables: Dict, from_version: str, to_version: str) -> List[str]:
-    """Generate incremental DDL statements from old to new schema."""
+def generate_incremental_ddl(
+    old_tables: Dict,
+    new_tables: Dict,
+    from_version: str,
+    to_version: str,
+    old_generated_time: Optional[str] = None,
+    current_datetime: Optional[str] = None
+) -> List[str]:
+    """Generate incremental DDL statements from old to new schema.
+
+    Args:
+        old_tables: Dict of old table structures
+        new_tables: Dict of new table structures
+        from_version: Source version
+        to_version: Target version
+        old_generated_time: When the old DDL was generated (e.g., "2026-07-23 23:39:18")
+        current_datetime: Current generation time (e.g., "2026-07-26 19:12:25")
+    """
     statements = []
-    
+
     statements.append("-- ============================================================")
-    statements.append(f"-- Incremental DDL Script for Derisk")
+    statements.append("-- Incremental DDL Script for Derisk")
     statements.append(f"-- Upgrade from version {from_version} to {to_version}")
-    statements.append(f"-- Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if old_generated_time:
+        statements.append(f"-- Source DDL generated: {old_generated_time}")
+    statements.append(f"-- Generated: {current_datetime or datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     statements.append("-- ============================================================")
     statements.append("")
     statements.append("SET NAMES utf8mb4;")
@@ -785,24 +827,24 @@ def generate_incremental_ddl(old_tables: Dict, new_tables: Dict, from_version: s
 def main():
     """Main function."""
     project_root = Path(__file__).parent.parent
-    
+
     print("=" * 80)
     print("MySQL DDL Generation Script for Derisk Project")
     print("=" * 80)
     print()
-    
+
     current_version = get_project_version(project_root)
     print(f"Current version: {current_version}")
     print()
-    
+
     print("Scanning for ORM model files...")
     model_files = find_model_files(project_root)
     print(f"Found {len(model_files)} model files to parse")
     print()
-    
+
     all_tables = []
     processed_tables = set()
-    
+
     for file_path in model_files:
         rel_path = Path(file_path).relative_to(project_root)
         try:
@@ -814,29 +856,32 @@ def main():
                     print(f"  Found: {table['table_name']} ({table['class_name']}) - {len(table['columns'])} columns")
         except Exception as e:
             print(f"  Error parsing {rel_path}: {e}")
-    
+
     print()
-    
+
     schema_dir = project_root / "assets" / "schema"
     schema_dir.mkdir(parents=True, exist_ok=True)
-    
+
     full_ddl_file = schema_dir / "derisk.sql"
-    
+
+    # Parse existing DDL file (if exists) for comparison
     old_tables = {}
     old_version = None
-    
+    old_generated_time = None
+
     if full_ddl_file.exists():
-        print("Parsing existing DDL file for incremental comparison...")
+        print("Parsing existing DDL file for comparison...")
         old_tables = parse_ddl_file(full_ddl_file)
-        
-        old_content = full_ddl_file.read_text(encoding='utf-8')
-        version_match = re.search(r'-- Version:\s*(\S+)', old_content)
-        if version_match:
-            old_version = version_match.group(1)
-        
-        print(f"Found {len(old_tables)} existing tables in old DDL (version: {old_version})")
+
+        # Extract version and generation time from old DDL
+        old_version, old_generated_time = get_ddl_metadata(full_ddl_file)
+
+        print(f"Found {len(old_tables)} existing tables in old DDL")
+        print(f"  Old version: {old_version}")
+        print(f"  Old generated: {old_generated_time}")
         print()
-    
+
+    # Generate full DDL
     ddl_statements = []
     ddl_statements.append("-- You can change `derisk` to your actual metadata database name in your `.env` file")
     ddl_statements.append("-- eg. `LOCAL_DB_NAME=derisk`")
@@ -855,40 +900,110 @@ def main():
     ddl_statements.append("SET NAMES utf8mb4;")
     ddl_statements.append("SET FOREIGN_KEY_CHECKS = 0;")
     ddl_statements.append("")
-    
+
     for table in all_tables:
         ddl = generate_table_ddl(table)
         ddl_statements.append(ddl)
-    
+
     ddl_statements.append("SET FOREIGN_KEY_CHECKS = 1;")
     ddl_statements.append("")
     ddl_statements.append("-- ============================================================")
     ddl_statements.append("-- End of DDL Script")
     ddl_statements.append("-- ============================================================")
-    
+
+    # Write full DDL
     with open(full_ddl_file, 'w', encoding='utf-8') as f:
         f.write('\n'.join(ddl_statements))
-    print(f"Full DDL written to: {full_ddl_file}")
-    
-    if old_tables and old_version and old_version != current_version:
+    print(f"✓ Full DDL written to: {full_ddl_file}")
+
+    # Generate incremental DDL if old DDL exists and there are schema changes
+    # We generate incremental DDL regardless of version number change
+    if old_tables:
+        print()
+        print("Checking for schema changes...")
+
+        # Parse the newly generated DDL to get new schema
         new_tables = parse_ddl_file(full_ddl_file)
-        
-        if old_tables != new_tables:
-            incremental_statements = generate_incremental_ddl(old_tables, new_tables, old_version, current_version)
-            
-            upgrade_file = schema_dir / f"upgrade_{old_version}_to_{current_version}.sql"
+
+        # Check if there are actual schema changes
+        has_changes = False
+
+        old_table_names = set(old_tables.keys())
+        new_table_names = set(new_tables.keys())
+
+        added_tables = new_table_names - old_table_names
+        removed_tables = old_table_names - new_table_names
+        common_tables = old_table_names & new_table_names
+
+        if added_tables or removed_tables:
+            has_changes = True
+        else:
+            # Check for column/index changes in common tables
+            for table_name in common_tables:
+                old_table = old_tables[table_name]
+                new_table = new_tables[table_name]
+
+                old_cols = set(old_table['columns'].keys())
+                new_cols = set(new_table['columns'].keys())
+
+                if old_cols != new_cols:
+                    has_changes = True
+                    break
+
+                # Check column definitions
+                for col_name in old_cols & new_cols:
+                    if old_table['columns'][col_name]['full_def'] != new_table['columns'][col_name]['full_def']:
+                        has_changes = True
+                        break
+
+                if has_changes:
+                    break
+
+                # Check indexes
+                if old_table['indexes'] != new_table['indexes'] or old_table['unique_keys'] != new_table['unique_keys']:
+                    has_changes = True
+                    break
+
+        if has_changes:
+            print("Schema changes detected!")
+
+            # Determine incremental DDL filename with timestamps
+            current_timestamp = datetime.now().strftime('%Y%m%d')
+            current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Extract timestamp from old DDL generation time
+            old_timestamp = "unknown"
+            if old_generated_time:
+                # Convert "2026-07-23 23:39:18" to "20260723"
+                old_timestamp = old_generated_time.split()[0].replace('-', '')
+
+            # Build descriptive filename
+            # Format: upgrade_{old_version}_{old_date}_to_{new_version}_{new_date}.sql
+            old_ver_str = old_version or "unknown"
+            new_ver_str = current_version
+
+            upgrade_filename = f"upgrade_{old_ver_str}_{old_timestamp}_to_{new_ver_str}_{current_timestamp}.sql"
+            upgrade_file = schema_dir / upgrade_filename
+
+            incremental_statements = generate_incremental_ddl(
+                old_tables,
+                new_tables,
+                old_version or "unknown",
+                current_version,
+                old_generated_time=old_generated_time,
+                current_datetime=current_datetime
+            )
+
             with open(upgrade_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(incremental_statements))
-            print(f"Incremental DDL written to: {upgrade_file}")
+            print(f"✓ Incremental DDL written to: {upgrade_file}")
         else:
             print("No schema changes detected, skipping incremental DDL generation")
-    elif old_version == current_version:
-        print("Same version, skipping incremental DDL generation")
-    
+
     print()
     print(f"Total tables: {len(all_tables)}")
     print("Done!")
-    
+
     return 0
 
 

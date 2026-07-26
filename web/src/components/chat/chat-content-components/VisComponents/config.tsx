@@ -35,6 +35,7 @@ import VisStepCard from './VisStepCard';
 import VisStepListCard from './VisStepListCard';
 import { parseFirstJson } from '@/utils/json';
 import VisTodoList from './VisTodoList';
+import VisSubagentBoard from './VisSubagentBoard';
 import VisParseError from './VisParseError';
 import VisError from './VisError';
 import VisStatusNotification from './VisStatusNotification';
@@ -551,6 +552,19 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       );
     } catch (e) {
       return <VisParseError content={content} error={e} componentName="d-todo-list" />;
+    }
+  },
+  'd-subagent-board': ({ children }) => {
+    const content = String(children);
+    try {
+      const data = parseFirstJson(content);
+      return (
+        <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-subagent-board" />}>
+          <VisSubagentBoard data={data} />
+        </ErrorBoundary>
+      );
+    } catch (e) {
+      return <VisParseError content={content} error={e} componentName="d-subagent-board" />;
     }
   },
   'd-status-notification': ({ children }) => {

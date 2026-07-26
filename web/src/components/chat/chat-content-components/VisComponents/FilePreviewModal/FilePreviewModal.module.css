@@ -170,13 +170,13 @@
 }
 
 .toolbarBtnActive {
-  color: #1677ff;
+  color: #4f46e5;
   background: #e6f4ff;
   border-color: #91caff;
 }
 
 .toolbarBtnActive:hover {
-  color: #1677ff;
+  color: #4f46e5;
   background: #bae0ff;
   border-color: #91caff;
 }
@@ -363,7 +363,7 @@
   }
 
   :global(.ant-tabs-ink-bar) {
-    background: #1677ff;
+    background: #4f46e5;
   }
 }
 

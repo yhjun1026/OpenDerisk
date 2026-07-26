@@ -62,7 +62,7 @@ import { AuthorizationMode, LLMJudgmentPolicy } from '@/types/authorization';
 const GROUP_CONFIG: Record<ToolBindingType, { icon: React.ReactNode; color: string }> = {
   builtin_required: {
     icon: <SafetyOutlined />,
-    color: '#1677ff',
+    color: '#4f46e5',
   },
   builtin_optional: {
     icon: <ToolOutlined />,

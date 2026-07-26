@@ -221,7 +221,7 @@ export default function LoginPage() {
                 {oauthProviders.length > 0 && (
                   <button
                     onClick={() => setIsLocalMode(false)}
-                    className='text-xs text-gray-400 hover:text-[#0C75FC] transition-colors'
+                    className='text-xs text-gray-400 hover:text-[#4f46e5] transition-colors'
                   >
                     More options
                   </button>
@@ -285,7 +285,7 @@ export default function LoginPage() {
                   loading={submitting}
                   onClick={isRegister ? handleLocalRegister : handleLocalLogin}
                   className='rounded-lg font-medium'
-                  style={{ height: 42, background: '#0C75FC' }}
+                  style={{ height: 42, background: '#4f46e5' }}
                 >
                   {isRegister ? 'Create Account' : 'Sign In'}
                 </Button>
@@ -293,7 +293,7 @@ export default function LoginPage() {
 
               <div className='mt-4 text-center'>
                 <button
-                  className='text-[13px] text-gray-400 hover:text-[#0C75FC] transition-colors'
+                  className='text-[13px] text-gray-400 hover:text-[#4f46e5] transition-colors'
                   onClick={() => {
                     setIsRegister(!isRegister);
                     setLocalError('');

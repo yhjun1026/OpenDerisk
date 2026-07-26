@@ -696,6 +696,8 @@ def initialize_app(param: ApplicationConfig, app: FastAPI, system_app: SystemApp
     # Import cron module to register CronJobEntity before create_all
     from derisk_serve.cron.models.models import CronJobEntity  # noqa: F401
     from derisk_serve.trigger.models.models import TriggerSourceEntity  # noqa: F401
+    from derisk_serve.usage.models.models import LLMUsageEntity  # noqa: F401
+    from derisk_serve.intervention.models.models import InterventionEntity  # noqa: F401
 
     _migration_db_storage(
         param.service.web.database, web_config.disable_alembic_upgrade

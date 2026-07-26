@@ -15,7 +15,7 @@ interface DeliverableData {
 }
 
 const renderTypeConfig: Record<string, { icon: React.ReactNode; label: string }> = {
-  iframe: { icon: <DesktopOutlined style={{ fontSize: 20, color: '#1677ff' }} />, label: '网页报告' },
+  iframe: { icon: <DesktopOutlined style={{ fontSize: 20, color: '#4f46e5' }} />, label: '网页报告' },
   markdown: { icon: <FileTextOutlined style={{ fontSize: 20, color: '#52c41a' }} />, label: 'Markdown 文档' },
   code: { icon: <CodeOutlined style={{ fontSize: 20, color: '#722ed1' }} />, label: '代码文件' },
   image: { icon: <FileImageOutlined style={{ fontSize: 20, color: '#fa8c16' }} />, label: '图片' },

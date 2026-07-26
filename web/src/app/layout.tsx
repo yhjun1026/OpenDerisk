@@ -3,7 +3,7 @@ import { ChatContext, ChatContextProvider } from "@/contexts";
 import { InteractionProvider } from "@/components/interaction";
 import SideBar from "@/components/layout/side-bar";
 import TopHeader from "@/components/layout/top-header";
-import FloatHelper from "@/components/layout/float-helper";
+import CommandPalette from "@/components/layout/command-palette";
 import {
   STORAGE_LANG_KEY,
   STORAGE_USERINFO_KEY,
@@ -23,6 +23,40 @@ import { authService } from "@/services/auth";
 
 // Prevent SSR flash
 const EmptyLayout = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+
+// 全局 AntD 主题 —— 与 src/styles/globals.css 设计 token 对齐
+const antdTheme = {
+  token: {
+    colorPrimary: "#4f46e5",
+    colorInfo: "#4f46e5",
+    colorSuccess: "#22c55e",
+    colorWarning: "#f59e0b",
+    colorError: "#ef4444",
+    colorText: "#14161c",
+    colorTextSecondary: "#5d6577",
+    colorTextTertiary: "#8a92a6",
+    colorBorder: "#e5e8ef",
+    colorBorderSecondary: "#eff1f6",
+    colorFillSecondary: "#f2f4f8",
+    colorBgLayout: "#f7f8fa",
+    borderRadius: 8,
+    borderRadiusSM: 6,
+    borderRadiusLG: 12,
+    fontSize: 13,
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif',
+    boxShadowTertiary: "0 1px 2px rgba(16, 24, 40, 0.04)",
+    boxShadowSecondary: "0 4px 16px rgba(16, 24, 40, 0.08)",
+    boxShadow: "0 12px 40px rgba(16, 24, 40, 0.12)",
+    controlHeight: 34,
+  },
+  components: {
+    Button: { fontWeight: 500, primaryShadow: "none" },
+    Card: { boxShadowTertiary: "0 1px 2px rgba(16, 24, 40, 0.04)" },
+    Menu: { itemBorderRadius: 8 },
+    Input: { activeShadow: "0 0 0 3px rgba(79, 70, 229, 0.08)" },
+  },
+};
 
 const antdDarkTheme: MappingAlgorithm = (seedToken, mapToken) => {
   return {
@@ -119,7 +153,7 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
       <ConfigProvider
         locale={i18n.language === "en" ? enUS : zhCN}
-        theme={{ token: { colorPrimary: "#0C75FC", borderRadius: 4 }, algorithm: undefined }}
+        theme={{ ...antdTheme, algorithm: undefined }}
       >
         <App>{children}</App>
       </ConfigProvider>
@@ -130,7 +164,7 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
     return (
       <ConfigProvider
         locale={i18n.language === "en" ? enUS : zhCN}
-        theme={{ token: { colorPrimary: "#0C75FC", borderRadius: 4 }, algorithm: undefined }}
+        theme={{ ...antdTheme, algorithm: undefined }}
       >
         <App className="w-screen h-screen flex items-center justify-center">
           <Spin />
@@ -154,7 +188,7 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col flex-1 overflow-hidden">
           {children}
         </div>
-        <FloatHelper />
+        <CommandPalette />
       </div>
     );
   };
@@ -163,13 +197,8 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
     <ConfigProvider
       locale={i18n.language === "en" ? enUS : zhCN}
       theme={{
-        token: {
-          colorPrimary: "#0C75FC",
-          borderRadius: 4,
-        },
-        // algorithm: mode === "dark" ? antdDarkTheme : undefined,
-        // 暂不支持 dark 
-        algorithm: undefined,
+        ...antdTheme,
+        algorithm: mode === "dark" ? theme.darkAlgorithm : undefined,
       }}
     >
       <App>{renderContent()}</App>
@@ -184,7 +213,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning data-theme="light" className="light">
-      <body suppressHydrationWarning={true} className="bg-[#FAFAFA] dark:bg-[#111]">
+      <body suppressHydrationWarning={true} className="bg-surface-page dark:bg-[#111]">
         <Suspense fallback={
           <App className="w-screen h-screen flex items-center justify-center">
             <Spin />

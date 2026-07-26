@@ -226,4 +226,6 @@ export const WorkspacesZh = {
   'deliveries.asset_type': '类型',
   'deliveries.no_assets': '暂无沉淀资产',
   'deliveries.no_archived': '暂无归档产出',
+  'deliveries.resend': '重发',
+  'view': '查看',
 };

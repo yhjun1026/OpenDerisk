@@ -68,9 +68,27 @@ Examples:
                     "enum": ["cron", "every", "at"],
                     "description": "Type of schedule ('cron', 'every', or 'at').",
                 },
+                "payload_kind": {
+                    "type": "string",
+                    "enum": ["agentTurn", "toolCall"],
+                    "default": "agentTurn",
+                    "description": "What to execute when the task triggers. 'agentTurn': send a message to an Agent (requires message). 'toolCall': execute a registered Agent tool by name (requires tool_name).",
+                },
                 "message": {
                     "type": "string",
-                    "description": "The instruction to send to the Agent when the task triggers. Write a clear command for the Agent to execute.",
+                    "description": "The instruction to send to the Agent when the task triggers (required for payload_kind='agentTurn'). Write a clear command for the Agent to execute.",
+                },
+                "tool_name": {
+                    "type": "string",
+                    "description": "Tool name to execute at the scheduled time (required for payload_kind='toolCall'). E.g., 'call_agent', 'fire_trigger', or any registered resource-free tool.",
+                },
+                "tool_args": {
+                    "type": "object",
+                    "description": "Arguments object for the tool execution (payload_kind='toolCall'). E.g., for 'call_agent': {\"agent_id\": \"x\", \"message\": \"hi\", \"session_mode\": \"isolated\"}.",
+                },
+                "workspace_id": {
+                    "type": "integer",
+                    "description": "Workspace ID for payload_kind='toolCall'. When set, workspace resources (DB/knowledge) are assembled into the tool's execution context, enabling resource-dependent tools like execute_sql/knowledge_search. Omit for resource-free tools (call_agent/fire_trigger).",
                 },
                 "cron_expr": {
                     "type": "string",
@@ -104,7 +122,7 @@ Examples:
                     "description": "Optional description of the job.",
                 },
             },
-            "required": ["name", "schedule_kind", "message"],
+            "required": ["name", "schedule_kind"],
         }
 
     async def execute(
@@ -115,13 +133,27 @@ Examples:
             # 获取参数
             name = args.get("name")
             schedule_kind = args.get("schedule_kind")
-            message = args.get("message")
+            payload_kind = args.get("payload_kind", "agentTurn")
 
-            if not name or not schedule_kind or not message:
+            if not name or not schedule_kind:
                 return ToolResult.fail(
-                    error="Missing required parameters: name, schedule_kind, or message",
+                    error="Missing required parameters: name or schedule_kind",
                     tool_name=self.name,
                 )
+
+            # Conditional required params by payload kind
+            if payload_kind == "toolCall":
+                if not args.get("tool_name"):
+                    return ToolResult.fail(
+                        error="tool_name is required for payload_kind='toolCall'",
+                        tool_name=self.name,
+                    )
+            else:  # agentTurn
+                if not args.get("message"):
+                    return ToolResult.fail(
+                        error="message is required for payload_kind='agentTurn'",
+                        tool_name=self.name,
+                    )
 
             # 获取 cron 服务
             cron_service = self._get_cron_service()
@@ -226,9 +258,10 @@ Examples:
                     return None
                 schedule.at = at_time
 
-            # 获取 agent_id 和 conv_session_id（如果可用）
+            # 获取 agent_id / conv_session_id / user_id（如果可用）
             agent_id = None
             conv_session_id = None
+            user_id = None
             if context:
                 # 从 context 获取相关信息
                 if hasattr(context, "agent_context") and context.agent_context:
@@ -236,15 +269,25 @@ Examples:
                     conv_session_id = getattr(
                         context.agent_context, "conv_session_id", None
                     )
+                    user_id = getattr(context.agent_context, "user_id", None)
 
-            # 构建负载
-            payload = CronPayload(
-                kind=PayloadKind.AGENT_TURN,
-                message=args.get("message"),
-                agent_id=agent_id,
-                session_mode=session_mode_enum,
-                conv_session_id=conv_session_id,
-            )
+            # 构建负载（按 payload_kind 分支）
+            payload_kind = args.get("payload_kind", "agentTurn")
+            if payload_kind == "toolCall":
+                payload = CronPayload(
+                    kind=PayloadKind.TOOL_CALL,
+                    tool_name=args.get("tool_name"),
+                    tool_args=args.get("tool_args"),
+                    workspace_id=args.get("workspace_id"),
+                )
+            else:
+                payload = CronPayload(
+                    kind=PayloadKind.AGENT_TURN,
+                    message=args.get("message"),
+                    agent_id=agent_id,
+                    session_mode=session_mode_enum,
+                    conv_session_id=conv_session_id,
+                )
 
             return CronJobCreate(
                 name=args.get("name"),
@@ -252,6 +295,7 @@ Examples:
                 enabled=args.get("enabled", True),
                 schedule=schedule,
                 payload=payload,
+                user_id=user_id,
             )
 
         except ImportError as e:

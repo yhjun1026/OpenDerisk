@@ -141,7 +141,7 @@ const Prompt = () => {
             <div className="flex items-center gap-4">
             <Segmented
               className="flex backdrop-blur-lg bg-white/30 border-2 
-              [&_.ant-segmented-item-selected]:bg-[#0c75fc]/80 [&_.ant-segmented-item-selected]:text-white border-white rounded-lg shadow p-1 dark:border-[#6f7f95] dark:bg-[#6f7f95]/60"
+              [&_.ant-segmented-item-selected]:bg-[#4f46e5]/80 [&_.ant-segmented-item-selected]:text-white border-white rounded-lg shadow p-1 dark:border-[#6f7f95] dark:bg-[#6f7f95]/60"
               options={items}
               onChange={type => setPromptType(type as string)}
               value={promptType}

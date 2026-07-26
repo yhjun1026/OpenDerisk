@@ -314,6 +314,27 @@ class ReActMasterAgent(ConversableAgent):
         # 注入异步任务工具（当检测到多 Agent 场景时）
         await self._inject_async_task_tools()
 
+        # 注入 todo 工具（目标任务管理核心机制，始终注入，不依赖 resource_tool 配置）
+        await self._inject_todo_tools()
+
+    async def _inject_todo_tools(self) -> None:
+        """注入 todo 工具到 available_system_tools。
+
+        todowrite/todoread 是 BAIZE 目标任务 TODO 闭环的核心机制工具
+        （LLM 自维护进度 + 每轮 reminder 注入），不依赖 agent 的 resource_tool
+        绑定配置，始终注入（类似 ask_user 的核心地位）。
+        """
+        try:
+            from ...tools.registry import tool_registry
+
+            for tool_name in ("todowrite", "todoread"):
+                if tool_name not in self.available_system_tools:
+                    tool = tool_registry.get(tool_name)
+                    if tool:
+                        self.available_system_tools[tool_name] = tool
+        except Exception as e:
+            logger.warning(f"[TodoTools] inject failed: {e}")
+
     async def _inject_async_task_tools(self) -> None:
         """
         注入异步任务工具到 available_system_tools。
@@ -2142,6 +2163,17 @@ class ReActMasterAgent(ConversableAgent):
         # 2. 所有对话消息（历史 + 当前）
         if all_conversation_messages:
             llm_messages.extend(all_conversation_messages)
+
+        # 3. Todo 进度 reminder 注入（claude-code 式闭环）
+        # 每轮把当前 todo 状态注入 llm_messages，让 LLM 始终看到进度并自行推进
+        try:
+            from derisk.agent.tools.builtin.todo.todo_reminder import build_todo_reminder
+            _todo_reminder = await build_todo_reminder(self.memory, conv_id)
+            if _todo_reminder:
+                llm_messages.append({"role": "user", "content": _todo_reminder})
+                logger.info("[TodoReminder] 注入 todo 进度 reminder 到 llm_messages")
+        except Exception as _todo_e:
+            logger.debug(f"[TodoReminder] inject failed: {_todo_e}")
 
         logger.info(
             f"[MSG_DEBUG] Final llm_messages: count={len(llm_messages)}, "

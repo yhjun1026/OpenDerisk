@@ -83,7 +83,7 @@ export default function SpaceLayout({
           </div>
           <div
             onMouseDown={(e) => startDrag('left', e)}
-            className="w-1 cursor-col-resize bg-[#ECEAE3] hover:bg-[#0C75FC]/40 transition-colors flex-shrink-0"
+            className="w-1 cursor-col-resize bg-[#ECEAE3] hover:bg-[#4f46e5]/40 transition-colors flex-shrink-0"
           />
         </>
       )}
@@ -92,7 +92,7 @@ export default function SpaceLayout({
         <>
           <div
             onMouseDown={(e) => startDrag('right', e)}
-            className="w-1 cursor-col-resize bg-[#ECEAE3] hover:bg-[#0C75FC]/40 transition-colors flex-shrink-0"
+            className="w-1 cursor-col-resize bg-[#ECEAE3] hover:bg-[#4f46e5]/40 transition-colors flex-shrink-0"
           />
           <div
             className="flex-shrink-0 bg-white border-l border-[#ECEAE3] overflow-hidden flex flex-col"

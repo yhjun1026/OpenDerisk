@@ -4,6 +4,7 @@ This module defines the database entity and data access object for cron jobs.
 """
 
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional, Union
@@ -11,6 +12,8 @@ from typing import Any, Dict, Optional, Union
 from sqlalchemy import Column, DateTime, Integer, String, Text, JSON
 
 from derisk.storage.metadata import BaseDao, Model
+
+logger = logging.getLogger(__name__)
 
 from ..api.schemas import (
     CronJobStateSchema,
@@ -85,6 +88,11 @@ class CronJobEntity(Model):
     last_duration_ms = Column(Integer, nullable=True, comment="Last run duration in ms")
     consecutive_errors = Column(Integer, default=0, comment="Consecutive error count")
 
+    # Creator (background execution identity)
+    created_by_user_id = Column(
+        String(128), nullable=True, comment="Job creator user id"
+    )
+
     # Timestamps
     gmt_created = Column(
         DateTime,
@@ -112,9 +120,42 @@ class CronJobEntity(Model):
 class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
     """Data Access Object for cron jobs."""
 
+    # Columns added in cron schema v2. Idempotent ALTER for upgrades from v1
+    # (CREATE TABLE IF NOT EXISTS won't add columns to an existing table).
+    _V2_COLUMNS = [
+        ("created_by_user_id", "String(128)"),
+    ]
+
     def __init__(self, serve_config: ServeConfig):
         super().__init__()
         self._serve_config = serve_config
+        self._migrate_v2()
+
+    def _migrate_v2(self) -> None:
+        """Add v2 columns to derisk_serve_cron_job if missing (idempotent)."""
+        try:
+            from sqlalchemy import inspect as sa_inspect
+            from sqlalchemy import text
+
+            with self.session(commit=False) as session:
+                insp = sa_inspect(session.bind)
+                if CronJobEntity.__tablename__ not in insp.get_table_names():
+                    return  # table doesn't exist yet; CREATE will handle it
+                existing = {
+                    c["name"] for c in insp.get_columns(CronJobEntity.__tablename__)
+                }
+                for col, _type in self._V2_COLUMNS:
+                    if col in existing:
+                        continue
+                    # ALTER ADD COLUMN NULL (existing rows stay NULL)
+                    session.execute(
+                        text(
+                            f"ALTER TABLE {CronJobEntity.__tablename__} ADD COLUMN {col} TEXT"
+                        )
+                    )
+                session.commit()
+        except Exception as e:
+            logger.debug("cron v2 migration skipped: %s", e)
 
     def from_request(
         self, request: Union[ServeRequest, Dict[str, Any]]
@@ -156,8 +197,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
         entity.payload_data = {
             "message": payload.message,
             "agent_id": payload.agent_id,
-            "tool_name": getattr(payload, "tool_name", None),
-            "tool_args": getattr(payload, "tool_args", None),
+            "tool_name": payload.tool_name,
+            "tool_args": payload.tool_args,
             "text": getattr(payload, "text", None),
             "timeout_seconds": payload.timeout_seconds,
             "trigger_id": payload.trigger_id,
@@ -167,6 +208,9 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
         # Session configuration
         entity.session_mode = payload.session_mode or "isolated"
         entity.conv_session_id = payload.conv_session_id
+
+        # Creator (background execution identity)
+        entity.created_by_user_id = request.user_id
 
         # Timestamps
         entity.gmt_created = datetime.now()
@@ -214,7 +258,10 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 conv_session_id=entity.conv_session_id,
                 trigger_id=entity.payload_data.get("trigger_id") if entity.payload_data else None,
                 workspace_id=entity.payload_data.get("workspace_id") if entity.payload_data else None,
+                tool_name=entity.payload_data.get("tool_name") if entity.payload_data else None,
+                tool_args=entity.payload_data.get("tool_args") if entity.payload_data else None,
             ),
+            user_id=entity.created_by_user_id,
         )
 
     def to_response(self, entity: CronJobEntity) -> ServerResponse:
@@ -268,6 +315,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 conv_session_id=entity.conv_session_id,
                 trigger_id=entity.payload_data.get("trigger_id") if entity.payload_data else None,
                 workspace_id=entity.payload_data.get("workspace_id") if entity.payload_data else None,
+                tool_name=entity.payload_data.get("tool_name") if entity.payload_data else None,
+                tool_args=entity.payload_data.get("tool_args") if entity.payload_data else None,
             ),
             state=CronJobStateSchema(
                 next_run_at_ms=entity.next_run_at_ms,
@@ -278,6 +327,7 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 last_duration_ms=entity.last_duration_ms,
                 consecutive_errors=entity.consecutive_errors or 0,
             ),
+            user_id=entity.created_by_user_id,
             gmt_created=gmt_created_str,
             gmt_modified=gmt_modified_str,
         )
@@ -329,8 +379,8 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
             entity.payload_data = {
                 "message": payload.message,
                 "agent_id": payload.agent_id,
-                "tool_name": getattr(payload, "tool_name", None),
-                "tool_args": getattr(payload, "tool_args", None),
+                "tool_name": payload.tool_name,
+                "tool_args": payload.tool_args,
                 "text": getattr(payload, "text", None),
                 "timeout_seconds": payload.timeout_seconds,
                 "trigger_id": payload.trigger_id,
@@ -341,6 +391,9 @@ class ServeDao(BaseDao[CronJobEntity, ServeRequest, ServerResponse]):
                 entity.session_mode = payload.session_mode
             if payload.conv_session_id is not None:
                 entity.conv_session_id = payload.conv_session_id
+
+        if request.user_id is not None:
+            entity.created_by_user_id = request.user_id
 
         entity.gmt_modified = datetime.now()
         return entity

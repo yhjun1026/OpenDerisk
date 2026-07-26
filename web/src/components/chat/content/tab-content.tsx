@@ -79,7 +79,7 @@ const TabContent: React.FC<{ apps: IApp[]; loading: boolean; refresh: () => void
                   <div className='flex gap-1 items-center'>
                     <Avatar
                       src={item?.owner_avatar_url}
-                      className='bg-gradient-to-tr from-[#31afff] to-[#1677ff] cursor-pointer'
+                      className='bg-gradient-to-tr from-[#31afff] to-[#4f46e5] cursor-pointer'
                     >
                       {item.owner_name}
                     </Avatar>

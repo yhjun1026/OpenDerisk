@@ -245,4 +245,14 @@ def render_workspace_context_summary(
             ]
             lines.append(f"剧本技能：{', '.join(skill_names)}")
 
+        deliverables = (ctx.playbook_declaration or {}).get("deliverables") or []
+        if deliverables:
+            lines.append("预期交付物：")
+            for d in deliverables:
+                lines.append(f"- {d.get('type')}: {d.get('title', '')}")
+
+        distill = (ctx.playbook_declaration or {}).get("distill") or {}
+        if distill.get("forced"):
+            lines.append("注：本任务需在关闭前将结论沉淀为空间资产。")
+
     return "\n".join(lines)

@@ -234,59 +234,40 @@ class TodowriteTool(ToolBase):
     async def _push_todolist_vis(
         self, context: Optional[Any], todos: List[Any]
     ) -> None:
-        """推送 TodoList 可视化到前端"""
+        """推送 TodoList 可视化到前端.
+
+        修复 vis_tag 断点：用 build_todolist_fence 生成正确的 d-todo-list 围栏，
+        再用 push_message 推送（BAIZE 仍用 push_message，V2 切换后改 EventStream）。
+        """
         try:
             agent = getattr(context, "agent", None) or context
             if not agent:
                 return
 
-            render_protocol = None
-            if hasattr(agent, "not_null_agent_context"):
-                ctx = agent.not_null_agent_context
-                if ctx and hasattr(ctx, "render_protocol"):
-                    render_protocol = ctx.render_protocol
-
-            if not render_protocol:
-                return
-
-            from derisk.agent.core.memory.gpts import TodoStatus
-
-            # 获取当前进行中的任务索引
-            current_index = 0
-            for i, todo in enumerate(todos):
-                if todo.status == TodoStatus.IN_PROGRESS.value:
-                    current_index = i
-                    break
-
-            # 获取 conv_id
+            memory = getattr(agent, "memory", None)
+            gpts_memory = getattr(memory, "gpts_memory", None) if memory else None
             conv_id = "default"
             if hasattr(agent, "not_null_agent_context"):
                 ctx = agent.not_null_agent_context
                 if ctx:
                     conv_id = ctx.conv_id or "default"
 
-            # 构建可视化内容
-            todo_items = []
-            for i, todo in enumerate(todos):
-                todo_items.append(
-                    {
-                        "id": todo.id,
-                        "title": todo.content,
-                        "status": todo.status,
-                        "index": i,
-                    }
-                )
+            if not gpts_memory:
+                return
 
-            vis_content = {
-                "uid": f"todo_list_{conv_id}",
-                "type": "all",
-                "mission": "",
-                "items": todo_items,
-                "current_index": current_index,
-                "total_count": len(todos),
-            }
+            from derisk.agent.tools.builtin.todo.todo_reminder import (
+                build_todolist_fence,
+            )
 
-            render_protocol.sync_display(content=vis_content, vis_tag="d-todo-list")
+            fence = build_todolist_fence(todos, conv_id)
+            if not fence:
+                return
+
+            await gpts_memory.push_message(
+                conv_id=conv_id,
+                stream_msg=fence,
+                incr_type="all",
+            )
             logger.debug(f"Pushed todolist vis with {len(todos)} items")
 
         except Exception as e:

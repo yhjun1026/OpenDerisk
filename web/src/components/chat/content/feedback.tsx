@@ -35,7 +35,7 @@ const DislikeContent: React.FC<{
           return (
             <Tag
               key={item.reason_type}
-              className={`text-xs text-[#525964] mb-2 p-1 px-2 rounded-md cursor-pointer ${isSelect ? 'border-[#0c75fc] text-[#0c75fc]' : ''}`}
+              className={`text-xs text-[#525964] mb-2 p-1 px-2 rounded-md cursor-pointer ${isSelect ? 'border-[#4f46e5] text-[#4f46e5]' : ''}`}
               onClick={() => {
                 setSelectedTags((preArr: Tags[]) => {
                   const index = preArr.findIndex(tag => tag.reason_type === item.reason_type);
@@ -168,7 +168,7 @@ const Feedback: React.FC<{ content: Record<string, any> }> = ({ content }) => {
       <div className='flex flex-1 items-center text-sm px-4'>
         <div className='flex gap-3'>
           <LikeOutlined
-            className={classNames('cursor-pointer', { 'text-[#0C75FC]': status === 'like' })}
+            className={classNames('cursor-pointer', { 'text-[#4f46e5]': status === 'like' })}
             onClick={async () => {
               if (status === 'like') {
                 await cancel();
@@ -194,7 +194,7 @@ const Feedback: React.FC<{ content: Record<string, any> }> = ({ content }) => {
           >
             <DislikeOutlined
               className={classNames('cursor-pointer', {
-                'text-[#0C75FC]': status === 'unlike',
+                'text-[#4f46e5]': status === 'unlike',
               })}
               onClick={async () => {
                 if (status === 'unlike') {

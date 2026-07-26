@@ -16,6 +16,7 @@ export default function CronForm({ form, initialValues }: CronFormProps) {
 
   const scheduleKind = Form.useWatch(['schedule', 'kind'], form);
   const sessionMode = Form.useWatch(['payload', 'session_mode'], form);
+  const payloadKind = Form.useWatch(['payload', 'kind'], form);
 
   return (
     <Form
@@ -128,6 +129,7 @@ export default function CronForm({ form, initialValues }: CronFormProps) {
           >
             <Select>
               <Select.Option value="agentTurn">{t('cron_agent_turn')}</Select.Option>
+              <Select.Option value="toolCall">{t('cron_tool_call')}</Select.Option>
             </Select>
           </Form.Item>
           <Form.Item name={['payload', 'timeout_seconds']} label={t('cron_timeout')} extra="任务执行超时时间(秒)">
@@ -137,44 +139,91 @@ export default function CronForm({ form, initialValues }: CronFormProps) {
 
         <Divider style={{ margin: '12px 0' }} />
 
-        {/* Agent 调用 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Form.Item
-            name={['payload', 'agent_id']}
-            label={t('cron_agent_id')}
-            rules={[{ required: true, message: t('Please_Input') + t('cron_agent_id') }]}
-            extra="要调用的 Agent ID"
-          >
-            <Input placeholder={t('Please_Input') + t('cron_agent_id')} />
-          </Form.Item>
-          <Form.Item
-            name={['payload', 'session_mode']}
-            label={t('cron_session_mode')}
-            extra={t('cron_session_mode_desc')}
-          >
-            <Select>
-              <Select.Option value="isolated">{t('cron_session_isolated')}</Select.Option>
-              <Select.Option value="shared">{t('cron_session_shared')}</Select.Option>
-            </Select>
-          </Form.Item>
-        </div>
-        {sessionMode === 'shared' && (
-          <Form.Item
-            name={['payload', 'conv_session_id']}
-            label={t('cron_session_id')}
-            extra={t('cron_session_id_desc')}
-          >
-            <Input placeholder={t('Please_Input') + t('cron_session_id')} />
-          </Form.Item>
+        {/* Agent 调用 (agentTurn) */}
+        {payloadKind === 'agentTurn' && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Form.Item
+                name={['payload', 'agent_id']}
+                label={t('cron_agent_id')}
+                rules={[{ required: true, message: t('Please_Input') + t('cron_agent_id') }]}
+                extra="要调用的 Agent ID"
+              >
+                <Input placeholder={t('Please_Input') + t('cron_agent_id')} />
+              </Form.Item>
+              <Form.Item
+                name={['payload', 'session_mode']}
+                label={t('cron_session_mode')}
+                extra={t('cron_session_mode_desc')}
+              >
+                <Select>
+                  <Select.Option value="isolated">{t('cron_session_isolated')}</Select.Option>
+                  <Select.Option value="shared">{t('cron_session_shared')}</Select.Option>
+                </Select>
+              </Form.Item>
+            </div>
+            {sessionMode === 'shared' && (
+              <Form.Item
+                name={['payload', 'conv_session_id']}
+                label={t('cron_session_id')}
+                extra={t('cron_session_id_desc')}
+              >
+                <Input placeholder={t('Please_Input') + t('cron_session_id')} />
+              </Form.Item>
+            )}
+            <Form.Item
+              name={['payload', 'message']}
+              label={t('cron_message')}
+              rules={[{ required: true, message: t('Please_Input') + t('cron_message') }]}
+              extra="发送给 Agent 的消息内容"
+            >
+              <TextArea rows={3} placeholder={t('Please_Input') + t('cron_message')} />
+            </Form.Item>
+          </>
         )}
-        <Form.Item
-          name={['payload', 'message']}
-          label={t('cron_message')}
-          rules={[{ required: true, message: t('Please_Input') + t('cron_message') }]}
-          extra="发送给 Agent 的消息内容"
-        >
-          <TextArea rows={3} placeholder={t('Please_Input') + t('cron_message')} />
-        </Form.Item>
+
+        {/* 工具调用 (toolCall) */}
+        {payloadKind === 'toolCall' && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Form.Item
+                name={['payload', 'tool_name']}
+                label={t('cron_tool_name')}
+                rules={[{ required: true, message: t('Please_Input') + t('cron_tool_name') }]}
+                extra="要执行的工具名,如 call_agent / fire_trigger / execute_sql"
+              >
+                <Input placeholder="call_agent" />
+              </Form.Item>
+              <Form.Item
+                name={['payload', 'workspace_id']}
+                label={t('cron_workspace_id')}
+                extra="工作空间 ID。设置后装配该空间资源(DB/知识库),支持 execute_sql 等依赖资源的工具;留空仅支持无资源工具"
+              >
+                <InputNumber min={1} style={{ width: '100%' }} placeholder="可选" />
+              </Form.Item>
+            </div>
+            <Form.Item
+              name={['payload', 'tool_args']}
+              label={t('cron_tool_args')}
+              rules={[
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    try {
+                      JSON.parse(value);
+                      return Promise.resolve();
+                    } catch {
+                      return Promise.reject('tool_args 必须是合法 JSON');
+                    }
+                  },
+                },
+              ]}
+              extra='工具参数 JSON,如 {"agent_id":"x","message":"hi","session_mode":"isolated"}'
+            >
+              <TextArea rows={4} placeholder='{"agent_id":"data_analyst","message":"生成报告"}' />
+            </Form.Item>
+          </>
+        )}
       </Card>
     </Form>
   );

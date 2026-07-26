@@ -7,6 +7,8 @@ interface UseChatPollingOptions {
   convId: string | null;
   enabled?: boolean;
   interval?: number;
+  /** 强制历史/轮询用指定 converter 组装 vis_final(如通用页传 vis_manus) */
+  visRender?: string;
   onComplete?: (response: ChatQueryResponse) => void;
   onError?: (error: Error) => void;
 }
@@ -24,6 +26,7 @@ export function useChatPolling({
   convId,
   enabled = true,
   interval = 2000,
+  visRender,
   onComplete,
   onError,
 }: UseChatPollingOptions): UseChatPollingReturn {
@@ -38,9 +41,13 @@ export function useChatPolling({
     if (!convId) return null;
     
     try {
-      const response = await queryChatStatus(convId);
-      const result = response.data;
-      
+      const response = await queryChatStatus(convId, visRender);
+      const result = response.data?.data;
+      if (!result) {
+        // 后端返回 success:false / 无 data(如会话尚未生成),不更新状态,避免读 undefined 崩溃
+        return null;
+      }
+
       if (mountedRef.current) {
         setData(prev => {
           if (prev?.vis_final === result.vis_final && prev?.state === result.state) {
@@ -59,7 +66,7 @@ export function useChatPolling({
       onError?.(error as Error);
       return null;
     }
-  }, [convId, onError]);
+  }, [convId, visRender, onError]);
 
   const startPolling = useCallback(() => {
     if (!convId || !enabled) return;

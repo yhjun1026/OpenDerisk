@@ -35,7 +35,7 @@ def test_render_lobby_includes_playbooks_and_active_tasks():
     result = render_scene_dynamic_context(ctx, mode="lobby")
     assert "进行中任务" in result
     assert "修复告警" in result
-    assert "list_playbooks" in result
+    assert "get_playbook_detail" in result
     assert "start_task" in result
 
 

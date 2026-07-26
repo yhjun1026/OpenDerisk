@@ -126,17 +126,17 @@ export default function FilesTreePanel({
               handleUpload(file);
               return false;
             }}
-            className="!bg-[#0C75FC]/[0.04] !border-[#0C75FC]/20 !rounded-lg !py-2"
+            className="!bg-[#4f46e5]/[0.04] !border-[#4f46e5]/20 !rounded-lg !py-2"
           >
             <p className="ant-upload-drag-icon !mb-0.5">
-              <InboxOutlined className="text-[#0C75FC]/60 text-xl" />
+              <InboxOutlined className="text-[#4f46e5]/60 text-xl" />
             </p>
             <p className="ant-upload-text text-xs text-gray-600">拖拽或点击上传</p>
             <p className="ant-upload-hint text-[10px] text-gray-400">pdf / docx / pptx / txt / md / 图片 / 音频</p>
           </Dragger>
 
           {jobs.some((j) => j.status !== 'done' && j.status !== 'failed') && (
-            <div className="text-xs text-[#0C75FC] bg-[#0C75FC]/[0.06] px-2 py-1 rounded">
+            <div className="text-xs text-[#4f46e5] bg-[#4f46e5]/[0.06] px-2 py-1 rounded">
               {jobs.filter((j) => j.status !== 'done' && j.status !== 'failed').length} 个 ingest 任务进行中
             </div>
           )}

@@ -1,5 +1,5 @@
 "use client"
-import { apiInterceptors, getAppInfo, getChatHistory, getDialogueList, newDialogue } from '@/client/api';
+import { apiInterceptors, getAppInfo, getChatHistory, getDialogueList, newDialogue, queryChatStatus } from '@/client/api';
 import { ChartData, ChatHistoryResponse, IChatDialogueSchema, UserChatContent } from '@/types/chat';
 import { IApp } from '@/types/app';
 import React, { forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
@@ -13,12 +13,39 @@ import { STORAGE_INIT_MESSAGE_KET } from '@/utils/constants/storage';
 import { Flex, Layout, message } from 'antd';
 import ChatPageSkeleton from '@/components/chat/content/chat-page-skeleton';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { ChatContentContext, SelectedSkill, ContextMetricsProvider } from '@/contexts';
+import { ChatContext, ChatContentContext, SelectedSkill, ContextMetricsProvider } from '@/contexts';
 import HomeChat from '@/components/chat/content/home-chat';
 import { useTranslation } from 'react-i18next';
 import { clearAllEventListeners } from '@/utils/event-emitter';
+import { parseFirstJson } from '@/utils/json';
+import type { ITodoListData } from '@/components/chat/chat-content-components/VisComponents/VisTodoList';
+import type { ISubagentBoardData } from '@/components/chat/chat-content-components/VisComponents/VisSubagentBoard';
 
 const { Content } = Layout;
+
+/**
+ * 重算的 vis_final(queryChatStatus)缺少运行时状态(input_message_id/task_manager),
+ * planning_window 会重建为空(左面板丢失)。此处兜底:新值 planning_window 为空且
+ * 现有 context 有 planning_window 时,保留现有左面板内容,其余字段用新值。
+ */
+const mergeVisFinalPreservingLeftPanel = (existing: unknown, visFinal: string): string => {
+  if (typeof existing !== 'string' || !existing.trim().startsWith('{')) return visFinal;
+  try {
+    const oldV = JSON.parse(existing);
+    const newV = JSON.parse(visFinal);
+    if (
+      oldV && newV &&
+      'planning_window' in oldV && 'planning_window' in newV &&
+      !newV.planning_window && oldV.planning_window
+    ) {
+      newV.planning_window = oldV.planning_window;
+      return JSON.stringify(newV);
+    }
+  } catch {
+    // 非 JSON 结构直接使用新值
+  }
+  return visFinal;
+};
 
 export interface ChatSessionProps {
   convUid?: string;
@@ -65,15 +92,27 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
   const [selectedSkills, setSelectedSkills] = useState<SelectedSkill[]>([]);
   const [currentConvSessionId, setCurrentConvSessionId] = useState<string>(chatId);
   const [sseActive, setSseActive] = useState(false);
+  const [todoList, setTodoList] = useState<ITodoListData | null>(null);
+  const [subagentBoard, setSubagentBoard] = useState<ISubagentBoardData | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const { chat, ctrl } = useChat({
     app_code: app_code || '',
   });
+  // 全局侧边栏历史会话列表(ChatContext):对话提交/完成时联动刷新,
+  // 否则新完成的会话要刷新页面才出现在历史列表里
+  const { refreshDialogList: refreshGlobalDialogList } = useContext(ChatContext);
 
   // 是否是默认小助手（必须在 useChatPolling 之前定义）
   const isChatDefault = useMemo(() => {
     return !chatId;
   }, [chatId]);
+
+  // 通用页请求的 vis 协议:优先 reuse_name(如 scene_agent_workspace 在通用页回退为 vis_manus),
+  // 保证场景空间会话在历史会话/通用页打开时也能被 manus 布局渲染
+  const currentVisRender = useMemo(
+    () => appInfo?.layout?.chat_layout?.reuse_name || appInfo?.layout?.chat_layout?.name || '',
+    [appInfo],
+  );
 
   // 轮询恢复：重新打开运行中对话时，降级为轮询模式获取 vis_final
   const [isPollingMode, setIsPollingMode] = useState(false);
@@ -81,11 +120,13 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
     convId: chatId || null,
     enabled: !isChatDefault && !sseActive,
     interval: 2500,
+    visRender: currentVisRender || undefined,
     onComplete: () => {
       setIsPollingMode(false);
       setReplyLoading(false);
       setCanAbort(false);
       refreshHistory();
+      refreshGlobalDialogList?.();
     },
   });
 
@@ -106,7 +147,7 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
       if (lastViewIndex >= 0) {
         updated[lastViewIndex] = {
           ...updated[lastViewIndex],
-          context: pollingData.vis_final,
+          context: mergeVisFinalPreservingLeftPanel(updated[lastViewIndex].context, pollingData.vis_final),
           thinking: false,
         };
       } else if (updated.length > 0) {
@@ -180,6 +221,12 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
     pollingInterval: isPolling ? 5000 : undefined,
   });
 
+  // 同时刷新本页会话列表(currentDialogue)和全局侧边栏历史会话列表
+  const refreshAllDialogLists = useCallback(async () => {
+    refreshDialogList();
+    await refreshGlobalDialogList?.();
+  }, [refreshDialogList, refreshGlobalDialogList]);
+
   // 获取应用详情
   const { run: queryAppInfo, refresh: refreshAppInfo, loading: appInfoLoading } = useRequest(
     async () =>
@@ -210,6 +257,31 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
     }
   }, [chatId, isChatDefault, queryAppInfo, app_code]);
 
+  // 实时刷新最新轮:用 queryChatStatus 的 vis_final 覆盖最新一条 view 消息的 context,
+  // 避免依赖保存时落库的 view 串(convert 逻辑演进后会与实时不一致)。失败静默保留 DB 历史。
+  const refreshLatestView = useCallback(async (convId: string) => {
+    try {
+      const qr = await queryChatStatus(convId, currentVisRender || undefined);
+      const result = qr?.data?.data;
+      // 终态会话(COMPLETE/FAILED)以 DB 保存的 final_view 为准:重算路径缺少运行时
+      // 状态(input_message_id/task_manager),planning_window 重建为空会丢左面板
+      if (!result?.vis_final || result.is_final) return;
+      const visFinal = result.vis_final;
+      setHistory(prev => {
+        const updated = [...prev];
+        const lastViewIndex = updated.map(m => m.role).lastIndexOf('view');
+        if (lastViewIndex < 0) return prev;
+        updated[lastViewIndex] = {
+          ...updated[lastViewIndex],
+          context: mergeVisFinalPreservingLeftPanel(updated[lastViewIndex].context, visFinal),
+        };
+        return updated;
+      });
+    } catch {
+      // 实时刷新失败保留 DB 历史
+    }
+  }, [currentVisRender]);
+
   // 获取会话历史记录
   const {
     run: getHistory,
@@ -224,6 +296,10 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
         order.current = viewList[viewList.length - 1].order + 1;
       }
       setHistory(res || []);
+      // 实时刷新最新轮 vis_final,覆盖最新一条 view 消息(DB 预存可能因 convert 演进不一致)
+      if (chatId && res && res.some(m => m.role === 'view')) {
+        refreshLatestView(chatId);
+      }
     },
   });
 
@@ -312,7 +388,7 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
             conv_uid: chatId,
             agent_version: appInfo?.agent_version || 'v1',
             ext_info: {
-              vis_render: appInfo?.layout?.chat_layout?.name || '',
+              vis_render: currentVisRender,
               incremental: appInfo?.layout?.chat_layout?.incremental || false,
               ...(workspaceId ? { workspace_id: Number(workspaceId) } : {}),
               ...(taskId ? { task_id: Number(taskId) } : {}),
@@ -324,6 +400,30 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
           onMessage: message => {
             setCanAbort(true);
             if (message) {
+              // d-todo-list 围栏：提取到顶部固定面板，不进对话流
+              if (typeof message === 'string' && message.includes('```d-todo-list')) {
+                const todoMatch = message.match(/```d-todo-list\n([\s\S]*?)\n```/);
+                if (todoMatch) {
+                  try {
+                    setTodoList?.(parseFirstJson(todoMatch[1]));
+                  } catch {
+                    // ignore parse error
+                  }
+                }
+                return;
+              }
+              // d-subagent-board 围栏：提取子任务状态到顶部固定面板，不进对话流
+              if (typeof message === 'string' && message.includes('```d-subagent-board')) {
+                const boardMatch = message.match(/```d-subagent-board\n([\s\S]*?)\n```/);
+                if (boardMatch) {
+                  try {
+                    setSubagentBoard?.(parseFirstJson(boardMatch[1]));
+                  } catch {
+                    // ignore parse error
+                  }
+                }
+                return;
+              }
               // Check if message is metadata containing conv_session_id
               if (typeof message === 'object' && message.type === 'metadata') {
                 if (message.conv_session_id) {
@@ -356,6 +456,8 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
               tempHistory[index].thinking = false;
               setHistory([...tempHistory]);
             }
+            // 对话完成,刷新侧边栏历史会话列表(新会话/标题/状态变更即时可见)
+            refreshGlobalDialogList?.();
             resolve();
           },
           onClose: () => {
@@ -377,6 +479,7 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
             tempHistory[index].context = appendErrorToContext(tempHistory[index].context, message);
             tempHistory[index].thinking = false;
             setHistory([...tempHistory]);
+            refreshGlobalDialogList?.();
             resolve();
           },
           onWorkspaceEvent: (event: WorkspaceEvent) => {
@@ -400,7 +503,7 @@ const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function Cha
         });
       });
     },
-    [history, modelValue, chat, appInfo, isPollingMode, stopPolling, sseActive, props.onWorkspaceEvent],
+    [history, modelValue, chat, appInfo, isPollingMode, stopPolling, sseActive, props.onWorkspaceEvent, refreshGlobalDialogList],
   );
 
   useImperativeHandle(ref, () => ({
@@ -567,7 +670,7 @@ if (initMessage.model) {
           }),
           ...(initMessage.model && { model_name: initMessage.model }),
         });
-        refreshDialogList && await refreshDialogList();
+        await refreshAllDialogLists();
         localStorage.removeItem(STORAGE_INIT_MESSAGE_KET);
     }
   }, [chatId, getInitMessage(), appInfo, chatInParams]);
@@ -623,7 +726,7 @@ const sessionContent = (
           setReplyLoading,
           setCurrentConvSessionId,
           handleChat,
-          refreshDialogList,
+          refreshDialogList: refreshAllDialogLists,
           refreshHistory,
           refreshAppInfo,
           setHistory,
@@ -633,6 +736,10 @@ const sessionContent = (
           chatInParams,
           isPollingMode,
           onNewChat,
+          todoList,
+          setTodoList,
+          subagentBoard,
+          setSubagentBoard,
         }}
       >
         {props.inputSlot

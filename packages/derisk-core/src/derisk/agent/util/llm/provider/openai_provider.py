@@ -139,6 +139,7 @@ class OpenAIProvider(LLMProvider):
                 "model": request.model,
                 "messages": openai_messages,
                 "stream": True,
+                "stream_options": {"include_usage": True},
             }
             if request.temperature is not None:
                 params["temperature"] = request.temperature
@@ -176,13 +177,23 @@ class OpenAIProvider(LLMProvider):
             }
             logger.info(f"OpenAIProvider generate_stream request params: {json.dumps(log_params, ensure_ascii=False)}")
 
-            stream = await self.client.chat.completions.create(**params)
+            try:
+                stream = await self.client.chat.completions.create(**params)
+            except Exception as so_err:
+                # 某些 OpenAI 兼容端点不支持 stream_options，回退后重试
+                logger.warning(f"OpenAI stream_options failed, retry without: {so_err}")
+                params.pop("stream_options", None)
+                stream = await self.client.chat.completions.create(**params)
 
             accumulated_tool_calls = {}
             accumulated_content = ""
+            output_tool_calls = None
             _last_progress_time = time.time()
+            last_usage = None
 
             async for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    last_usage = chunk.usage.model_dump()
                 if not chunk.choices:
                     continue
                 choice = chunk.choices[0]
@@ -254,6 +265,16 @@ class OpenAIProvider(LLMProvider):
                     text=content or "",
                     tool_calls=output_tool_calls,
                     finish_reason=choice.finish_reason,
+                    incremental=True,
+                )
+            # 流结束后补一个带 usage 的终止 chunk，供上层采集 token
+            # 注意: 必须携带累积的 tool_calls,否则上层(按最后一帧取值)会丢失工具调用
+            if last_usage:
+                yield ModelOutput(
+                    error_code=0,
+                    text="",
+                    usage=last_usage,
+                    tool_calls=output_tool_calls,
                     incremental=True,
                 )
         except Exception as e:

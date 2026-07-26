@@ -4,7 +4,7 @@
    ============================================ */
 
 .model-page-root {
-  --model-accent: #0069fe;
+  --model-accent: #4f46e5;
   --model-accent-rgb: 0, 105, 254;
   --model-accent-light: #e8f1ff;
   --model-bg: var(--mcp-bg);

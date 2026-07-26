@@ -532,6 +532,8 @@ class ToolAction(Action[ToolInput]):
             logger.info(
                 f"工具[{tool_info.name}]需要进行工具执行确认审核！{require_approval},{self._get_tool_attr(tool_info, 'ask_user')},{tool_pack.ask_user if tool_pack else ''}"
             )
+            # P1: 子 agent 工具需授权时通知主 agent（BAIZE SubAgent async 场景）
+            await self._notify_main_authorization_needed(agent_context, tool_info, param.args)
             return await self._create_user_approval_output(
                 tool_info,
                 message_id,
@@ -1270,6 +1272,38 @@ class ToolAction(Action[ToolInput]):
         if parsed and isinstance(parsed, tuple):
             return parsed[1]  # Return the arguments part
         return default_args or {}
+
+    async def _notify_main_authorization_needed(
+        self, agent_context: AgentContext, tool_info: BaseTool, args: Optional[dict]
+    ) -> None:
+        """子 agent 工具需授权时，经 coordinator 通知主 agent（P1）。
+
+        仅当 agent_context.extra 含 main_conv_id 且不等于本会话 conv_id（即本 agent
+        是 SubAgent async 子 agent）时触发；普通主 agent 工具授权不触发（主 agent
+        自己的会话处理）。core 层 try import serve 的 coordinator 单例，避免循环依赖。
+        """
+        if agent_context is None:
+            return
+        extra = agent_context.extra or {}
+        main_conv_id = extra.get("main_conv_id")
+        if not main_conv_id or main_conv_id == agent_context.conv_id:
+            return
+        try:
+            from derisk_serve.agent.subagent_coordinator import get_subagent_coordinator
+            coordinator = get_subagent_coordinator()
+            if coordinator is None:
+                return
+            question = (
+                f"工具[{tool_info.name}]需要确认: "
+                f"{json.dumps(args, ensure_ascii=False)[:200]}"
+            )
+            await coordinator.emit_authorization_needed(
+                main_conv_id=main_conv_id,
+                sub_conv_id=agent_context.conv_id,
+                question=question,
+            )
+        except Exception as e:
+            logger.warning(f"[ToolAction] notify main authorization failed: {e}")
 
     async def _create_user_approval_output(
         self,

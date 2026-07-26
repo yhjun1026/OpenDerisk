@@ -6,6 +6,8 @@ export interface ChannelConfig {
   name: string;
   channel_type: 'dingtalk' | 'feishu' | 'wechat' | 'qq';
   enabled: boolean;
+  agent_app_code?: string;
+  workspace_id?: number;
   config: Record<string, any>;
 }
 

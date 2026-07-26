@@ -58,8 +58,8 @@ class CronPayloadSchema(BaseModel):
 
     kind: str = Field(
         ...,
-        description="The payload kind (agentTurn)",
-        examples=["agentTurn"],
+        description="The payload kind (agentTurn/triggerFire/toolCall)",
+        examples=["agentTurn", "triggerFire", "toolCall"],
     )
     message: Optional[str] = Field(
         default=None,
@@ -89,6 +89,14 @@ class CronPayloadSchema(BaseModel):
     workspace_id: Optional[int] = Field(
         default=None,
         description="Workspace ID for triggerFire payload kind (context passthrough)",
+    )
+    tool_name: Optional[str] = Field(
+        default=None,
+        description="Tool name to execute for 'toolCall' payload kind",
+    )
+    tool_args: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Arguments dict for the tool execution (toolCall payload kind)",
     )
 
     def to_dict(self, **kwargs) -> Dict[str, Any]:
@@ -177,6 +185,10 @@ class ServeRequest(BaseModel):
         ...,
         description="Job execution payload",
     )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Creator user id (for background execution identity)",
+    )
 
     def to_dict(self, **kwargs) -> Dict[str, Any]:
         """Convert the model to a dictionary."""
@@ -221,6 +233,10 @@ class ServerResponse(BaseModel):
     state: CronJobStateSchema = Field(
         default_factory=CronJobStateSchema,
         description="Runtime state",
+    )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Creator user id (for background execution identity)",
     )
     gmt_created: Optional[str] = Field(
         default=None,

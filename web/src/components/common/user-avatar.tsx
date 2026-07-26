@@ -9,7 +9,7 @@ import React, { useMemo } from 'react';
  * Each user gets a consistent color based on their name.
  */
 const AVATAR_COLORS = [
-  '#1677ff', // blue
+  '#4f46e5', // blue
   '#00b96b', // green
   '#722ed1', // purple
   '#eb2f96', // magenta

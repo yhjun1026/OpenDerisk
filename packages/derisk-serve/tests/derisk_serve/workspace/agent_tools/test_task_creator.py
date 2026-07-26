@@ -102,3 +102,43 @@ def test_summarize_task_title_calls_llm_and_returns_text(monkeypatch):
         _task_creator._summarize_task_title("生成营收周报", "营收分析", "test-provider/test-model")
     )
     assert "营收分析报告" in out
+
+
+def test_run_task_detached_skips_run_task_when_no_playbook(monkeypatch):
+    """无 playbook 的任务:detached 仍 start,但不调用 run_task(对齐 /tasks/start
+    的 `if result.playbook_id` 守卫),不 raise、不转 failed。"""
+    from derisk_serve.workspace.agent_tools import _task_creator
+
+    entity = _make_task_entity(playbook_id=None)
+    system_app, task_service = _make_system_app(entity, playbook=None)
+
+    created_tasks = []
+
+    def fake_create_task(coro):
+        task = asyncio.ensure_future(coro)
+        created_tasks.append(task)
+        return task
+
+    async def _noop_title(*a, **kw):
+        return None
+
+    monkeypatch.setattr(_task_creator.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(_task_creator, "_summarize_title_detached", _noop_title)
+    run_task_mock = MagicMock()
+    monkeypatch.setattr(_task_creator.playbook_runtime, "run_task", run_task_mock)
+
+    _task_creator.create_task_from_tool(
+        system_app=system_app,
+        workspace_id=10,
+        user_id="123",
+        playbook_id=None,
+        title="无场景任务",
+        description=None,
+        model_name="test-provider/test-model",
+    )
+
+    # 跑完 _run_task_detached(start + 守卫 return)
+    asyncio.get_event_loop().run_until_complete(created_tasks[0])
+
+    task_service.start.assert_called_once_with(entity.id)
+    run_task_mock.assert_not_called()

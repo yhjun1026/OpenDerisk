@@ -113,7 +113,7 @@ export default function UsersPage() {
           src={record.avatar || undefined}
           icon={!record.avatar ? <UserOutlined /> : undefined}
           size={36}
-          className="bg-gradient-to-tr from-[#31afff] to-[#1677ff]"
+          className="bg-gradient-to-tr from-[#31afff] to-[#4f46e5]"
         />
       ),
     },

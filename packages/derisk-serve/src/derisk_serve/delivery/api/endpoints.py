@@ -84,7 +84,7 @@ async def send_delivery(
     delivery_id: int, service: DeliveryService = Depends(get_service),
 ) -> Result[DeliveryResponse]:
     try:
-        return Result.succ(service.send(delivery_id))
+        return Result.succ(await service.send(delivery_id))
     except Exception as e:
         logger.exception("delivery send exception!")
         return Result.failed(str(e))

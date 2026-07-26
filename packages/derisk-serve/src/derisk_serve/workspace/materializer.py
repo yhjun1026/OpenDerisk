@@ -71,7 +71,8 @@ def _materialize_datasource(
 ) -> Optional[AgentResource]:
     """type=data_source → AgentResource(type=datasource)。"""
     return AgentResource.from_dict(
-        {"type": "datasource", "value": physical_ref, **config}
+        {"type": "datasource", "name": physical_ref,
+         "value": {"db_name": physical_ref, **config}}
     )
 
 
@@ -80,7 +81,8 @@ def _materialize_skill(
 ) -> Optional[AgentResource]:
     """type=skill → AgentResource(type=agent_skill)。"""
     return AgentResource.from_dict(
-        {"type": "agent_skill", "value": physical_ref, **config}
+        {"type": "skill(derisk)", "name": physical_ref,
+         "value": {"skill_name": physical_ref, **config}}
     )
 
 
@@ -111,6 +113,7 @@ def _materialize_llm_model(
 _MATERIALIZE_DISPATCH = {
     "mcp": "_materialize_mcp",
     "data_source": "_materialize_datasource",
+    "datasource": "_materialize_datasource",
     "skill": "_materialize_skill",
     "agent_skill": "_materialize_skill",
     "knowledge_space": "_materialize_knowledge_space",

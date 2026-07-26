@@ -8,7 +8,7 @@
   display: block;
   width: 0; /* In hover 之前宽度为 0 */
   height: 4px;
-  background: linear-gradient(90deg, #0069fe, #105EFF, #00DAEF); /* Beautiful blue gradient */
+  background: linear-gradient(90deg, #4f46e5, #105EFF, #00DAEF); /* Beautiful blue gradient */
   border-radius: 2px; /* Subtle rounded effect */
   transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smoother ease */
   position: absolute;

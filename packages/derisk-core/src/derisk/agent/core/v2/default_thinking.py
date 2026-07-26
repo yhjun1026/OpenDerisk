@@ -75,6 +75,16 @@ def make_default_thinking_fn(
         if memory_context:
             llm_messages.append({"role": "user", "content": memory_context})
         llm_messages.extend(build_out.messages)
+        # Todo 进度 reminder 注入（claude-code 式闭环，与 V1 react_master_agent.thinking 同形）
+        # V2 当前未启用；切换后从 memory_bundle 取 gpts_memory 注入即可
+        try:
+            from derisk.agent.tools.builtin.todo.todo_reminder import build_todo_reminder
+            _todo_memory = getattr(memory_bundle, "gpts_memory", None) if memory_bundle else None
+            _todo_reminder = await build_todo_reminder(_todo_memory, conv_id)
+            if _todo_reminder:
+                llm_messages.append({"role": "user", "content": _todo_reminder})
+        except Exception:
+            pass
         # 最后一条 human 消息覆写为 user_prompt
         llm_messages.append({"role": "user", "content": user_prompt})
 

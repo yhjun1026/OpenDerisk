@@ -85,6 +85,9 @@ yarn install
 
 print_step "Cleaning previous build..."
 rm -rf ../web/out/
+rm -rf ../web/.next/
+rm -rf ../web/node_modules/.cache/
+print_info "Cleaned: out/, .next/, node_modules/.cache/"
 
 print_step "Building project..."
 yarn build

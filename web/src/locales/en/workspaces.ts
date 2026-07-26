@@ -226,4 +226,6 @@ export const WorkspacesEn = {
   'deliveries.asset_type': 'Type',
   'deliveries.no_assets': 'No distilled assets yet',
   'deliveries.no_archived': 'No archived outputs yet',
+  'deliveries.resend': 'Resend',
+  'view': 'View',
 };

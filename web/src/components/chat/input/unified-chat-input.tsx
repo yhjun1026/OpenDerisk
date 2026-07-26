@@ -1855,10 +1855,10 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
       {/* 主输入框 - 首页样式 */}
       <div
         className={classNames(
-          'w-full bg-white dark:bg-[#232734] rounded-2xl shadow-sm border transition-all duration-300',
+          'w-full bg-white dark:bg-[#232734] rounded-[22px] border transition-all duration-300',
           isFocus
-            ? 'border-indigo-500/50 shadow-lg ring-4 ring-indigo-500/5'
-            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+            ? 'border-[#4f46e5]/50 shadow-[0_0_0_4px_rgba(79,70,229,0.08),0_8px_24px_rgba(16,24,40,0.08)]'
+            : 'border-[#eeeff3] dark:border-gray-700 shadow-[0_2px_12px_rgba(16,24,40,0.05)] hover:border-[#e2e4ec] dark:hover:border-gray-600'
         )}
         onDragOver={(e) => {
           e.preventDefault();
@@ -1919,8 +1919,8 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
               arrow={false}
               overlayClassName="[&_.ant-popover-inner]:!p-0 [&_.ant-popover-inner]:!rounded-xl [&_.ant-popover-inner]:!shadow-xl"
             >
-              <Badge count={selectedDataSources.length + selectedKnowledgeBases.length} size="small" offset={[-4, 4]} color="#16a34a">
-                <button className="h-8 w-8 rounded-full flex items-center justify-center border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:text-indigo-500 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex-shrink-0">
+              <Badge count={selectedDataSources.length + selectedKnowledgeBases.length} size="small" offset={[-4, 4]} color="#4f46e5">
+                <button className="h-8 w-8 rounded-full flex items-center justify-center border border-[#e5e8ef] dark:border-gray-600 text-[#5d6577] dark:text-gray-400 hover:text-[#4f46e5] hover:border-[#4f46e5]/40 transition-all hover:bg-[#eef0fe] dark:hover:bg-indigo-900/20 flex-shrink-0">
                   <PlusOutlined className="text-sm" />
                 </button>
               </Badge>
@@ -1936,8 +1936,8 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
               arrow={false}
               overlayClassName="[&_.ant-popover-inner]:!p-0 [&_.ant-popover-inner]:!rounded-xl [&_.ant-popover-inner]:!shadow-xl"
             >
-              <Badge count={lightningBadgeCount} size="small" offset={[-4, 4]} color="#7c3aed">
-                <button className="h-8 w-8 rounded-full flex items-center justify-center bg-purple-50 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/50 hover:border-purple-400 transition-all flex-shrink-0">
+              <Badge count={lightningBadgeCount} size="small" offset={[-4, 4]} color="#4f46e5">
+                <button className="h-8 w-8 rounded-full flex items-center justify-center border border-[#e5e8ef] dark:border-gray-600 text-[#5d6577] dark:text-gray-400 hover:text-[#4f46e5] hover:border-[#4f46e5]/40 transition-all hover:bg-[#eef0fe] dark:hover:bg-indigo-900/20 flex-shrink-0">
                   <ThunderboltOutlined className="text-sm" />
                 </button>
               </Badge>
@@ -1953,12 +1953,12 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
               arrow={false}
               overlayClassName="[&_.ant-popover-inner]:!p-0 [&_.ant-popover-inner]:!rounded-xl [&_.ant-popover-inner]:!shadow-xl"
             >
-              <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all group flex-shrink-0">
+              <div className="flex items-center gap-1.5 bg-[#f7f8fa] dark:bg-gray-800 px-2.5 py-1 rounded-full cursor-pointer hover:bg-[#f2f4f8] dark:hover:bg-gray-700 transition-all group flex-shrink-0">
                 <ModelIcon model={selectedModel} width={14} height={14} />
-                <span className="text-xs text-gray-700 dark:text-gray-300 max-w-[80px] truncate group-hover:text-indigo-500 transition-colors">
+                <span className="text-xs text-[#3b4154] dark:text-gray-300 max-w-[80px] truncate group-hover:text-[#4f46e5] transition-colors">
                   {selectedModel || t('select_model', '选择模型')}
                 </span>
-                <DownOutlined className="text-[10px] text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                <DownOutlined className="text-[10px] text-[#8a92a6] group-hover:text-[#4f46e5] transition-colors" />
               </div>
             </Popover>
           </div>
@@ -1974,8 +1974,8 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
                     className={classNames(
                       'w-7 h-7 rounded-full flex items-center justify-center transition-all',
                       canAbort
-                        ? 'hover:bg-red-50 text-gray-400 hover:text-red-500 cursor-pointer'
-                        : 'text-gray-300 cursor-not-allowed'
+                        ? 'hover:bg-[#f2f4f8] text-[#8a92a6] hover:text-[#ef4444] cursor-pointer'
+                        : 'text-[#d5d9e3] cursor-not-allowed'
                     )}
                   >
                     <PauseCircleOutlined className="text-base" />
@@ -1989,8 +1989,8 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
                     className={classNames(
                       'w-7 h-7 rounded-full flex items-center justify-center transition-all',
                       !replyLoading && history.length > 0
-                        ? 'hover:bg-indigo-50 text-gray-400 hover:text-indigo-500 cursor-pointer'
-                        : 'text-gray-300 cursor-not-allowed'
+                        ? 'hover:bg-[#f2f4f8] text-[#8a92a6] hover:text-[#3b4154] cursor-pointer'
+                        : 'text-[#d5d9e3] cursor-not-allowed'
                     )}
                   >
                     <RedoOutlined className="text-base" />
@@ -2004,8 +2004,8 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
                     className={classNames(
                       'w-7 h-7 rounded-full flex items-center justify-center transition-all',
                       history.length > 0
-                        ? 'hover:bg-orange-50 text-gray-400 hover:text-orange-500 cursor-pointer'
-                        : 'text-gray-300 cursor-not-allowed'
+                        ? 'hover:bg-[#f2f4f8] text-[#8a92a6] hover:text-[#3b4154] cursor-pointer'
+                        : 'text-[#d5d9e3] cursor-not-allowed'
                     )}
                   >
                     <ClearOutlined className="text-base" />
@@ -2019,8 +2019,8 @@ const UnifiedChatInput: React.FC<UnifiedChatInputProps> = ({
               className={classNames(
                 'w-9 h-9 flex items-center justify-center transition-all !border-0 flex-shrink-0',
                 (userInput.trim() || (resourceValue && parseResourceValue(resourceValue)?.length > 0))
-                  ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 shadow-md hover:shadow-lg'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  ? '!bg-[#4f46e5] hover:!bg-[#6366f1] shadow-[0_2px_8px_rgba(79,70,229,0.35)] hover:shadow-[0_4px_12px_rgba(79,70,229,0.4)]'
+                  : '!bg-[#e5e8ef] !text-[#b4bac8] cursor-not-allowed !shadow-none'
               )}
               onClick={onSubmit}
               disabled={(!userInput.trim() && !(resourceValue && parseResourceValue(resourceValue)?.length > 0)) || replyLoading}

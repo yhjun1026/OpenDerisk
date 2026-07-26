@@ -48,7 +48,7 @@ function ChatInput(prosp: propsT) {
   return (
     <div
       className={cls(`flex flex-1 h-12 p-2 pl-4 items-center justify-between bg-white dark:bg-[#242733] dark:border-[#6f7f95] rounded-xl border border-gray-300 ${
-        isFocus ? 'border-[#0c75fc]' : ''
+        isFocus ? 'border-[#4f46e5]' : ''
       }`, bodyClassName)}
     >
       <Input.TextArea

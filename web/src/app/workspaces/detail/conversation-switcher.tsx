@@ -15,7 +15,7 @@ import {
 export interface ConversationSwitcherProps {
   workspaceId: number;
   currentConvUid: string;
-  onChanged: (convUid: string) => void;
+  onChanged: (convUid: string, taskId?: number | null) => void;
 }
 
 export function ConversationSwitcher({
@@ -44,13 +44,13 @@ export function ConversationSwitcher({
     );
     await apiInterceptors(setCurrentConversation(workspaceId, newConv.conv_uid));
     refresh();
-    onChanged(newConv.conv_uid);
+    onChanged(newConv.conv_uid, null);
     message.success('已新建会话');
   };
 
-  const handleSelect = async (convUid: string) => {
+  const handleSelect = async (convUid: string, taskId?: number | null) => {
     await apiInterceptors(setCurrentConversation(workspaceId, convUid));
-    onChanged(convUid);
+    onChanged(convUid, taskId);
   };
 
   const handleRename = async () => {
@@ -86,7 +86,7 @@ export function ConversationSwitcher({
           </Button>
         </div>
       ),
-      onClick: () => handleSelect(c.conv_uid),
+      onClick: () => handleSelect(c.conv_uid, c.task_id),
     })),
     { type: 'divider' as const },
     { key: '__new__', label: '+ 新建会话', onClick: handleNew },

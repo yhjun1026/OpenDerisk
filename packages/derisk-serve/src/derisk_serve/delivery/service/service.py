@@ -48,7 +48,7 @@ class DeliveryService(BaseService[DeliveryEntity, DeliveryRequest, DeliveryRespo
         response = self._dao.create(request)
         return response
 
-    def send(self, delivery_id: int) -> DeliveryResponse:
+    async def send(self, delivery_id: int) -> DeliveryResponse:
         session = self._dao.get_raw_session()
         try:
             entity = session.query(DeliveryEntity).filter(
@@ -63,7 +63,9 @@ class DeliveryService(BaseService[DeliveryEntity, DeliveryRequest, DeliveryRespo
                 elif entity.channel == "in_app":
                     result = {"delivered": True, "channel": "in_app"}
                 elif entity.channel == "feishu":
-                    result = {"delivered": True, "channel": "feishu", "note": "feishu handler not wired in MVP"}
+                    result = await self._send_via_channel(entity, "feishu")
+                elif entity.channel == "dingtalk":
+                    result = await self._send_via_channel(entity, "dingtalk")
                 else:
                     raise ValueError(f"unsupported channel: {entity.channel}")
                 entity.status = "sent"
@@ -95,6 +97,94 @@ class DeliveryService(BaseService[DeliveryEntity, DeliveryRequest, DeliveryRespo
                 server.login(cfg.smtp_user, cfg.smtp_password)
             server.sendmail(cfg.smtp_from, [entity.target], msg.as_string())
         return {"delivered": True, "channel": "email", "to": entity.target}
+
+    async def _send_via_channel(
+        self, entity: DeliveryEntity, channel_type: str
+    ) -> dict:
+        """Send a delivery through an active IM channel handler.
+
+        Looks up the channel bound to the delivery's workspace with the
+        requested channel type, then sends the message through its handler.
+
+        Args:
+            entity: The delivery entity to send.
+            channel_type: The IM channel type (e.g. feishu, dingtalk).
+
+        Returns:
+            Dict with delivery result.
+        """
+        from derisk.channel.registry import ChannelHandlerRegistry
+        from derisk_serve.channel.service.service import (
+            Service as ChannelService,
+            SERVE_SERVICE_COMPONENT_NAME as CHANNEL_SERVICE_NAME,
+        )
+
+        if not entity.workspace_id:
+            return {
+                "delivered": False,
+                "channel": channel_type,
+                "reason": "delivery has no workspace_id, cannot resolve channel",
+            }
+
+        channel_service: Optional[ChannelService] = None
+        try:
+            channel_service = self._system_app.get_component(
+                CHANNEL_SERVICE_NAME, ChannelService
+            )
+        except Exception as e:
+            logger.warning(f"Failed to resolve channel service: {e}")
+
+        if not channel_service:
+            return {
+                "delivered": False,
+                "channel": channel_type,
+                "reason": "channel service not available",
+            }
+
+        # Find the active channel bound to this workspace with the right type
+        channel_id: Optional[str] = None
+        for ch in channel_service.get_enabled_channels():
+            if (
+                ch.workspace_id == entity.workspace_id
+                and ch.channel_type == channel_type
+            ):
+                channel_id = ch.id
+                break
+
+        if not channel_id:
+            return {
+                "delivered": False,
+                "channel": channel_type,
+                "reason": f"no active {channel_type} channel bound to workspace {entity.workspace_id}",
+            }
+
+        registry = ChannelHandlerRegistry.get_instance()
+        handler = registry.get_handler(channel_id)
+        if not handler:
+            return {
+                "delivered": False,
+                "channel": channel_type,
+                "reason": f"handler not running for channel {channel_id}",
+            }
+
+        try:
+            send_result = await handler.send_message(
+                receiver_id=entity.target,
+                content=entity.message or "",
+                content_type=entity.format or "text",
+            )
+            return {
+                "delivered": send_result.success,
+                "channel": channel_type,
+                "message_id": send_result.message_id,
+                "error": send_result.error,
+            }
+        except Exception as e:
+            return {
+                "delivered": False,
+                "channel": channel_type,
+                "reason": f"send failed: {e}",
+            }
 
     def list_deliveries(self, f: DeliveryListFilter) -> List[DeliveryResponse]:
         return self._dao.list_by_filter(f)

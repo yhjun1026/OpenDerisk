@@ -24,6 +24,7 @@ class PayloadKind(str, Enum):
 
     AGENT_TURN = "agentTurn"  # Call an Agent
     TRIGGER_FIRE = "triggerFire"  # Fire a TriggerSource (run its playbook + instruction)
+    TOOL_CALL = "toolCall"  # Execute a registered Agent tool by name + args
 
 
 class SessionMode(str, Enum):
@@ -75,12 +76,15 @@ class CronSchedule(BaseModel):
 class CronPayload(BaseModel):
     """Payload for a cron job execution.
 
-    Executes an Agent conversation with a message.
+    Supports three payload kinds:
+    - agentTurn: Execute an Agent conversation with a message
+    - triggerFire: Fire a TriggerSource (run its playbook + instruction)
+    - toolCall: Execute a registered Agent tool by name + args
     """
 
     kind: PayloadKind = Field(
         ...,
-        description="The payload kind (agentTurn)",
+        description="The payload kind (agentTurn/triggerFire/toolCall)",
     )
     message: Optional[str] = Field(
         default=None,
@@ -109,6 +113,14 @@ class CronPayload(BaseModel):
     workspace_id: Optional[int] = Field(
         default=None,
         description="Workspace ID for triggerFire payload kind (context passthrough)",
+    )
+    tool_name: Optional[str] = Field(
+        default=None,
+        description="Tool name to execute for 'toolCall' payload kind",
+    )
+    tool_args: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Arguments dict for the tool execution (toolCall payload kind)",
     )
 
 
@@ -188,6 +200,10 @@ class CronJob(BaseModel):
         default_factory=datetime.now,
         description="Job last update timestamp",
     )
+    created_by_user_id: Optional[str] = Field(
+        default=None,
+        description="Creator user id (for background execution identity)",
+    )
 
 
 class CronJobCreate(BaseModel):
@@ -220,6 +236,10 @@ class CronJobCreate(BaseModel):
     payload: CronPayload = Field(
         ...,
         description="Job execution payload",
+    )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Creator user id (for background execution identity)",
     )
 
 

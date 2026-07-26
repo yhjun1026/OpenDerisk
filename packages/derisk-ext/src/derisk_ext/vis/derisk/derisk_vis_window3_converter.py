@@ -1621,7 +1621,7 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
         "write_file": "正在写入文件...",
         "execute_code": "正在执行代码...",
         "knowledge_search": "正在搜索知识库...",
-        "agent_start": "正在启动子代理...",
+        "SubAgent": "正在启动子代理...",
         "send_message": "正在发送消息...",
         "terminate": "任务已完成",
         "web_search": "正在搜索网页...",
@@ -1687,7 +1687,7 @@ class DeriskIncrVisWindow3Converter(DeriskVisIncrConverter):
             "browser_input",
             "browser_scroll",
             "send_message",
-            "agent_start",
+            "subagent",
         ]
         verification_tools = []
         completion_tools = ["terminate"]

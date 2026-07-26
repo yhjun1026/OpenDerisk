@@ -75,6 +75,10 @@ async def create_cron_job(
     session_mode: str = "shared",
     conv_session_id: Optional[str] = None,
     description: Optional[str] = None,
+    payload_kind: str = "agentTurn",
+    tool_name: Optional[str] = None,
+    tool_args: Optional[Dict[str, Any]] = None,
+    workspace_id: Optional[int] = None,
     context: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Create a scheduled cron job.
@@ -128,18 +132,27 @@ async def create_cron_job(
                 return "Error: at_time is required for 'at' schedule."
             schedule.at = at_time
 
-        # Build payload - only agentTurn is supported
-        payload = CronPayload(
-            kind=PayloadKind.AGENT_TURN,
-            message=message,
-            agent_id=agent_id,
-            session_mode=session_mode_enum,
-            conv_session_id=conv_session_id,
-        )
-
-        # Validate message is provided
-        if not message:
-            return "Error: message is required."
+        # Build payload by payload_kind
+        if payload_kind == "toolCall":
+            if not tool_name:
+                return "Error: tool_name is required for payload_kind='toolCall'."
+            payload = CronPayload(
+                kind=PayloadKind.TOOL_CALL,
+                tool_name=tool_name,
+                tool_args=tool_args,
+                workspace_id=workspace_id,
+            )
+        else:
+            # Validate message is provided for agentTurn
+            if not message:
+                return "Error: message is required for payload_kind='agentTurn'."
+            payload = CronPayload(
+                kind=PayloadKind.AGENT_TURN,
+                message=message,
+                agent_id=agent_id,
+                session_mode=session_mode_enum,
+                conv_session_id=conv_session_id,
+            )
 
         # Create the job
         job_create = CronJobCreate(

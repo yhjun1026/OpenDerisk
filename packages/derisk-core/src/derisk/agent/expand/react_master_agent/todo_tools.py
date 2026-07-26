@@ -29,57 +29,30 @@ logger = logging.getLogger(__name__)
 # 可视化推送相关
 # ============================================================================
 
-def _get_render_protocol(agent):
-    """获取渲染协议实例."""
-    if hasattr(agent, "not_null_agent_context"):
-        ctx = agent.not_null_agent_context
-        if ctx and hasattr(ctx, "render_protocol"):
-            return ctx.render_protocol
-    return None
-
-
 async def _push_todolist_vis(agent, todos: List[TodoItem], mission: str = "") -> None:
     """推送 TodoList 可视化到前端.
 
-    Args:
-        agent: Agent 实例
-        todos: 任务列表
-        mission: 任务描述
+    修复 vis_tag 断点：用 build_todolist_fence 生成正确 d-todo-list 围栏 + push_message 推送。
     """
-    render_protocol = _get_render_protocol(agent)
-    if not render_protocol:
-        logger.debug("render_protocol not available, skip vis push")
-        return
-
     try:
-        # 获取当前进行中的任务索引
-        current_index = 0
-        for i, todo in enumerate(todos):
-            if todo.status == TodoStatus.IN_PROGRESS.value:
-                current_index = i
-                break
+        memory = getattr(agent, "memory", None)
+        gpts_memory = getattr(memory, "gpts_memory", None) if memory else None
+        conv_id = _get_conv_id(agent)
+        if not gpts_memory:
+            logger.debug("gpts_memory not available, skip vis push")
+            return
 
-        # 构建 TodoList 可视化内容
-        todo_items = []
-        for i, todo in enumerate(todos):
-            todo_items.append({
-                "id": todo.id,
-                "title": todo.content,
-                "status": todo.status,
-                "index": i,
-            })
+        from derisk.agent.tools.builtin.todo.todo_reminder import build_todolist_fence
 
-        vis_content = {
-            "uid": f"todo_list_{_get_conv_id(agent)}",
-            "type": "all",
-            "mission": mission,
-            "items": todo_items,
-            "current_index": current_index,
-            "total_count": len(todos),
-        }
+        fence = build_todolist_fence(todos, conv_id)
+        if not fence:
+            return
 
-        # 推送可视化
-        render_protocol.sync_display(content=vis_content, vis_tag="d-todo-list")
+        await gpts_memory.push_message(
+            conv_id=conv_id,
+            stream_msg=fence,
+            incr_type="all",
+        )
         logger.debug(f"Pushed todolist vis with {len(todos)} items")
 
     except Exception as e:

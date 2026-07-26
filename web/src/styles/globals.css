@@ -3,62 +3,141 @@
 
 body {
   margin: 0;
-  font-family: var(--joy-fontFamily-body, var(--joy-JosefinSans, sans-serif));
-  line-height: var(--joy-lineHeight-md, 1.5);
-  --antd-primary-color: #0069fe;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-900);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --antd-primary-color: #4f46e5;
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
   -webkit-appearance: none;
 }
 
 /* ============================================
-   MCP Design System Variables
+   DeRisk Design Tokens (single source of truth)
+   品牌色仅用于关键动作/激活态；语义色以"点"使用；
+   嵌套层级用底色差区分，不堆叠描边。
    ============================================ */
 :root {
-  --mcp-accent: #0069fe;
-  --mcp-accent-rgb: 0, 105, 254;
-  --mcp-accent-light: #e8f1ff;
-  --mcp-success: #10b981;
-  --mcp-success-rgb: 16, 185, 129;
-  --mcp-danger: #ef4444;
-  --mcp-warning: #f59e0b;
+  /* Brand —— 深靛蓝，比旧 #4f46e5 更沉稳 */
+  --brand: #4f46e5;
+  --brand-rgb: 79, 70, 229;
+  --brand-hover: #6366f1;
+  --brand-active: #4338ca;
+  --brand-soft: #eef0fe;
 
-  --mcp-bg: #f8f9fc;
-  --mcp-surface: #ffffff;
-  --mcp-surface-hover: #f0f4ff;
-  --mcp-border: #e5e7eb;
-  --mcp-border-subtle: #f0f0f5;
-  --mcp-text-primary: #0f172a;
-  --mcp-text-secondary: #64748b;
-  --mcp-text-tertiary: #94a3b8;
-  --mcp-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-  --mcp-shadow-md: 0 4px 16px rgba(0,0,0,0.06);
-  --mcp-shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
-  --mcp-shadow-glow: 0 0 24px rgba(var(--mcp-accent-rgb), 0.12);
-  --mcp-radius: 12px;
-  --mcp-radius-sm: 8px;
-  --mcp-radius-xs: 6px;
-  --mcp-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Ink —— 文字四级 */
+  --ink-900: #14161c;
+  --ink-700: #3b4154;
+  --ink-500: #5d6577;
+  --ink-400: #8a92a6;
+  --ink-300: #b4bac8;
+
+  /* Line —— 描边两级，宁浅勿深 */
+  --line: #e5e8ef;
+  --line-soft: #eff1f6;
+
+  /* Background —— 页面/填充/浮层三级 */
+  --bg-page: #f7f8fa;
+  --bg-fill: #f2f4f8;
+  --bg-elev: #ffffff;
+
+  /* Semantic —— 只以 6px 圆点/小面积使用 */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  /* Radius */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  /* Shadow —— 弥散、低透明，替代描边堆叠 */
+  --sh-card: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --sh-pop: 0 4px 16px rgba(16, 24, 40, 0.08);
+  --sh-modal: 0 12px 40px rgba(16, 24, 40, 0.12);
+  --sh-glow: 0 0 0 4px rgba(var(--brand-rgb), 0.08);
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  --fs-aux: 12px;
+  --fs-body: 13px;
+  --fs-title: 14px;
+  --fs-head: 16px;
+  --fs-page: 18px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition: 0.2s var(--ease);
+
+  /* ---- MCP aliases（向后兼容，逐步收敛） ---- */
+  --mcp-accent: var(--brand);
+  --mcp-accent-rgb: var(--brand-rgb);
+  --mcp-accent-light: var(--brand-soft);
+  --mcp-success: var(--success);
+  --mcp-success-rgb: 34, 197, 94;
+  --mcp-danger: var(--danger);
+  --mcp-warning: var(--warning);
+
+  --mcp-bg: var(--bg-page);
+  --mcp-surface: var(--bg-elev);
+  --mcp-surface-hover: var(--brand-soft);
+  --mcp-border: var(--line);
+  --mcp-border-subtle: var(--line-soft);
+  --mcp-text-primary: var(--ink-900);
+  --mcp-text-secondary: var(--ink-500);
+  --mcp-text-tertiary: var(--ink-400);
+  --mcp-shadow-sm: var(--sh-card);
+  --mcp-shadow-md: var(--sh-pop);
+  --mcp-shadow-lg: var(--sh-modal);
+  --mcp-shadow-glow: 0 0 24px rgba(var(--brand-rgb), 0.12);
+  --mcp-radius: var(--r-lg);
+  --mcp-radius-sm: var(--r-sm);
+  --mcp-radius-xs: var(--r-xs);
+  --mcp-transition: var(--transition);
 }
 
 .dark {
-  --mcp-bg: #0c0e14;
-  --mcp-surface: #161a26;
+  --ink-900: #f1f5f9;
+  --ink-700: #cbd2e0;
+  --ink-500: #8b95a8;
+  --ink-400: #6b748c;
+  --ink-300: #4a5163;
+  --line: #2a2f3e;
+  --line-soft: #1e2230;
+  --bg-page: #0c0e14;
+  --bg-fill: #161a26;
+  --bg-elev: #161a26;
+  --brand-soft: #1d2150;
+  --sh-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --sh-pop: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --sh-modal: 0 12px 40px rgba(0, 0, 0, 0.4);
+
+  --mcp-bg: var(--bg-page);
+  --mcp-surface: var(--bg-elev);
   --mcp-surface-hover: #1e2333;
-  --mcp-border: #2a2f3e;
-  --mcp-border-subtle: #1e2230;
-  --mcp-text-primary: #f1f5f9;
-  --mcp-text-secondary: #8b95a8;
-  --mcp-text-tertiary: #5b6478;
-  --mcp-accent-light: #0d2254;
-  --mcp-shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
-  --mcp-shadow-md: 0 4px 16px rgba(0,0,0,0.3);
-  --mcp-shadow-lg: 0 8px 32px rgba(0,0,0,0.4);
-  --mcp-shadow-glow: 0 0 32px rgba(var(--mcp-accent-rgb), 0.2);
+  --mcp-border: var(--line);
+  --mcp-border-subtle: var(--line-soft);
+  --mcp-text-primary: var(--ink-900);
+  --mcp-text-secondary: var(--ink-500);
+  --mcp-text-tertiary: var(--ink-400);
+  --mcp-accent-light: var(--brand-soft);
+  --mcp-shadow-sm: var(--sh-card);
+  --mcp-shadow-md: var(--sh-pop);
+  --mcp-shadow-lg: var(--sh-modal);
+  --mcp-shadow-glow: 0 0 32px rgba(var(--brand-rgb), 0.2);
 }
 
 .light {
-  color: #333;
-  background-color: #f7f7f7;
+  color: var(--ink-900);
+  background-color: var(--bg-page);
 }
 
 .dark {
@@ -68,6 +147,190 @@ body {
 
 .dark-sub-bg {
   background-color: rgb(35, 38, 44);
+}
+
+/* ============================================
+   Motion & Material —— 运动感与材质层
+   ============================================ */
+
+/* 文字选择色:品牌浅底 */
+::selection {
+  background: rgba(79, 70, 229, 0.14);
+}
+
+/* 键盘聚焦环:统一品牌光晕 */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+  border-radius: 6px;
+}
+
+/* 进入浮起动画(消息/卡片/区块通用) */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.45s var(--ease-expo) both;
+}
+
+.animate-rise-slow {
+  animation: rise-in 0.7s var(--ease-expo) both;
+}
+
+/* 流式"思考中"微光扫过 */
+@keyframes shimmer-sweep {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--ink-400) 0%,
+    var(--ink-900) 45%,
+    var(--ink-900) 55%,
+    var(--ink-400) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-sweep 2.4s linear infinite;
+}
+
+/* 极光背景:首页 hero / 空态仪式感场景专用 */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(4%, -6%) scale(1.08);
+  }
+  66% {
+    transform: translate(-5%, 4%) scale(0.94);
+  }
+}
+
+.aurora-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  opacity: 0.5;
+  animation: aurora-drift 14s ease-in-out infinite;
+  will-change: transform;
+}
+
+.aurora-blob--brand {
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.35), transparent 65%);
+}
+
+.aurora-blob--cyan {
+  background: radial-gradient(circle, rgba(0, 218, 239, 0.28), transparent 65%);
+  animation-delay: -5s;
+}
+
+.aurora-blob--violet {
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.22), transparent 65%);
+  animation-delay: -9s;
+}
+
+/* 玻璃拟态浮层 */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.dark .glass-panel {
+  background: rgba(22, 26, 38, 0.82);
+}
+
+.dark .aurora-blob {
+  opacity: 0.22;
+}
+
+/* 主按钮微交互:悬停浮起 + 按压回弹 */
+.ant-btn-primary {
+  transition: transform 0.15s var(--ease), box-shadow 0.2s var(--ease),
+    background-color 0.2s var(--ease) !important;
+}
+
+.ant-btn-primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.32) !important;
+}
+
+.ant-btn-primary:not(:disabled):active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.24) !important;
+}
+
+/* 数字表格化(统计/计数不错位) */
+.tnum,
+.ant-statistic-content,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 标题负字距(大字号更紧凑高级) */
+h1,
+h2,
+h3,
+.ws-page-title,
+.ws-console-title {
+  letter-spacing: -0.02em;
+}
+
+/* 流式输出呼吸光标 */
+@keyframes cursor-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  background: var(--brand);
+  border-radius: 1px;
+  margin: 2px 0 0 2px;
+  vertical-align: text-bottom;
+  animation: cursor-breathe 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob,
+  .text-shimmer,
+  .animate-rise,
+  .animate-rise-slow {
+    animation: none;
+  }
 }
 
 .ant-btn-primary {
@@ -99,9 +362,27 @@ body {
   width: 6px;
 }
 
-/* 自定义滚动条样式 */
+/* 滚动条：默认隐藏,悬停滚动区域时以纤细悬浮条显现 */
 ::-webkit-scrollbar {
-  display: none;
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 99px;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(20, 22, 28, 0.16);
+}
+
+.dark *:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .scrollbar-hide::-webkit-scrollbar {
@@ -111,18 +392,6 @@ body {
 .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #888;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
 }
 
 

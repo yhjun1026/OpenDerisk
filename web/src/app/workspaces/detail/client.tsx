@@ -7,7 +7,7 @@ import {
 } from '@/client/api';
 import { Button, Spin } from 'antd';
 import { useRequest } from 'ahooks';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,12 +26,19 @@ import '../workspaces.css';
 
 export default function WorkspaceDetailPage() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const workspaceCode = searchParams?.get('id') || '';
+  // 当前子页面导航激活态(分段控件高亮)
+  const navActive = (segment: string) =>
+    pathname?.includes(`/workspaces/detail/${segment}`) ? ' ws-console-nav-link--active' : '';
   const { t } = useTranslation();
   const [convUid, setConvUid] = useState<string>('');
   const [convLoadError, setConvLoadError] = useState<string | null>(null);
   const [convLoadKey, setConvLoadKey] = useState(0);
   const [listsRefreshKey, setListsRefreshKey] = useState(0);
+  // 从会话列表选中会话时携带的 task_id:number=进 task 对话,null=workspace 级会话,
+  // undefined=非列表触发(初始/任务栏进入)。shell 据此恢复 activeTaskId。
+  const [pendingTaskId, setPendingTaskId] = useState<number | null | undefined>(undefined);
 
   // 场景空间三列布局需要宽度,进入时自动折叠左侧菜单
   const { setIsMenuExpand } = useContext(ChatContext);
@@ -86,7 +93,7 @@ export default function WorkspaceDetailPage() {
 
   const { data: tasks } = useRequest(async () => {
     if (!workspaceId) return [];
-    const [err, res] = await apiInterceptors(listTasks({ workspace_id: workspaceId, limit: 50 }));
+    const [err, res] = await apiInterceptors(listTasks({ workspace_id: workspaceId, limit: 200 }));
     return err ? [] : res || [];
   }, { refreshDeps: [workspaceId, listsRefreshKey] });
 
@@ -141,11 +148,11 @@ export default function WorkspaceDetailPage() {
   const reviewCount = (interventions || []).length;
 
   return (
-    <div className="ws-page">
+    <div className="ws-page" style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
       <div className="ws-page-bg" />
       <div
         className="ws-page-content ws-page-content--fluid"
-        style={{ paddingTop: 12, paddingBottom: 12, height: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column', gap: 10 }}
+        style={{ padding: '12px', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box' }}
       >
         <div className="ws-console-header">
           <div className="ws-console-header-left">
@@ -158,23 +165,23 @@ export default function WorkspaceDetailPage() {
             </div>
           </div>
           <nav className="ws-console-nav" aria-label="Workspace navigation">
-            <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`} className="ws-console-nav-link">
+            <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('playbooks')}`}>
               <BookOutlined />{t('workspaces.playbooks') || 'Playbooks'}
             </Link>
-            <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className="ws-console-nav-link">
+            <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('tasks')}`}>
               <ThunderboltOutlined />{t('workspaces.tasks') || 'Tasks'}
             </Link>
-            <Link href={`/workspaces/detail/triggers?id=${workspaceCode}`} className="ws-console-nav-link">
+            <Link href={`/workspaces/detail/triggers?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('triggers')}`}>
               <ClockCircleOutlined />{t('workspaces.triggers') || 'Triggers'}
             </Link>
-            <Link href={`/workspaces/detail/deliveries?id=${workspaceCode}`} className="ws-console-nav-link ws-console-nav-link--accent">
+            <Link href={`/workspaces/detail/deliveries?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('deliveries')}`}>
               <DeliveredProcedureOutlined />{t('workspaces.deliveries') || 'Delivery Space'}
             </Link>
-            <Link href={`/workspaces/detail/interventions?id=${workspaceCode}`} className={`ws-console-nav-link${reviewCount > 0 ? ' ws-console-nav-link--attention' : ''}`}>
+            <Link href={`/workspaces/detail/interventions?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('interventions')}${reviewCount > 0 ? ' ws-console-nav-link--attention' : ''}`}>
               <WarningOutlined />{t('workspaces.interventions') || 'Interventions'}
               {reviewCount > 0 && <span style={{ fontWeight: 700 }}>{reviewCount}</span>}
             </Link>
-            <Link href={`/workspaces/detail/settings?id=${workspaceCode}`} className="ws-console-nav-link">
+            <Link href={`/workspaces/detail/settings?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('settings')}`}>
               <SettingOutlined />{t('workspaces.settings') || 'Settings'}
             </Link>
           </nav>
@@ -187,9 +194,13 @@ export default function WorkspaceDetailPage() {
           workspaceConvUid={convUid}
           appCode={appCode}
           onRefreshLists={handleRefreshLists}
-          onConvChanged={setConvUid}
+          onConvChanged={(uid: string, tid?: number | null) => {
+            setConvUid(uid);
+            setPendingTaskId(tid ?? null);
+          }}
           convLoadError={convLoadError}
           retryLoadConv={retryLoadConv}
+          pendingTaskId={pendingTaskId}
         />
       </div>
     </div>

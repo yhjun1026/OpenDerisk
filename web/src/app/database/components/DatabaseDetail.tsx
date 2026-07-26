@@ -65,6 +65,7 @@ import {
   Form,
   Input,
   Modal,
+  Pagination,
   Popover,
   Progress,
   Select,
@@ -118,6 +119,7 @@ export default function DatabaseDetail({
   const [batchMaskingModalOpen, setBatchMaskingModalOpen] = useState(false);
   const [tableSearchKeyword, setTableSearchKeyword] = useState('');
   const [tablePagination, setTablePagination] = useState({ current: 1, pageSize: 20 });
+  const [overviewPagination, setOverviewPagination] = useState({ current: 1, pageSize: 20 });
   const [addForm] = Form.useForm();
   const [editForm] = Form.useForm();
 
@@ -131,6 +133,11 @@ export default function DatabaseDetail({
     if (err) return null;
     return res as DbSpecResponse | null;
   });
+
+  // Reset overview pagination when switching datasource
+  useEffect(() => {
+    setOverviewPagination((prev) => ({ ...prev, current: 1 }));
+  }, [datasourceId]);
 
   // Fetch table specs (server-side paginated + searchable)
   const {
@@ -705,29 +712,63 @@ export default function DatabaseDetail({
         </Descriptions>
 
         {dbSpec.spec_content && dbSpec.spec_content.length > 0 && (
-          <Card title="Table Index" size="small">
-            {dbSpec.spec_content.map((entry, idx) => (
-              <div key={idx} className="py-1 border-b border-gray-100 last:border-0">
-                <a
-                  onClick={() => handleViewTable(entry.table_name)}
-                  className="text-blue-500 hover:text-blue-700 cursor-pointer"
-                >
-                  {entry.table_name}
-                </a>
-                <Text type="secondary" className="ml-2">
-                  {entry.row_count !== null ? `${entry.row_count?.toLocaleString()} rows` : ''}
-                </Text>
-                {entry.group && entry.group !== 'default' && (
-                  <Tag className="ml-2" color="default">
-                    {entry.group}
-                  </Tag>
-                )}
-                <br />
-                <Text type="secondary" className="text-xs">
-                  {entry.summary}
-                </Text>
-              </div>
-            ))}
+          <Card title={`Table Index (${dbSpec.spec_content.length})`} size="small">
+            {(() => {
+              const total = dbSpec.spec_content.length;
+              const pageSize = overviewPagination.pageSize;
+              const current = Math.min(
+                overviewPagination.current,
+                Math.max(1, Math.ceil(total / pageSize)),
+              );
+              const start = (current - 1) * pageSize;
+              const pageItems = dbSpec.spec_content.slice(
+                start,
+                start + pageSize,
+              );
+              return (
+                <>
+                  {pageItems.map((entry) => (
+                    <div
+                      key={entry.table_name}
+                      className="py-1 border-b border-gray-100 last:border-0"
+                    >
+                      <a
+                        onClick={() => handleViewTable(entry.table_name)}
+                        className="text-blue-500 hover:text-blue-700 cursor-pointer"
+                      >
+                        {entry.table_name}
+                      </a>
+                      <Text type="secondary" className="ml-2">
+                        {entry.row_count !== null
+                          ? `${entry.row_count?.toLocaleString()} rows`
+                          : ''}
+                      </Text>
+                      {entry.group && entry.group !== 'default' && (
+                        <Tag className="ml-2" color="default">
+                          {entry.group}
+                        </Tag>
+                      )}
+                      <br />
+                      <Text type="secondary" className="text-xs">
+                        {entry.summary}
+                      </Text>
+                    </div>
+                  ))}
+                  <div className="mt-4 flex justify-end">
+                    <Pagination
+                      current={current}
+                      pageSize={pageSize}
+                      total={total}
+                      showSizeChanger
+                      showTotal={(t) => `Total ${t} tables`}
+                      onChange={(page, ps) =>
+                        setOverviewPagination({ current: page, pageSize: ps })
+                      }
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </Card>
         )}
       </div>

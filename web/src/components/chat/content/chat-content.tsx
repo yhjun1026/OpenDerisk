@@ -40,7 +40,7 @@ const UserIcon: React.FC = () => {
   return (
     <Avatar
       src={user?.avatar_url || undefined}
-      className="bg-gradient-to-tr from-[#31afff] to-[#1677ff] cursor-pointer shrink-0"
+      className="bg-gradient-to-tr from-[#31afff] to-[#4f46e5] cursor-pointer shrink-0"
       size={32}
     >
       {user?.nick_name?.charAt(0) || "U"}
@@ -386,14 +386,10 @@ const ChatContent: React.FC<{
                 }}
               />
             </CompactChatContext.Provider>
+            {thinking && !!context && <span className='stream-cursor' />}
             {thinking && !context && (
               <div className='flex items-center gap-2'>
-                <span className='flex text-sm text-[#1c2533] dark:text-white'>{t('thinking')}</span>
-                <div className='flex'>
-                  <div className='w-1 h-1 rounded-full mx-1 animate-pulse1'></div>
-                  <div className='w-1 h-1 rounded-full mx-1 animate-pulse2'></div>
-                  <div className='w-1 h-1 rounded-full mx-1 animate-pulse3'></div>
-                </div>
+                <span className='flex text-sm text-shimmer'>{t('thinking')}</span>
               </div>
             )}
           </div>

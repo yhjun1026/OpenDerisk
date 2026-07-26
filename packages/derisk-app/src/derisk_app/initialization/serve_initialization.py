@@ -47,6 +47,7 @@ def scan_serve_configs():
         "derisk_serve.config",
         "derisk_serve.version",
         "derisk_serve.channel",
+        "derisk_serve.usage",
     ]
 
     scanner = ModelScanner[BaseServeConfig]()
@@ -578,6 +579,20 @@ def register_serve_apps(
     )
 
     # ################################ Cron Serve Register End   ################
+
+    # ################################ Usage Serve Register Begin ################
+    from derisk_serve.usage.serve import Serve as UsageServe
+
+    system_app.register(
+        UsageServe,
+        config=get_config(
+            serve_configs,
+            UsageServe.name,
+            derisk_serve.usage.serve.ServeConfig,
+            api_keys=global_api_keys,
+        ),
+    )
+    # ################################ Usage Serve Register End   ################
 
     # ################################ Channel Serve Register Begin ################
     from derisk_serve.channel.serve import Serve as ChannelServe

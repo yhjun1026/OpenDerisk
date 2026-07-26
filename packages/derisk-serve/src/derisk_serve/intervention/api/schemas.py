@@ -10,6 +10,7 @@ class InterventionRequest(BaseModel):
     id: Optional[int] = None
     task_id: Optional[int] = None
     conv_uid: Optional[str] = None
+    parent_conv_id: Optional[str] = None
     workspace_id: int
     type: str = Field(default="review", description="MVP only: review")
     requested_by: str = Field(default="system", description="system / agent / user")
@@ -21,6 +22,7 @@ class InterventionResponse(BaseModel):
     id: int
     task_id: Optional[int] = None
     conv_uid: Optional[str] = None
+    parent_conv_id: Optional[str] = None
     workspace_id: int
     type: str
     status: str = "requested"

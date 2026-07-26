@@ -283,6 +283,40 @@ async def get_history_messages(con_uid: str, service: Service = Depends(get_serv
 
 
 @router.get(
+    "/{conv_id}/subagents",
+    response_model=Result[List[Dict]],
+    dependencies=[Depends(check_api_key)],
+)
+async def list_subagents(conv_id: str, service: Service = Depends(get_service)):
+    """列出主会话的所有子任务状态。
+
+    兜底数据源：前端 d-subagent-board 面板在无活跃 SSE 时轮询此接口
+    （仿场景空间 hasActiveTask 4s 轮询模式），用于断线恢复/初次加载。
+    实时更新主要靠 coordinator 推送的 d-subagent-board VIS 围栏。
+    """
+    from derisk_serve.agent.subagent_coordinator import get_subagent_coordinator
+
+    coordinator = get_subagent_coordinator()
+    if coordinator is None:
+        return Result.succ([])
+    handles = await coordinator._read_pending(conv_id)
+    items = []
+    for h in handles:
+        board_status = "awaiting_authorization" if h.authorization else h.status.value
+        items.append(
+            {
+                "sub_conv_id": h.sub_conv_id,
+                "agent_name": h.agent_name,
+                "task": h.task,
+                "status": board_status,
+                "mode": h.mode.value,
+                "authorization": h.authorization,
+            }
+        )
+    return Result.succ(items)
+
+
+@router.get(
     "/export_messages",
     dependencies=[Depends(check_api_key)],
 )

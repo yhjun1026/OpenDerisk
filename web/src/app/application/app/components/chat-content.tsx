@@ -117,7 +117,7 @@ function ChatContent() {
             app_config_code: appInfo?.config_code || '',
             conv_uid: chatId,
             ext_info: {
-              vis_render: appInfo?.layout?.chat_layout?.name || '',
+              vis_render: appInfo?.layout?.chat_layout?.reuse_name || appInfo?.layout?.chat_layout?.name || '',
               incremental: appInfo?.layout?.chat_layout?.incremental || false,
             },
             ...data,

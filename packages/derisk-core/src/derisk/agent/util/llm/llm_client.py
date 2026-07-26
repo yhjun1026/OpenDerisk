@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
@@ -610,6 +611,12 @@ class AIWrapper:
 
         input_tools_list = tools if tools else None
 
+        # LLM 调用 usage 采集：计时 + 捕获 usage，finally 里分发到 recorder
+        _usage_start_ms = int(time.time() * 1000)
+        _usage_last: Optional[Dict] = None
+        _usage_first_token_ms: Optional[int] = None
+        _usage_error_code = 0
+
         try:
             # Choose client: self._provider or self._llm_client (legacy)
             if self._provider:
@@ -628,7 +635,10 @@ class AIWrapper:
 
                 async for output in client.generate_stream(request):  # type: ignore
                     model_output: ModelOutput = output
+                    if model_output.usage:
+                        _usage_last = model_output.usage
                     if model_output.error_code != 0:
+                        _usage_error_code = model_output.error_code
                         raise LLMChatError(
                             model_output.text,
                             original_exception=model_output.error_code,
@@ -653,6 +663,9 @@ class AIWrapper:
                     content_blank = not content_text or len(content_text) <= 0
                     if think_blank and content_blank and not model_output.tool_calls:
                         continue
+
+                    if _usage_first_token_ms is None:
+                        _usage_first_token_ms = int(time.time() * 1000)
 
                     # 详细输出日志：记录 tool_calls（仅首次输出，避免流式重复）
                     if model_output.tool_calls:
@@ -688,8 +701,11 @@ class AIWrapper:
                     )
             else:
                 model_output = await client.generate(request)
+                if model_output.usage:
+                    _usage_last = model_output.usage
                 # 恢复模型调用异常，触发后续的模型兜底策略
                 if model_output.error_code != 0:
+                    _usage_error_code = model_output.error_code
                     raise LLMChatError(
                         model_output.text, original_exception=model_output.error_code
                     )
@@ -728,10 +744,55 @@ class AIWrapper:
             logger.exception(f"LLM  Chat error, detail: {str(e)}")
             raise
         except Exception as e:
+            _usage_error_code = 1
             logger.exception(f"Call LLMClient error, detail: {str(e)}")
             raise ValueError(f"LLM Request Exception!{str(e)}")
         finally:
             span.end()
+            # 分发 usage 到已注册 recorder（fire-and-forget，绝不影响主路径）
+            try:
+                from derisk.agent.util.llm.usage_recorder import (
+                    LLMUsageRecord,
+                    record_llm_usage,
+                )
+
+                _end_ms = int(time.time() * 1000)
+                _u = _usage_last or {}
+                _prompt_t = int(_u.get("prompt_tokens") or 0)
+                _comp_t = int(_u.get("completion_tokens") or 0)
+                _total_t = int(_u.get("total_tokens") or (_prompt_t + _comp_t))
+                _latency_ms = _end_ms - _usage_start_ms
+                _tps = (
+                    _comp_t / (_latency_ms / 1000.0)
+                    if _latency_ms > 0 and _comp_t > 0
+                    else None
+                )
+                await record_llm_usage(
+                    LLMUsageRecord(
+                        model_name=llm_model or final_llm_model,
+                        prompt_tokens=_prompt_t,
+                        completion_tokens=_comp_t,
+                        total_tokens=_total_t,
+                        latency_ms=_latency_ms,
+                        stream=stream_out,
+                        error_code=_usage_error_code,
+                        started_at=_usage_start_ms,
+                        conv_id=root_tracer.get_context_conv_id(),
+                        agent_id=root_tracer.get_current_agent_id(),
+                        user_id=root_tracer.get_context_user_id(),
+                        session_id=root_tracer.get_context_session_id(),
+                        trace_id=root_tracer.get_context_trace_id()
+                        or params.get("trace_id"),
+                        first_token_ms=(
+                            _usage_first_token_ms - _usage_start_ms
+                            if _usage_first_token_ms
+                            else None
+                        ),
+                        tokens_per_sec=_tps,
+                    )
+                )
+            except Exception as _ue:  # noqa: BLE001
+                logger.warning(f"[usage] record failed: {_ue}")
 
     def _get_span_metadata(self, payload: Dict) -> Dict:
         metadata = {k: v for k, v in payload.items()}

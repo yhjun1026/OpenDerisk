@@ -1,6 +1,8 @@
 import { ChartData, ChatHistoryResponse, IChatDialogueSchema, UserChatContent } from '@/types/chat';
 import { IApp } from '@/types/app';
 import { createContext } from 'react';
+import type { ITodoListData } from '@/components/chat/chat-content-components/VisComponents/VisTodoList';
+import type { ISubagentBoardData } from '@/components/chat/chat-content-components/VisComponents/VisSubagentBoard';
 
 export const CompactChatContext = createContext<boolean>(false);
 
@@ -58,6 +60,12 @@ interface ChatContentProps {
   setIsShowDetail?: React.Dispatch<React.SetStateAction<boolean>>;
   isDebug?: boolean;
   isPollingMode?: boolean;
+  /** 当前进度 todo list（输入框上方固定面板展示，由 todowrite 工具推送） */
+  todoList?: ITodoListData | null;
+  setTodoList?: React.Dispatch<React.SetStateAction<ITodoListData | null>>;
+  /** 子任务面板（输入框上方固定展示，由 SubAgent async 派发/coordinator 推送） */
+  subagentBoard?: ISubagentBoardData | null;
+  setSubagentBoard?: React.Dispatch<React.SetStateAction<ISubagentBoardData | null>>;
   /** Start a brand-new conversation session (create backend conv + navigate). */
   onNewChat?: () => Promise<void>;
 }
@@ -98,4 +106,8 @@ export const ChatContentContext = createContext<ChatContentProps>({
   setIsShowDetail: () => {},
   isDebug: false,
   isPollingMode: false,
+  todoList: null,
+  setTodoList: () => {},
+  subagentBoard: null,
+  setSubagentBoard: () => {},
 });

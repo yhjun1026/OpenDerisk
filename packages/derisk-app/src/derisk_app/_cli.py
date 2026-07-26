@@ -1,5 +1,7 @@
 import functools
+import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import click
@@ -313,9 +315,21 @@ def _get_migration_config(
     from derisk_app.base import _initialize_db
     from derisk_app.initialization.db_model_initialization import _MODELS  # noqa: F401
     from derisk_ext.datasource.rdbms.conn_sqlite import SQLiteConnectorParameters
-    from derisk_ext.ant.utils.configure.mist_hook import MistVarSetHook  # noqa: F401
+    try:
+        from derisk_ext.ant.utils.configure.mist_hook import (  # noqa: F401
+            MistVarSetHook,
+        )
+    except ImportError:
+        # ant 配置钩子为可选扩展,缺失时不影响迁移核心流程
+        pass
 
-    cfg = ConfigurationManager.from_file(_GLOBAL_CONFIG)
+    config_path = Path(_GLOBAL_CONFIG)
+    if config_path.suffix.lower() == ".json":
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_dict = json.load(f)
+        cfg = ConfigurationManager(config_dict)
+    else:
+        cfg = ConfigurationManager.from_file(_GLOBAL_CONFIG)
     db_config = cfg.parse_config(
         BaseDatasourceParameters, prefix="service.web.database", hook_section="hooks"
     )

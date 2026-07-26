@@ -348,6 +348,24 @@ async def _build_conversation(
 AgentContextType = Union[str, AutoTeamContext]
 
 
+def _sandbox_key(
+    workspace_id: Optional[Any],
+    conv_id: Optional[str],
+    staff_no: Optional[str],
+) -> str:
+    """构造沙箱 cache key：workspace_id 优先（同 workspace 主子 agent 共用沙箱，P2），
+    无 workspace_id 时回退 conv_id（普通会话独占沙箱）。
+
+    workspace 维度的沙箱用 ``ws:`` 前缀 key，_cleanup_sandbox_manager 仍用 conv 维度
+    key（无 workspace_id），故 workspace 会话 cleanup 找不到 -> 共享沙箱常驻至进程退出，
+    避免误杀仍在运行的子 agent。
+    """
+    sn = staff_no or "default"
+    if workspace_id:
+        return f"ws:{workspace_id}:{sn}"
+    return f"{conv_id}_{sn}"
+
+
 class GlobalSandboxManagerCache:
     """全局沙箱管理器缓存，用于同一会话内共享 sandbox_manager"""
 
@@ -644,7 +662,9 @@ class AgentChat(BaseComponent, ABC):
         )
 
         # 检查缓存中是否已有该会话的 sandbox_manager
-        sandbox_key = f"{context.conv_id}_{context.staff_no}"
+        sandbox_key = _sandbox_key(
+            (context.extra or {}).get("workspace_id"), context.conv_id, context.staff_no
+        )
         cached_manager = GlobalSandboxManagerCache.get(sandbox_key)
         if cached_manager:
             return cached_manager
@@ -699,13 +719,23 @@ class AgentChat(BaseComponent, ABC):
             staff_no: 用户ID
         """
         if staff_no:
-            sandbox_key = f"{conv_id}_{staff_no}"
+            # P2: workspace 维度的共享沙箱用 ws: 前缀 key 创建，此处 conv 维度 key 找不到，
+            # 共享沙箱常驻至进程退出（避免误杀仍在运行的子 agent）；普通会话独占沙箱正常 cleanup。
+            sandbox_key = _sandbox_key(None, conv_id, staff_no)
             await GlobalSandboxManagerCache.cleanup_and_remove(sandbox_key)
 
     def after_start(self):
         # LLM client is resolved per-request by AIWrapper + ProviderRegistry
         # reading from agent.llm config; no shared llm_provider is needed.
-        pass
+        # P3: 启动时扫未完成的 RUNNING 会话（含 pending_subagents），恢复主 agent。
+        # best-effort：若无事件循环则跳过，下次启动再恢复。
+        try:
+            from derisk_serve.agent.recovery_daemon import RecoveryDaemon
+            asyncio.create_task(RecoveryDaemon(self).scan_and_recover())
+        except RuntimeError:
+            logger.warning("[AgentChat] no running event loop, skip recovery scan")
+        except Exception as e:
+            logger.warning(f"[AgentChat] recovery scan launch failed: {e}")
 
     async def save_conversation(
         self,
@@ -2853,8 +2883,8 @@ class AgentChat(BaseComponent, ABC):
             return None
 
         sandbox_client = None
-        # 使用与 _get_or_create_sandbox_manager 相同的 key 格式
-        sandbox_key = f"{conv_id}_{staff_no or 'default'}"
+        # 使用与 _get_or_create_sandbox_manager 相同的 key 格式（此函数无 workspace_id，回退 conv 维度）
+        sandbox_key = _sandbox_key(None, conv_id, staff_no)
         sandbox_manager = GlobalSandboxManagerCache.get(sandbox_key)
         if sandbox_manager and sandbox_manager.client:
             sandbox_client = sandbox_manager.client
@@ -3065,7 +3095,7 @@ class AgentChat(BaseComponent, ABC):
 
             if sandbox_file_refs:
                 # 处理 sandbox_file_refs（从 api_v1.py 传递过来）
-                sandbox_key = f"{conv_uid}_{staff_no or 'default'}"
+                sandbox_key = _sandbox_key(ext_info.get("workspace_id"), conv_uid, staff_no)
                 sandbox_manager = GlobalSandboxManagerCache.get(sandbox_key)
                 logger.info(
                     f"[AgentChat] sandbox_manager for key {sandbox_key}: {sandbox_manager is not None}"

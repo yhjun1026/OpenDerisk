@@ -54,6 +54,7 @@ class InterventionEntity(Model):
     decision_json = Column(Text, nullable=True)
     distillation_json = Column(Text, nullable=True)
     linked_asset_id = Column(Integer, nullable=True)
+    parent_conv_id = Column(String(255), nullable=True, index=True)
 
     gmt_created = Column(DateTime, name="gmt_create", default=datetime.now)
     gmt_modified = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -77,6 +78,7 @@ class InterventionDao(BaseDao[InterventionEntity, InterventionRequest, Intervent
             id=entity.id,
             task_id=entity.task_id,
             conv_uid=entity.conv_uid,
+            parent_conv_id=entity.parent_conv_id,
             workspace_id=entity.workspace_id,
             type=entity.type,
             requested_by=entity.requested_by,
@@ -89,6 +91,7 @@ class InterventionDao(BaseDao[InterventionEntity, InterventionRequest, Intervent
             id=entity.id,
             task_id=entity.task_id,
             conv_uid=entity.conv_uid,
+            parent_conv_id=entity.parent_conv_id,
             workspace_id=entity.workspace_id,
             type=entity.type,
             status=entity.status,

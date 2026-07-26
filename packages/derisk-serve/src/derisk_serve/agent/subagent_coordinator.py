@@ -85,6 +85,8 @@ class SubagentCoordinator:
         main_conv_id: str,
         sub_conv_id: str,
         mode: SubAgentMode,
+        agent_name: Optional[str] = None,
+        task: Optional[str] = None,
     ) -> SubAgentHandle:
         """注册一个子 agent 到 pending 列表。"""
         handle = SubAgentHandle(
@@ -93,13 +95,16 @@ class SubagentCoordinator:
             mode=mode,
             status=SubAgentStatus.RUNNING,
             started_at=time.time(),
+            agent_name=agent_name,
+            task=task,
         )
         handles = await self._read_pending(main_conv_id)
         handles.append(handle)
         await self._write_pending(main_conv_id, handles)
+        await self._emit_board_event(main_conv_id, handles)
         logger.info(
             f"[subagent-coordinator] registered subagent {sub_conv_id} "
-            f"(mode={mode.value}) for main {main_conv_id}"
+            f"(mode={mode.value}, agent={agent_name}) for main {main_conv_id}"
         )
         return handle
 
@@ -115,6 +120,7 @@ class SubagentCoordinator:
                 h.finished_at = time.time()
                 break
         await self._write_pending(main_conv_id, handles)
+        await self._emit_board_event(main_conv_id, handles)
         logger.info(
             f"[subagent-coordinator] subagent {sub_conv_id} done for main {main_conv_id}"
         )
@@ -133,11 +139,83 @@ class SubagentCoordinator:
                 h.finished_at = time.time()
                 break
         await self._write_pending(main_conv_id, handles)
+        await self._emit_board_event(main_conv_id, handles)
         logger.warning(
             f"[subagent-coordinator] subagent {sub_conv_id} failed for main {main_conv_id}: {error}"
         )
         if all(h.is_terminal() for h in handles):
             await self._trigger_main_resume(main_conv_id, handles)
+
+    async def _emit_board_event(
+        self, main_conv_id: str, handles: List[SubAgentHandle]
+    ) -> None:
+        """状态变更时推 d-subagent-board 围栏到主会话（全量重写，仿 d-todo-list 模式）。
+
+        在 register/done/failed 的 _write_pending 之后调用，把当前所有子任务状态
+        合成一帧 d-subagent-board VIS 围栏，经 str 透传通道推送到主会话消息队列，
+        前端 onMessage 拦截围栏后更新顶部固定面板。
+        """
+        try:
+            from derisk.vis.base import Vis
+
+            vis = Vis.of("subagent_board")
+            if vis is None:
+                return
+            items = []
+            completed = 0
+            for h in handles:
+                if h.authorization:
+                    board_status = "awaiting_authorization"
+                else:
+                    board_status = h.status.value
+                if h.is_terminal():
+                    completed += 1
+                items.append(
+                    {
+                        "sub_conv_id": h.sub_conv_id,
+                        "agent_name": h.agent_name,
+                        "task": h.task,
+                        "status": board_status,
+                        "mode": h.mode.value,
+                        "authorization": h.authorization,
+                    }
+                )
+            content = {
+                "uid": f"subagent_board_{main_conv_id}",
+                "type": "all",
+                "items": items,
+                "total_count": len(items),
+                "completed_count": completed,
+            }
+            fence = vis.sync_display(content=content)
+            await self._agent_chat.memory.push_message(
+                conv_id=main_conv_id, stream_msg=fence, incr_type="all"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[subagent-coordinator] emit board event failed for main={main_conv_id}: {e}"
+            )
+
+    async def emit_authorization_needed(
+        self, main_conv_id: str, sub_conv_id: str, question: str
+    ) -> None:
+        """子 agent 需要用户授权时通知主 agent。
+
+        置 handle.authorization + 推 d-subagent-board 围栏标"待授权"，让主会话顶部
+        面板对应子任务高亮待授权态。用户审批后由 intervention service 或 tool_action
+        回调清除 authorization 并触发主 resume。
+        """
+        handles = await self._read_pending(main_conv_id)
+        for h in handles:
+            if h.sub_conv_id == sub_conv_id:
+                h.authorization = question
+                break
+        await self._write_pending(main_conv_id, handles)
+        await self._emit_board_event(main_conv_id, handles)
+        logger.info(
+            f"[subagent-coordinator] subagent {sub_conv_id} awaiting authorization "
+            f"for main {main_conv_id}: {question[:80]}"
+        )
 
     async def _rebuild_subagent_transcript(
         self, sub_conv_id: str, max_messages: int = 5

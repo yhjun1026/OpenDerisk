@@ -44,7 +44,7 @@ export const CustomPluginContent = styled.div`
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-  color: #1677ff;
+  color: #4f46e5;
   line-height: 20px;
   padding: 0 6px;
   margin: 0 2px;

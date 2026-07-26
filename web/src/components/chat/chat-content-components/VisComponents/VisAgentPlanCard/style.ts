@@ -9,8 +9,8 @@ export const VisAgentPlanCardWrap = styled.div`
 
   &.selected {
     .header-plan {
-      background: #eff6ff;
-      border-color: #bfdbfe;
+      background: #eef0fe;
+      border-color: rgba(79, 70, 229, 0.2);
     }
   }
 
@@ -136,7 +136,7 @@ export const VisAgentPlanCardWrap = styled.div`
     display: flex;
     justify-content: center;
     align-items: center;
-    background: #eff6ff;
+    background: #eef0fe;
     border-radius: 50%;
     width: 18px;
     height: 18px;
@@ -239,31 +239,38 @@ export const VisAgentPlanCardWrap = styled.div`
   .header-plan {
     background: rgba(255, 255, 255, 0.75);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(226, 232, 240, 0.6);
+    border: 1px solid #eff1f6;
     border-radius: 10px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.85);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 2px 6px rgba(16, 24, 40, 0.06);
     }
   }
 
   .header-task {
     width: fit-content;
     max-width: 85%;
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: #ffffff;
+    border: 1px solid transparent;
     border-radius: 10px;
     padding: 3px 10px 3px 4px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
     transition: all 0.15s ease;
     cursor: pointer;
 
     &:hover {
-      background: #ffffff;
-      border-color: rgba(203, 213, 225, 0.9);
-      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+      background: #f7f8fa;
+    }
+
+    body.dark & {
+      background: #232734;
+      box-shadow: none;
+
+      &:hover {
+        background: #2a2f3e;
+      }
     }
 
     .task-icon {
@@ -282,7 +289,7 @@ export const VisAgentPlanCardWrap = styled.div`
     }
 
     .task-icon-chip-default {
-      background: #f1f5f9;
+      background: #eff1f6;
     }
 
     .title-task-with-markdown {
@@ -334,16 +341,16 @@ export const VisAgentPlanCardWrap = styled.div`
   .header-agent {
     background: rgba(255, 255, 255, 0.75);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(226, 232, 240, 0.6);
+    border: 1px solid #eff1f6;
     border-radius: 10px;
     padding: 5px 10px;
     transition: all 0.15s ease;
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.85);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 2px 6px rgba(16, 24, 40, 0.06);
     }
 
     .task-icon {

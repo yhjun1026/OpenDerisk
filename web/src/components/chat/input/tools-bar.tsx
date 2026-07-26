@@ -65,7 +65,7 @@ const ToolsBar: React.FC<{
     return [
       {
         tip: t('stop_replying'),
-        icon: <PauseCircleOutlined className={classNames({ 'text-[#0c75fc]': canAbort })} />,
+        icon: <PauseCircleOutlined className={classNames({ 'text-[#4f46e5]': canAbort })} />,
         can_use: canAbort,
         key: 'abort',
         onClick: () => {

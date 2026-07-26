@@ -23,6 +23,20 @@ function normalizeStep(raw: unknown): WorkspaceExecutionStep | null {
   };
 }
 
+/**
+ * ts 归一化为毫秒数。服务端步骤是本地时间 naive ISO(可能带 6 位微秒或空格
+ * 分隔),乐观用户步骤是 UTC ISO(带 Z);Date.parse 对 naive 按本地时区、
+ * 带 Z 按 UTC 解析,两者可正确对齐。无法解析返回 null(排最后)。
+ */
+function tsToMs(ts: string | null | undefined): number | null {
+  if (!ts) return null;
+  let norm = ts.includes(' ') ? ts.replace(' ', 'T') : ts;
+  // 微秒(>3 位小数)截断为毫秒,避免老引擎解析失败
+  norm = norm.replace(/\.(\d{3})\d+/, '.$1');
+  const ms = Date.parse(norm);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 export function parseWorkspaceView(chunk: unknown, prev: WorkspaceView | null): WorkspaceView {
   if (!chunk || typeof chunk !== 'object') return prev ?? { planning: null, execution: [], summary: null };
   const c = chunk as Record<string, unknown>;
@@ -42,8 +56,16 @@ export function parseWorkspaceView(chunk: unknown, prev: WorkspaceView | null): 
     execution.push(leftover);
   }
   // 跨轮次合并按时间戳交错(用户消息/工具/回复按真实时序排列);
-  // 无 ts 的排后,保持相对稳定
-  execution.sort((a, b) => (a.ts || '￿').localeCompare(b.ts || '￿'));
+  // 必须解析成毫秒再比:字符串直接比较会把 UTC(带 Z)和本地 naive 两种格式
+  // 排错(时区偏移导致 user 气泡聚堆、当前步骤被埋进历史中间)。无 ts 排后。
+  execution.sort((a, b) => {
+    const ma = tsToMs(a.ts);
+    const mb = tsToMs(b.ts);
+    if (ma === null && mb === null) return 0;
+    if (ma === null) return 1;
+    if (mb === null) return -1;
+    return ma - mb;
+  });
 
   const planning = c.planning && typeof c.planning === 'object'
     ? (c.planning as WorkspaceView['planning'])

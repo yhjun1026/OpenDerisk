@@ -9,7 +9,7 @@ use derisk;
 -- MySQL DDL Script for Derisk
 -- Version: 0.3.0
 -- Generated from SQLAlchemy ORM Models
--- Generated: 2026-07-23 23:39:18
+-- Generated: 2026-07-26 19:38:02
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -412,6 +412,21 @@ CREATE TABLE IF NOT EXISTS `gpts_plans` (
   `gmt_modify` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_sub_task` (`conv_id`, `sub_task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: gpts_todos
+-- Source Model: GptsTodoEntity
+CREATE TABLE IF NOT EXISTS `gpts_todos` (
+  `id` INT NOT NULL AUTO_INCREMENT COMMENT 'autoincrement id',
+  `conv_id` VARCHAR(255) NOT NULL COMMENT 'The unique id of the conversation',
+  `session_id` VARCHAR(255) NOT NULL COMMENT 'The session id within conversation',
+  `agent_id` VARCHAR(255) NOT NULL COMMENT 'The agent id',
+  `todos` LONGTEXT NULL COMMENT 'Todos data (JSON array)',
+  `gmt_create` DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'create time',
+  `gmt_modified` DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'last update time',
+  `gmt_modify` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_todos_conv_session` (`conv_id`, `session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: gpts_tool

@@ -76,8 +76,16 @@ async def _summarize_task_title(
     return result_text.strip()
 
 
-async def _run_task_detached(system_app, task_id: int, user_code: Optional[str]) -> None:
-    """detached 跑 start + run_task，任何异常只记日志并把任务转成 failed。"""
+async def _run_task_detached(
+    system_app, task_id: int, user_code: Optional[str], playbook_id: Optional[int] = None,
+) -> None:
+    """detached 跑 start + run_task，任何异常只记日志并把任务转成 failed。
+
+    无 playbook 的任务跳过 run_task(对齐 /tasks/start 的 `if result.playbook_id`
+    守卫):runtime 对无 playbook 任务会 raise,导致任务在产出任何 agent 消息前
+    就转 failed、无 vis_final 可恢复。这类任务留给用户进入对话后手动发消息
+    (走 SSE chat)产出。
+    """
     task_service = None
     try:
         from derisk_serve.task.service.service import (
@@ -88,6 +96,11 @@ async def _run_task_detached(system_app, task_id: int, user_code: Optional[str])
 
         task_service = system_app.get_component(TASK_SERVICE_COMPONENT_NAME, TaskService)
         task_service.start(task_id)
+        if not playbook_id:
+            logger.info(
+                "task %s has no playbook; skip run_task, leave for manual chat", task_id
+            )
+            return
         await playbook_runtime.run_task(system_app, task_id, user_code=user_code)
     except Exception as e:  # noqa: BLE001
         logger.exception("detached run_task for task %s failed: %s", task_id, e)
@@ -197,7 +210,9 @@ def create_task_from_tool(
     entity = task_service.create(request)
 
     # detached 启动真实运行(不阻塞当前 SSE 流)
-    run_t = asyncio.create_task(_run_task_detached(system_app, entity.id, user_id))
+    run_t = asyncio.create_task(
+        _run_task_detached(system_app, entity.id, user_id, entity.playbook_id)
+    )
     _pending_detached_tasks.add(run_t)
     run_t.add_done_callback(_pending_detached_tasks.discard)
     # detached 启动标题总结(独立于 run_task,互不影响)

@@ -594,6 +594,8 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
             return await self._execute_agent_turn(job)
         elif kind == PayloadKind.TRIGGER_FIRE:
             return await self._execute_trigger_fire(job)
+        elif kind == PayloadKind.TOOL_CALL:
+            return await self._execute_tool_call(job)
         else:
             logger.error(f"Unknown payload kind: {kind}")
             return False
@@ -715,6 +717,111 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
             logger.error(f"triggerFire job {job.id} failed: {e}")
             raise
 
+    async def _execute_tool_call(self, job: CronJob) -> bool:
+        """Execute a registered Agent tool by name + args.
+
+        双层工具执行体:到点时从 tool_registry 取工具,用最小 ToolContext 执行。
+        仅支持无资源依赖的工具(call_agent/fire_trigger/@tool 纯函数/本地降级
+        Bash/Read/Write/Edit);依赖资源的工具会返回 ToolResult.fail。
+        """
+        payload = job.payload
+        tool_name = payload.tool_name
+        if not tool_name:
+            logger.error(f"toolCall job {job.id} missing tool_name in payload")
+            return False
+        try:
+            from derisk.agent.tools.context import ToolContext
+            from derisk.agent.tools.registry import (
+                register_builtin_tools,
+                tool_registry,
+            )
+
+            # Ensure builtin tools are registered (idempotent guard)
+            if not tool_registry._initialized:
+                register_builtin_tools()
+
+            tool = tool_registry.get(tool_name)
+            if tool is None:
+                logger.error(
+                    f"toolCall job {job.id}: tool '{tool_name}' not found in registry"
+                )
+                return False
+
+            # Build context with execution identity + job context for callbacks.
+            # user_id: background execution identity (for tool-internal checks/audit)
+            # cron_job_id: lets call_agent/fire_trigger write back to this job
+            # cron_workspace_id: lets _inject_resources assemble workspace resources
+            ctx = ToolContext(user_id=job.created_by_user_id)
+            ctx.config["cron_job_id"] = job.id
+            ctx.config["cron_workspace_id"] = payload.workspace_id
+            # Resource injection (#2): assemble workspace resources if available
+            if payload.workspace_id:
+                await self._inject_resources(ctx, payload.workspace_id)
+
+            logger.info(
+                f"Executing tool '{tool_name}' for job {job.id} with args={payload.tool_args}"
+            )
+            result = await tool.execute(payload.tool_args or {}, ctx)
+
+            if result and result.success:
+                logger.info(
+                    f"Tool '{tool_name}' executed for job {job.id}: {result.output}"
+                )
+                return True
+            else:
+                err = result.error if result else "no result returned"
+                logger.error(f"Tool '{tool_name}' failed for job {job.id}: {err}")
+                return False
+        except Exception as e:
+            logger.error(f"toolCall job {job.id} failed: {e}")
+            raise
+
+    async def _inject_resources(self, ctx, workspace_id: int) -> None:
+        """Assemble workspace resources into ToolContext (for resource-dependent tools).
+
+        Loads workspace active resources, instantiates them via ResourceManager,
+        and injects into ToolContext by resource type (db_resource/knowledge_retriever/
+        app_resource). Degrades to empty ctx on any failure -- never blocks scheduling.
+        """
+        try:
+            from derisk.agent.resource.base import ResourceType
+            from derisk.agent.resource.manage import get_resource_manager
+
+            from derisk_serve.workspace.materializer import materialize_resources
+
+            agent_resources = materialize_resources(
+                self._system_app, workspace_id
+            ).dynamic_resources
+            if not agent_resources:
+                return
+            rm = get_resource_manager(self._system_app)
+            resource = await rm.a_build_resource(agent_resources, ignore_missing=True)
+            if resource is None:
+                return
+            # Flatten ResourcePack into individual resource instances
+            if hasattr(resource, "_resources") and isinstance(resource._resources, dict):
+                deps = list(resource._resources.values())
+            else:
+                deps = [resource]
+            _TYPE_TO_CTX_KEY = {
+                ResourceType.DB: "db_resource",
+                ResourceType.Knowledge: "knowledge_retriever",
+                ResourceType.App: "app_resource",
+            }
+            for dep in deps:
+                try:
+                    rtype = type(dep).type()
+                    key = _TYPE_TO_CTX_KEY.get(rtype)
+                    if key:
+                        ctx.set_resource(key, dep)
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning(
+                f"_inject_resources failed for workspace {workspace_id}: {e}",
+                exc_info=True,
+            )
+
     def _update_job_state(
         self,
         job_id: str,
@@ -796,6 +903,8 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
                 conv_session_id=entity.conv_session_id,
                 trigger_id=entity.payload_data.get("trigger_id") if entity.payload_data else None,
                 workspace_id=entity.payload_data.get("workspace_id") if entity.payload_data else None,
+                tool_name=entity.payload_data.get("tool_name") if entity.payload_data else None,
+                tool_args=entity.payload_data.get("tool_args") if entity.payload_data else None,
             ),
             state=CronJobState(
                 next_run_at_ms=entity.next_run_at_ms,
@@ -808,6 +917,7 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
             ),
             created_at=entity.gmt_created or datetime.now(),
             updated_at=entity.gmt_modified or datetime.now(),
+            created_by_user_id=entity.created_by_user_id,
         )
 
     def _cron_job_create_to_request(self, job: CronJobCreate) -> ServeRequest:
@@ -844,7 +954,10 @@ class Service(BaseService[CronJobEntity, ServeRequest, ServerResponse], CronSche
                 conv_session_id=job.payload.conv_session_id,
                 trigger_id=job.payload.trigger_id,
                 workspace_id=job.payload.workspace_id,
+                tool_name=job.payload.tool_name,
+                tool_args=job.payload.tool_args,
             ),
+            user_id=job.user_id,
         )
 
     def _cron_job_patch_to_request(

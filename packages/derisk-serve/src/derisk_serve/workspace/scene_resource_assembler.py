@@ -97,4 +97,20 @@ class SceneResourceAssembler:
         if not pb:
             return []
         config = PlaybookConfig.from_playbook_response(pb)
-        return [PlaybookResource.to_agent_resource(config)]
+        resources = [PlaybookResource.to_agent_resource(config)]
+        # 物化剧本 declaration 的 skills/resources 成 agent 可调用的工具
+        # (agent_skill/datasource/mcp/knowledge)。否则剧本 skill 只停留在 system prompt
+        # 的名字(剧本技能:...),agent 看到却没真实工具可调。复用 workspace 物化分派。
+        try:
+            from derisk_serve.workspace.materializer import (
+                materialize_playbook_declaration,
+            )
+            declaration = getattr(pb, "declaration", {}) or {}
+            resources.extend(
+                materialize_playbook_declaration(system_app, declaration)
+            )
+        except Exception as e:
+            logger.warning(
+                f"materialize playbook declaration failed: {e}", exc_info=True
+            )
+        return resources

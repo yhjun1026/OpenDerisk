@@ -1,8 +1,8 @@
 'use client';
 
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
-import { Input, Popover, Spin } from 'antd';
-import { ArrowUpOutlined, CloseOutlined, DownOutlined, FileOutlined, LoadingOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Input, Popover } from 'antd';
+import { ArrowUpOutlined, ClearOutlined, CloseOutlined, DownOutlined, FileOutlined, LoadingOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import classNames from 'classnames';
 import { useRequest } from 'ahooks';
 import { apiInterceptors, getModelList, postChatModeParamsFileLoad } from '@/client/api';
@@ -42,10 +42,11 @@ interface AgentWorkspaceInputProps {
   playbooks?: { playbook_id: number; playbook_name: string }[];
   focus?: { id: number; title: string } | null;
   onClearFocus?: () => void;
+  onClearContext?: () => void;
 }
 
 export const AgentWorkspaceInput = forwardRef<AgentWorkspaceInputHandle, AgentWorkspaceInputProps>(
-  function AgentWorkspaceInput({ convUid, onSend, loading, disabled, lastInput, onRetry, playbooks, focus, onClearFocus }, ref) {
+  function AgentWorkspaceInput({ convUid, onSend, loading, disabled, lastInput, onRetry, playbooks, focus, onClearFocus, onClearContext }, ref) {
     const [text, setText] = useState('');
     const [resources, setResources] = useState<ResourceItem[]>([]);
     const [uploading, setUploading] = useState<UploadingFile[]>([]);
@@ -372,6 +373,18 @@ export const AgentWorkspaceInput = forwardRef<AgentWorkspaceInputHandle, AgentWo
                 onChange={(e) => { for (const f of Array.from(e.target.files || [])) handleFileUpload(f); e.target.value = ''; }}
               />
 
+              {/* clear context (new conversation) */}
+              {onClearContext && (
+                <button
+                  className="h-8 w-8 rounded-full flex items-center justify-center border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-600 transition-all hover:bg-red-50 dark:hover:bg-red-900/20 flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={onClearContext}
+                  disabled={!convUid || disabled || loading}
+                  title="清空上下文(新开会话)"
+                >
+                  <ClearOutlined className="text-sm" />
+                </button>
+              )}
+
               {/* retry (only when retryable) */}
               {lastInput && onRetry && !loading && (
                 <button
@@ -440,7 +453,8 @@ export const AgentWorkspaceInput = forwardRef<AgentWorkspaceInputHandle, AgentWo
                 title="发送"
               >
                 {loading
-                  ? <Spin indicator={<LoadingOutlined className="text-white text-base" spin />} />
+                  // 不用 antd Spin 包裹:额外 span 层会让旋转中心偏移,转动轨迹不是正圆
+                  ? <LoadingOutlined className="text-white text-base" spin />
                   : <ArrowUpOutlined className="text-base" />}
               </button>
             </div>

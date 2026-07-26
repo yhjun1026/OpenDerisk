@@ -27,6 +27,7 @@ def _make_intervention(
     user_id: Optional[str],
     conv_uid: str,
     task_id: Optional[int],
+    parent_conv_id: Optional[str] = None,
     on_event: Optional[WorkspaceEventCallback] = None,
 ) -> dict:
     svc = get_intervention_service(system_app)
@@ -34,6 +35,7 @@ def _make_intervention(
         workspace_id=workspace_id,
         task_id=task_id,
         conv_uid=conv_uid,
+        parent_conv_id=parent_conv_id,
         requested_by=user_id if user_id is not None else "system",
         question={"tool": tool_name, "args": args},
     )

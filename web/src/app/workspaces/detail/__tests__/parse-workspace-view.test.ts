@@ -56,4 +56,27 @@ describe('parseWorkspaceView', () => {
     expect(parseWorkspaceView(null, prev)).toBe(prev);
     expect(parseWorkspaceView({ execution: 'no' }, prev)).toBe(prev);
   });
+
+  test('混合时区 ts 按真实时序排序(UTC Z vs 本地 naive)', () => {
+    // 服务端步骤是本地 naive ISO,乐观用户步骤是 UTC 带 Z。
+    // 本地 +08: 服务端 22:00 naive == UTC 14:00Z;乐观 14:05Z 应排在它后面。
+    const prev: WorkspaceView = {
+      planning: null,
+      execution: [
+        { id: 'user1', type: 'user', title: '我', status: 'done', output: 'q1', ts: '2026-07-25T22:00:00' },
+        { id: 'tool1', type: 'tool_call', title: 'A', status: 'done', ts: '2026-07-25T22:01:03.123456' },
+      ],
+      summary: null,
+    };
+    const chunk = {
+      render_name: 'scene_agent_workspace',
+      planning: null,
+      execution: [
+        { id: 'user2-opt', type: 'user', title: '我', status: 'done', output: 'q2', ts: '2026-07-25T14:05:00.000Z' },
+      ],
+      summary: null,
+    };
+    const view = parseWorkspaceView(chunk, prev);
+    expect(view.execution.map(e => e.id)).toEqual(['user1', 'tool1', 'user2-opt']);
+  });
 });

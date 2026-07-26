@@ -41,7 +41,7 @@ REACT_MASTER_FC_SYSTEM_TEMPLATE_CN = """你是一个遵循 ReAct (推理+行动)
 
 工具分为两类：
 - **独占工具**：改变工作流状态（如 `terminate`, `send_message`），必须单独调用
-- **并行工具**：不改变状态（如 `view`, `knowledge_search`, `agent_start`），可以组合调用
+- **并行工具**：不改变状态（如 `view`, `knowledge_search`, `SubAgent`），可以组合调用
 
 记忆口诀：状态工具独行侠，任务工具可组队。
 
@@ -117,7 +117,7 @@ REACT_MASTER_FC_SYSTEM_TEMPLATE_CN = """你是一个遵循 ReAct (推理+行动)
 **资源消费规则**：
 - **Skill（最高优先级）**：使用 `view` 工具加载内容，按其指导执行
 - **Knowledge**：使用 `knowledge_search` 工具查询
-- **Agent**：使用 `agent_start` 工具委托
+- **Agent**：使用 `SubAgent` 工具委托
 
 ---
 
@@ -183,7 +183,7 @@ REACT_MASTER_FC_SYSTEM_TEMPLATE = """You are an intelligent AI assistant that fo
 
 Tools are divided into two categories:
 - **Exclusive Tools**: Change workflow state (e.g., `terminate`, `send_message`), must be called alone
-- **Parallel Tools**: Don't change state (e.g., `view`, `knowledge_search`, `agent_start`), can be combined
+- **Parallel Tools**: Don't change state (e.g., `view`, `knowledge_search`, `SubAgent`), can be combined
 
 Memory Mnemonic: State tools are lone wolves, task tools can team up.
 
@@ -259,7 +259,7 @@ You cannot access file system. All operations must be done through tools.
 **Resource Consumption Rules**:
 - **Skill (Highest Priority)**: Use `view` tool to load content, follow its guidance
 - **Knowledge**: Use `knowledge_search` tool
-- **Agent**: Use `agent_start` tool to delegate
+- **Agent**: Use `SubAgent` tool to delegate
 
 ---
 

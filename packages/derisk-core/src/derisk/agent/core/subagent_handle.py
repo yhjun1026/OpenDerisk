@@ -51,6 +51,9 @@ class SubAgentHandle:
     error: Optional[str] = None         # 子 agent 失败时的错误信息
     started_at: Optional[float] = None  # 启动时间戳
     finished_at: Optional[float] = None  # 完成时间戳
+    agent_name: Optional[str] = None    # 子 Agent 名（展示用，由 SubAgent.run 透传）
+    task: Optional[str] = None          # 任务指令摘要（展示用）
+    authorization: Optional[str] = None  # 待授权问题文本（None=无需授权）
 
     def to_dict(self) -> dict:
         """序列化为 dict（用于持久化到 gpts_conversations.extra JSON）。"""
@@ -71,6 +74,9 @@ class SubAgentHandle:
             error=d.get("error"),
             started_at=d.get("started_at"),
             finished_at=d.get("finished_at"),
+            agent_name=d.get("agent_name"),
+            task=d.get("task"),
+            authorization=d.get("authorization"),
         )
 
     def is_terminal(self) -> bool:

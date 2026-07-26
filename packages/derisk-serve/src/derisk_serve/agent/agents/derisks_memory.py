@@ -388,36 +388,29 @@ class MetaDerisksKanbanStorage:
 class MetaDerisksTodoStorage:
     """基于数据库的 Todo 存储实现（用于 GptsMemory 集成）.
 
-    参考 opencode 的设计，保持简洁。
-    复用 gpts_kanban 表，通过 file_type='todo' 区分。
+    独立 gpts_todos 表，不复用 gpts_kanban（避免 todos 字段被 _from_kanban_data
+    丢弃 + 与 kanban 共用 (conv_id, session_id) 键互相覆盖）。
     """
 
     def __init__(self):
-        from ..db.gpts_kanban_db import GptsKanbanDao
-        self._dao = GptsKanbanDao()
+        from ..db.gpts_todos_db import GptsTodoDao
+        self._dao = GptsTodoDao()
 
     async def write_todos(self, conv_id: str, todos: List[TodoItem]) -> None:
         """写入任务列表."""
         todos_data = [t.to_dict() for t in todos]
-        kanban_data = {
-            "kanban_id": f"todo_{conv_id}",
-            "mission": "todo_list",
-            "current_stage_index": 0,
-            "stages": [],
-            "todos": todos_data,
-        }
-        await self._dao.save_kanban_async(conv_id, conv_id, "todo", kanban_data)
+        await self._dao.save_todos_async(conv_id, conv_id, "todo", todos_data)
 
     async def read_todos(self, conv_id: str) -> List[TodoItem]:
         """读取任务列表."""
-        data = await self._dao.get_kanban_async(conv_id, conv_id)
-        if not data or "todos" not in data:
+        data = await self._dao.get_todos_async(conv_id, conv_id)
+        if not data:
             return []
-        return [TodoItem.from_dict(t) for t in data.get("todos", [])]
+        return [TodoItem.from_dict(t) for t in data]
 
     async def clear_todos(self, conv_id: str) -> None:
         """清空任务列表."""
-        await self._dao.delete_kanban_async(conv_id, conv_id)
+        await self._dao.delete_todos_async(conv_id, conv_id)
 
 
 class MetaDerisksFileMetadataStorage:

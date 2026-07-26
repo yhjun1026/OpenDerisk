@@ -115,7 +115,7 @@ const StatusIcon: FC<{ status?: string }> = ({ status }) => {
       return <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 12, marginRight: 6 }} />;
     case 'running':
     case 'retrying':
-      return <LoadingOutlined style={{ color: '#1677ff', fontSize: 12, marginRight: 6 }} />;
+      return <LoadingOutlined style={{ color: '#4f46e5', fontSize: 12, marginRight: 6 }} />;
     case 'failed':
       return <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 12, marginRight: 6 }} />;
     default:
@@ -277,7 +277,7 @@ const VisAgentFolder: FC<{ data: VisAgentFolderData | AgentFolderItem }> = ({ da
               {hasPreview && (
                 <Tooltip title="预览">
                   <EyeOutlined 
-                    style={{ fontSize: '14px', color: '#1677ff', cursor: 'pointer' }}
+                    style={{ fontSize: '14px', color: '#4f46e5', cursor: 'pointer' }}
                     onClick={() => handleFilePreview(item)}
                   />
                 </Tooltip>

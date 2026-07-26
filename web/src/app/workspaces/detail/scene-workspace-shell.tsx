@@ -2,10 +2,10 @@
 
 import './scene-workspace.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from 'antd';
+import { Button, message } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { apiInterceptors, getTaskInfo, listPlaybooks } from '@/client/api';
+import { apiInterceptors, createConversation, getTaskInfo, linkConversation, listPlaybooks, setCurrentConversation } from '@/client/api';
 import type { WorkspaceEvent } from '@/hooks/use-chat';
 import type { AgentStep, DetailContext } from './agent-types';
 import { AgentWorkspace } from './agent-workspace';
@@ -26,9 +26,12 @@ interface SceneWorkspaceShellProps {
   workspaceConvUid: string;
   appCode: string;
   onRefreshLists?: () => void;
-  onConvChanged?: (convUid: string) => void;
+  onConvChanged?: (convUid: string, taskId?: number | null) => void;
   convLoadError?: string | null;
   retryLoadConv?: () => void;
+  /** 从会话列表选中会话时携带的 task_id:number=进 task 对话,null=workspace 级会话,
+   * undefined=非列表触发(初始/任务栏进入)。 */
+  pendingTaskId?: number | null | undefined;
 }
 
 export function SceneWorkspaceShell({
@@ -41,6 +44,7 @@ export function SceneWorkspaceShell({
   onConvChanged,
   convLoadError,
   retryLoadConv,
+  pendingTaskId,
 }: SceneWorkspaceShellProps) {
   const workspaceId = workspace?.id;
   const [previewItem, setPreviewItem] = useState<any>(null);
@@ -74,6 +78,19 @@ export function SceneWorkspaceShell({
     const title = task?.title || `task_${task?.id}`;
     agentInputRef.current?.insertText(`@任务#${task.id}「${title}」`);
     setMobilePane('agent');
+  };
+
+  // 一键清空上下文(新开会话):复用 ConversationSwitcher.handleNew 逻辑--
+  // 新 conv_uid 在 gpts_messages/gpts_conversations/chat_history_message 三表无行,
+  // agent 上下文天然干净;旧会话保留在会话列表可回溯。
+  const handleClearContext = async () => {
+    if (!workspaceId) return;
+    const [, newConv] = await apiInterceptors(createConversation({ workspace_id: workspaceId }));
+    if (!newConv?.conv_uid) return;
+    await apiInterceptors(linkConversation({ workspace_id: workspaceId, conv_uid: newConv.conv_uid, user_id: undefined }));
+    await apiInterceptors(setCurrentConversation(workspaceId, newConv.conv_uid));
+    onConvChanged?.(newConv.conv_uid);
+    message.success('已清空上下文');
   };
 
   // 中屏(900–1279px)默认收起左 rail 为抽屉;小屏默认展示场景空间
@@ -146,6 +163,20 @@ export function SceneWorkspaceShell({
       setDetailContext('task-detail');
     }
   };
+
+  // 从会话列表选中会话:有 task_id -> 进 task 对话(复用 handleEnterConversation,
+  // 由 activeTaskId effect 调 getTaskInfo 恢复 taskConvUid);无 task_id -> 回 dashboard。
+  // pendingTaskId === undefined 表示非列表触发,不动(初始/任务栏进入走各自路径)。
+  useEffect(() => {
+    if (pendingTaskId === undefined) return;
+    if (pendingTaskId === null) {
+      setActiveTaskId(null);
+      setDetailContext('dashboard');
+      setPreviewItem(null);
+    } else {
+      handleEnterConversation(pendingTaskId);
+    }
+  }, [pendingTaskId]);
 
   const handleBackToDashboard = () => {
     setDetailContext('dashboard');
@@ -269,6 +300,7 @@ export function SceneWorkspaceShell({
           activeTask={activeTask}
           workspaceId={workspaceId}
           workspaceCode={workspace?.workspace_code}
+          playbooks={playbooks}
           onBack={handleBackToDashboard}
           onSelectTask={(taskId) => {
             const task = tasks.find((t) => t.id === taskId);
@@ -295,6 +327,7 @@ export function SceneWorkspaceShell({
           taskId={rightTaskId}
           focus={focus}
           onClearFocus={() => setFocusDismissed(true)}
+          onClearContext={activeTaskId ? undefined : handleClearContext}
           onStepClick={handleStepClick}
           onWorkspaceEvent={handleWorkspaceEvent}
           onConvChanged={onConvChanged}

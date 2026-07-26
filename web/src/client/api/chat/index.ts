@@ -58,7 +58,8 @@ export type ChatQueryResponse = {
   vis_render: string;
 };
 
-export const queryChatStatus = (convId: string) => {
-  return GET<null, ChatQueryResponse>(`/api/v1/chat/query?conv_id=${convId}`);
+export const queryChatStatus = (convId: string, visRender?: string) => {
+  const qs = visRender ? `&vis_render=${encodeURIComponent(visRender)}` : '';
+  return GET<null, ChatQueryResponse>(`/api/v1/chat/query?conv_id=${convId}${qs}`);
 };
 

@@ -32,6 +32,19 @@ class ChannelEntity(Model):
         Integer, default=1, comment="Whether channel is enabled (1=yes, 0=no)"
     )
 
+    agent_app_code = Column(
+        String(255),
+        nullable=True,
+        comment="Agent app code for this channel (defaults to main-orchestrator)",
+    )
+
+    workspace_id = Column(
+        Integer,
+        nullable=True,
+        index=True,
+        comment="Bound workspace ID for task creation and context injection",
+    )
+
     # Platform specific config stored as JSON
     config = Column(JSON, nullable=False, comment="Platform-specific configuration")
 
@@ -95,6 +108,8 @@ class ChannelDao(BaseDao[ChannelEntity, ChannelRequest, ChannelResponse]):
         entity.name = request.name
         entity.channel_type = request.channel_type
         entity.enabled = 1 if request.enabled else 0
+        entity.agent_app_code = request.agent_app_code
+        entity.workspace_id = request.workspace_id
         entity.config = request.config
 
         # Timestamps
@@ -117,6 +132,8 @@ class ChannelDao(BaseDao[ChannelEntity, ChannelRequest, ChannelResponse]):
             name=entity.name,
             channel_type=entity.channel_type,
             enabled=bool(entity.enabled),
+            agent_app_code=entity.agent_app_code,
+            workspace_id=entity.workspace_id,
             config=entity.config or {},
         )
 
@@ -150,6 +167,8 @@ class ChannelDao(BaseDao[ChannelEntity, ChannelRequest, ChannelResponse]):
             name=entity.name,
             channel_type=entity.channel_type,
             enabled=bool(entity.enabled),
+            agent_app_code=entity.agent_app_code,
+            workspace_id=entity.workspace_id,
             config=entity.config or {},
             status=entity.status or "disconnected",
             last_connected=last_connected_str,
@@ -179,6 +198,10 @@ class ChannelDao(BaseDao[ChannelEntity, ChannelRequest, ChannelResponse]):
             entity.channel_type = request.channel_type
         if request.enabled is not None:
             entity.enabled = 1 if request.enabled else 0
+        if request.agent_app_code is not None:
+            entity.agent_app_code = request.agent_app_code
+        if request.workspace_id is not None:
+            entity.workspace_id = request.workspace_id
         if request.config is not None:
             entity.config = request.config
 
@@ -202,6 +225,8 @@ class ChannelDao(BaseDao[ChannelEntity, ChannelRequest, ChannelResponse]):
                 _ = ch.channel_type
                 _ = ch.config
                 _ = ch.enabled
+                _ = ch.agent_app_code
+                _ = ch.workspace_id
                 _ = ch.status
                 _ = ch.last_connected
                 _ = ch.last_error

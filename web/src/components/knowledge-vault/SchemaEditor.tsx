@@ -72,7 +72,7 @@ export default function SchemaEditor({ slug }: { slug: string }) {
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="w-full h-full resize-none rounded-lg border border-gray-200 p-3 font-mono text-xs leading-relaxed focus:border-[#0C75FC] focus:ring-1 focus:ring-[#0C75FC] focus:outline-none"
+            className="w-full h-full resize-none rounded-lg border border-gray-200 p-3 font-mono text-xs leading-relaxed focus:border-[#4f46e5] focus:ring-1 focus:ring-[#4f46e5] focus:outline-none"
             spellCheck={false}
           />
         </div>

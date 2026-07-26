@@ -18,6 +18,7 @@ from .gpts_kanban_db import (  # noqa: F401
     GptsPreKanbanLogDao,
     GptsPreKanbanLogEntity,
 )
+from .gpts_todos_db import GptsTodoDao, GptsTodoEntity  # noqa: F401
 from .database_storage import (  # noqa: F401
     DatabaseWorkLogStorage,
     DatabaseKanbanStorage,

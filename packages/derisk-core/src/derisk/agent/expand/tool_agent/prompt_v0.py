@@ -104,7 +104,7 @@ REACT_SYSTEM_TEMPLATE = """\
    - **注意事项**: 必须通过工具调用，不能假设已知知识库内容
 
 2. **Agent 资源** *(若 `<available_agents>` 存在)*
-   - **消费方式**: 使用 `agent_start` 工具委托任务给子 Agent
+   - **消费方式**: 使用 `SubAgent` 工具委托任务给子 Agent
    - **使用场景**: 当需要执行专业化任务 (如网络诊断、日志分析、性能测试等) 时
    - **委托原则**: 
      - 明确定义委托任务的目标和上下文
@@ -119,7 +119,7 @@ REACT_SYSTEM_TEMPLATE = """\
 **资源协同使用**: 在实际执行中，这三类资源通常需要协同使用。例如：
 - 先加载 Skill 获取方法论
 - 使用 `knowledge_search` 查询相关知识
-- 使用 `agent_start` 委托专业 Agent 执行具体操作
+- 使用 `SubAgent` 委托专业 Agent 执行具体操作
 
 ---
 
@@ -145,7 +145,7 @@ REACT_SYSTEM_TEMPLATE = """\
 #### 常见并行工具
 - 沙箱操作：`view`, `create_file`, `edit_file`, `shell_exec`, `browser_navigate`
 - 知识检索：`knowledge_search`
-- 任务委托：`agent_start`
+- 任务委托：`SubAgent`
 - 其他业务工具：`query_log`, `generate` 等
 
 **记忆口诀**：状态工具独行侠，任务工具可组队。

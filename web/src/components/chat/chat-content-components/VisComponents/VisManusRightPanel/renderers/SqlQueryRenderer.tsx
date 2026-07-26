@@ -184,7 +184,7 @@ const SqlQueryRenderer: FC<IProps> = ({ outputs }) => {
                 href={csv_file}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                className="text-xs text-[#4f46e5] hover:text-[#6366f1] flex items-center gap-1"
               >
                 <DownloadOutlined className="text-[10px]" />
                 下载完整 CSV
@@ -260,7 +260,7 @@ const SqlHeader: FC<{
         language="sql"
         style={oneDark}
         className="manus-sql-code"
-        customStyle={{ margin: 0, padding: '12px 16px', fontSize: 13, maxHeight: 160, overflow: 'auto', borderRadius: 8 }}
+        customStyle={{ margin: 0, padding: '14px 16px', fontSize: 12.5, lineHeight: 1.7, maxHeight: 200, overflow: 'auto', borderRadius: 10 }}
       >
         {sql}
       </SyntaxHighlighter>

@@ -190,6 +190,18 @@ export default function ChannelForm({ form, initialValues, onValuesChange }: Cha
         >
           <Switch checkedChildren={t('Yes')} unCheckedChildren={t('No')} />
         </Form.Item>
+        <Form.Item
+          name="agent_app_code"
+          label="Agent App Code"
+        >
+          <Input placeholder="main-orchestrator" />
+        </Form.Item>
+        <Form.Item
+          name="workspace_id"
+          label="Workspace ID"
+        >
+          <Input type="number" placeholder="Optional workspace ID to bind" />
+        </Form.Item>
       </Card>
 
       {/* Platform-specific config */}

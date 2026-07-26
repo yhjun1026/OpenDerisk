@@ -219,7 +219,7 @@ class AgentAction(Action[AgentActionInput]):
 
 
 class SubAgent(AgentAction, FunctionTool):
-    name = "agent_start"  # 工具名保留 agent_start 以兼容历史 vis 渲染（按 name 索引）；类名已迁移到 SubAgent，AgentStart 作 deprecated 别名
+    name = "SubAgent"  # 子 Agent 派发工具。曾用名 agent_start（parse_action 仍兼容旧名），类名 SubAgent，AgentStart 作 deprecated 别名
     """Sub-agent dispatch tool.
 
     Spawns or dispatches to a sub-agent. Supports sync mode (wait for result)
@@ -257,7 +257,7 @@ class SubAgent(AgentAction, FunctionTool):
             ),
             "sync": ToolParameter(
                 type="bool",
-                name="input",
+                name="sync",
                 description="[deprecated] 旧参数，等价于 mode='sync'。请优先使用 mode 参数。",
                 required=False,
                 default=True
@@ -330,8 +330,8 @@ class SubAgent(AgentAction, FunctionTool):
 
         If you want skip the action, return None.
         """
-        # 兼容未来重命名：当前 cls.name == "agent_start"，未来切到 "sub_agent" 时仍接受旧名
-        accepted_names = {cls.name, "sub_agent"}
+        # 兼容历史名：当前 cls.name == "SubAgent"，旧名 "agent_start"/"sub_agent" 仍接受
+        accepted_names = {cls.name, "agent_start", "sub_agent"}
         if tool_call.name in accepted_names:
             if not tool_call.args:
                 raise ValueError("Agent转发任务异常，没有转发参数！")
@@ -463,6 +463,8 @@ class SubAgent(AgentAction, FunctionTool):
                 main_conv_id=main_conv_id,
                 sub_conv_id=sub_conv_id,
                 mode=SubAgentMode.ASYNC,
+                agent_name=action_input.agent_name,
+                task=action_input.content,
             )
 
             # 后台跑子 agent，不 await

@@ -21,7 +21,7 @@ const DEFAULT_AVATAR_PATHS = new Set([
 ]);
 
 const AVATAR_COLORS = [
-  '#1677ff',
+  '#4f46e5',
   '#00b96b',
   '#722ed1',
   '#eb2f96',

@@ -277,13 +277,13 @@ export default function GraphCanvas() {
     <div className="flex flex-col h-full">
       <div className="px-4 py-2 border-b border-gray-200 bg-white flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <ApartmentOutlined className="text-[#0C75FC]" />
+          <ApartmentOutlined className="text-[#4f46e5]" />
           <span className="text-sm font-medium text-gray-700">
             {data.nodes.length} 节点 / {data.edges.length} 边
           </span>
         </div>
         {selectedGraphEntity && (
-          <span className="text-xs text-[#0C75FC] truncate max-w-[200px]">
+          <span className="text-xs text-[#4f46e5] truncate max-w-[200px]">
             已选择: {nodeLabel(selectedGraphEntity)}
           </span>
         )}

@@ -1,7 +1,6 @@
 'use client';
-import { apiInterceptors, delDialogue, getAppList, getDialogueListBByFilter, newDialogue } from '@/client/api';
+import { apiInterceptors, delDialogue, getDialogueListBByFilter } from '@/client/api';
 import { ChatContext } from '@/contexts';
-import { IApp } from '@/types/app';
 import { STORAGE_LANG_KEY, STORAGE_THEME_KEY } from '@/utils/constants/index';
 import { getUserId } from '@/utils/storage';
 import Icon, {
@@ -12,11 +11,11 @@ import Icon, {
   DashboardOutlined,
   DatabaseOutlined,
   DeleteOutlined,
+  DesktopOutlined,
   GlobalOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MessageOutlined,
-  PartitionOutlined,
   SettingOutlined,
   ShareAltOutlined,
   AppstoreOutlined,
@@ -25,6 +24,13 @@ import Icon, {
   ExperimentOutlined,
   SafetyOutlined,
   TeamOutlined,
+  ThunderboltOutlined,
+  MoonOutlined,
+  SunOutlined,
+  RightOutlined,
+  CompassOutlined,
+  DeploymentUnitOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { authService } from '@/services/auth';
@@ -39,7 +45,6 @@ import { ReactNode, useCallback, useContext, useEffect, useMemo, useState, useRe
 import { useTranslation } from 'react-i18next';
 import ModelSvg from '../icons/model-svg';
 import ChatIcon from '../icons/chat-icon';
-import MenuList from './menlist';
 import UserBar from './user-bar';
 import copy from 'copy-to-clipboard';
 import { useUserPermissions } from '@/hooks/use-user-permissions';
@@ -91,8 +96,8 @@ interface GroupedDialogues {
 }
 
 function smallMenuItemStyle(active?: boolean) {
-  return `flex items-center justify-center mx-auto rounded w-14 h-14 text-xl hover:bg-[#F1F5F9] dark:hover:bg-theme-dark transition-colors cursor-pointer ${
-    active ? 'bg-[#F1F5F9] dark:bg-theme-dark' : ''
+  return `flex items-center justify-center mx-auto rounded w-14 h-14 text-xl hover:bg-[#f2f4f8] dark:hover:bg-theme-dark transition-colors cursor-pointer ${
+    active ? 'bg-[#efeff1] text-[#14161c] dark:bg-theme-dark' : ''
   }`;
 }
 
@@ -173,18 +178,18 @@ const MenuItem: React.FC<{
         router.push(`/chat/?conv_uid=${sessionParam}&app_code=${item.app_code}`);
         }}
       >
-        <div className={cls('flex-1 flex flex-row min-w-0 overflow-hidden hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors duration-200', {
-          'bg-gray-100 dark:bg-gray-800': isActive,
+        <div className={cls('flex-1 flex flex-row min-w-0 overflow-hidden hover:bg-[#f2f4f8] dark:hover:bg-gray-800 rounded-lg px-3 py-2 transition-colors duration-200', {
+          'bg-[#f2f4f8] dark:bg-gray-800': isActive,
         })}>
           <div className='mr-3 flex-shrink-0'>
-            <ChatIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+            <ChatIcon className="w-5 h-5 text-[#8a92a6] dark:text-gray-400" />
           </div>
           <div className='flex-1 min-w-0 overflow-hidden'>
             <Typography.Text
               ellipsis={{
                 tooltip: false, // 禁用Typography自己的tooltip，使用外层Tooltip
               }}
-              className={cls('block text-sm font-normal', isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400')}
+              className={cls('block text-[13px] font-normal', isActive ? 'text-[#14161c] dark:text-white' : 'text-[#5d6577] dark:text-gray-400')}
             >
               {item.label}
             </Typography.Text>
@@ -226,8 +231,8 @@ function SideBar() {
   const pathname = usePathname();
   const { t, i18n } = useTranslation();
   const [logo, setLogo] = useState<string>('/logo_zh_latest.png');
-  const [appList, setAppList] = useState<IApp[]>([]);
   const [dialogueLists, setDialogueLists] = useState<DialogueListItem[]>([]);
+  const [closedSections, setClosedSections] = useState<Record<string, boolean>>({});
   const [searchValue, setSearchValue] = useState<string>('');
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const { hasResourceRead, hasPermission } = useUserPermissions();
@@ -272,31 +277,6 @@ function SideBar() {
       },
     },
  );
-
-  useEffect(() => {
-    fetchAppList();
-  }, []);
-
-  const { run: fetchAppList, loading: appListLoading } = useRequest(
-    async () => {
-      const [_, data] = await apiInterceptors(
-        getAppList({
-          page: 1,
-          page_size: 10,
-          published: true,
-        }),
-      );
-      return data;
-    },
-    {
-      manual: true,
-      onSuccess: data => {
-        if (data) {
-          setAppList(data.app_list || []);
-        }
-      },
-    },
-  );
   // 暂时注释，后续完善中英文
   const handleChangeLang = useCallback(() => {
     const language = i18n.language === 'en' ? 'zh' : 'en';
@@ -362,6 +342,13 @@ function SideBar() {
         defaultSelectedKeys: [i18n.language],
       },
       {
+        key: 'theme',
+        name: mode === 'light' ? t('dark_mode') : t('light_mode'),
+        icon: mode === 'light' ? <MoonOutlined /> : <SunOutlined />,
+        onClick: handleToggleTheme,
+        noDropdownItem: true,
+      },
+      {
         key: 'fold',
         name: t(isMenuExpand ? 'Close_Sidebar' : 'Show_Sidebar'),
         icon: isMenuExpand ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />,
@@ -372,37 +359,7 @@ function SideBar() {
     return items;
   }, [t, mode, handleToggleTheme, i18n, handleChangeLang, isMenuExpand, handleToggleMenu, setMode]);
 
-  const handleChat = async (app: IApp) => {
-    // Refresh dialogue list after creating new dialogue
-    const [, res] = await apiInterceptors(newDialogue({ app_code: app.app_code }));
-    if (res) {
-      if (refreshDialogList) { await refreshDialogList(); }
-      window.open(`/chat/?app_code=${app.app_code}&conv_uid=${res.conv_uid}&isNew=true`, '_blank');
-    }
-  };
-
   const searchParams = useSearchParams();
-  const appLists = useMemo(() => {
-    const currentAppCode = searchParams?.get('app_code');
-    const isNew = Boolean(searchParams?.get('isNew'));
-    return appList.map(app => ({
-      key: app.app_code,
-      name: app.app_name,
-      icon: (
-        <Image
-          key='image_chat'
-          src={app.icon || '/pictures/chat.png'}
-          alt='chat_image'
-          width={24}
-          height={24}
-          className='rounded-md'
-        />
-      ),
-      path: '/',
-      app: app,
-      isActive: pathname.startsWith('/chat') && (currentAppCode === app.app_code) && isNew,
-    }));
-  }, [appList, pathname, searchParams]);
 
   /**
    * Extract readable user text from user_input.
@@ -449,177 +406,156 @@ function SideBar() {
 
   }, [dialogueList]);
 
-  const functions = useMemo(() => {
-    const currentAppCode = searchParams?.get('app_code');
+  // 扁平分区导航(Linear 式):主导航 / 资源与能力 / 系统,无折叠组
+  const navIcon = (el: ReactNode) => (
+    <span className='w-5 h-5 flex items-center justify-center text-[15px] flex-shrink-0'>{el}</span>
+  );
 
-    // Filter application children based on permissions
-    const applicationChildren: RouteItem[] = [
-      // explore_agents requires agent:read
+  const navSections = useMemo(() => {
+    // ── 一级:智能体空间 / 场景空间 ──
+    const mainItems: RouteItem[] = [
       ...(hasResourceRead('agent') ? [{
         key: 'explore',
-        name: t('explore_agents'),
+        name: t('agent_space'),
         isActive: pathname.startsWith('/application/explore'),
-        icon: <SearchOutlined className='w-5 h-5 text-gray-500' />,
+        icon: navIcon(<CompassOutlined />),
         path: '/application/explore',
       }] : []),
-      // agents page requires agent:read
-      ...(hasResourceRead('agent') ? [{
-        key: 'agents',
-        name: t('Agents'),
-        isActive: pathname.startsWith('/application/app'),
-        icon: <RobotOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/application/app',
-      }] : []),
-      // knowledge requires knowledge:read
-      ...(hasResourceRead('knowledge') ? [{
-        key: 'knowledge',
-        name: t('knowledge_base'),
-        isActive: pathname.startsWith('/knowledge-vault'),
-        icon: <BookOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/knowledge-vault',
-      }] : []),
-      // agent_skills requires tool:read
-      ...(hasResourceRead('tool') ? [{
-        key: 'agent_skills',
-        name: t('agent_skills'),
-        isActive: pathname.startsWith('/agent-skills'),
-        icon: <ExperimentOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/agent-skills',
-      }] : []),
-      // MCP requires tool:read
-      ...(hasResourceRead('tool') ? [{
-        key: 'MCP',
-        name: 'MCP',
-        isActive: pathname.startsWith('/mcp'),
-        icon: <ConsoleSqlOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/mcp',
-      }] : []),
-      // database requires database:read or tool:read
-      ...(hasResourceRead('database') || hasResourceRead('tool') ? [{
-        key: 'database',
-        name: t('Database'),
-        isActive: pathname.startsWith('/database'),
-        icon: <DatabaseOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/database',
-      }] : []),
-    ];
-
-    // Filter configuration management children based on permissions
-    const configChildren: RouteItem[] = [
-      // models requires model:read
-      ...(hasResourceRead('model') ? [{
-        key: 'models',
-        name: t('model_manage'),
-        isActive: pathname.startsWith('/models'),
-        icon: (
-          <Icon component={ModelSvg} className='w-5 h-5 text-gray-500' />
-        ),
-        path: '/models',
-      }] : []),
-      // cron requires cron:read (developer+)
-      ...(hasResourceRead('cron') || hasPermission('system', 'admin') ? [{
-        key: 'cron',
-        name: t('cron_page_title'),
-        isActive: pathname.startsWith('/cron'),
-        icon: <ClockCircleOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/cron',
-      }] : []),
-      // channel requires channel:read (developer+)
-      ...(hasResourceRead('channel') || hasPermission('system', 'admin') ? [{
-        key: 'channel',
-        name: t('channel_page_title'),
-        isActive: pathname.startsWith('/channel'),
-        icon: <ApiOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/channel',
-      }] : []),
-      // vis_merge_test - admin only
-      ...(hasPermission('system', 'admin') ? [{
-        key: 'vis_merge_test',
-        name: 'GUI',
-        isActive: pathname.startsWith('/vis-merge-test'),
-        icon: <ExperimentOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/vis-merge-test',
-      }] : []),
-      // system_config - admin only
-      ...(hasPermission('system', 'admin') ? [{
-        key: 'system_config',
-        name: t('system_config'),
-        isActive: pathname.startsWith('/settings/config'),
-        icon: <SettingOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/settings/config',
-      }] : []),
-      // plugin_market requires tool:read (plugins are tools)
-      ...(hasResourceRead('tool') ? [{
-        key: 'plugin_market',
-        name: t('plugin_market'),
-        isActive: pathname.startsWith('/settings/plugin-market'),
-        icon: <AppstoreOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/settings/plugin-market',
-      }] : []),
-      // audit_logs - admin only
-      ...(hasPermission('system', 'admin') ? [{
-        key: 'audit_logs',
-        name: t('audit_logs_title'),
-        isActive: pathname.startsWith('/audit-logs'),
-        icon: <SafetyOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/audit-logs',
-      }] : []),
-      // permissions - admin only (includes user management and custom permissions)
-      ...(hasPermission('system', 'admin') ? [{
-        key: 'permissions',
-        name: t('permissions_title'),
-        isActive: pathname.startsWith('/settings/permissions'),
-        icon: <SafetyOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/settings/permissions',
-      }] : []),
-      // monitoring - admin only
-      ...(hasPermission('system', 'admin') ? [{
-        key: 'monitoring',
-        name: t('monitoring_page_title'),
-        isActive: pathname.startsWith('/monitoring'),
-        icon: <DashboardOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/monitoring',
-      }] : []),
-      // async task engine - job management (Job Engine: submit/claim/worker)
-      ...(hasResourceRead('tool') ? [{
-        key: 'jobs',
-        name: '任务引擎',
-        isActive: pathname.startsWith('/jobs'),
-        icon: <ClockCircleOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/jobs',
-      }] : []),
-    ];
-
-    const items: RouteItem[] = [
-      // Only show application section if there are visible children
-      ...(applicationChildren.length > 0 ? [{
-        key: 'application',
-        name: t('application'),
-        icon: <AppstoreOutlined className='w-5 h-5 text-gray-500' />,
-        path: '/',
-        children: applicationChildren,
-        isActive: pathname.startsWith('/application') || pathname.startsWith('/agent-skills') || pathname.startsWith('/mcp') || pathname.startsWith('/database') || pathname.startsWith('/knowledge-vault'),
-      }] : []),
-      // Only show configuration management if there are visible children
-      ...(configChildren.length > 0 ? [{
-        key: 'configuration_management',
-        name: t('configuration_management'),
-        icon: <SettingOutlined />,
-        path: '/',
-        children: configChildren,
-        isActive: pathname.startsWith('/models') || pathname.startsWith('/vis-merge-test') || pathname.startsWith('/cron') || pathname.startsWith('/channel') || pathname.startsWith('/settings/config') || pathname.startsWith('/settings/plugin-market') || pathname.startsWith('/settings/permissions') || pathname.startsWith('/audit-logs') || pathname.startsWith('/monitoring'),
-      }] : []),
-      // Scenario Workspace entry
       {
         key: 'workspaces',
         name: t('workspaces') || 'Workspaces',
-        icon: <TeamOutlined className='w-5 h-5 text-gray-500' />,
+        icon: navIcon(<TeamOutlined />),
         path: '/workspaces',
         isActive: pathname.startsWith('/workspaces'),
       },
     ];
-    return items;
-  }, [t, pathname, appLists, oauthEnabled, hasResourceRead, hasPermission]);
+
+    // ── 资源(Agent 配置运行相关,默认折叠) ──
+    const resourceItems: RouteItem[] = [
+      ...(hasResourceRead('agent') ? [{
+        key: 'agents',
+        name: t('Agents'),
+        isActive: pathname.startsWith('/application/app'),
+        icon: navIcon(<RobotOutlined />),
+        path: '/application/app',
+      }] : []),
+      ...(hasResourceRead('tool') ? [{
+        key: 'agent_skills',
+        name: t('agent_skills'),
+        isActive: pathname.startsWith('/agent-skills'),
+        icon: navIcon(<ExperimentOutlined />),
+        path: '/agent-skills',
+      }] : []),
+      ...(hasResourceRead('tool') ? [{
+        key: 'MCP',
+        name: 'MCP',
+        isActive: pathname.startsWith('/mcp'),
+        icon: navIcon(<ConsoleSqlOutlined />),
+        path: '/mcp',
+      }] : []),
+      ...(hasResourceRead('knowledge') ? [{
+        key: 'knowledge',
+        name: t('knowledge_base'),
+        isActive: pathname.startsWith('/knowledge-vault'),
+        icon: navIcon(<BookOutlined />),
+        path: '/knowledge-vault',
+      }] : []),
+      ...(hasResourceRead('database') || hasResourceRead('tool') ? [{
+        key: 'database',
+        name: t('Database'),
+        isActive: pathname.startsWith('/database'),
+        icon: navIcon(<DatabaseOutlined />),
+        path: '/database',
+      }] : []),
+      ...(hasResourceRead('tool') ? [{
+        key: 'plugin_market',
+        name: t('plugin_market'),
+        isActive: pathname.startsWith('/settings/plugin-market'),
+        icon: navIcon(<AppstoreOutlined />),
+        path: '/settings/plugin-market',
+      }] : []),
+    ];
+
+    // ── 设置(管理后台类,默认收起) ──
+    const adminItems: RouteItem[] = [
+      ...(hasResourceRead('model') ? [{
+        key: 'models',
+        name: t('model_manage'),
+        isActive: pathname.startsWith('/models'),
+        icon: navIcon(<Icon component={ModelSvg} />),
+        path: '/models',
+      }] : []),
+      ...(hasResourceRead('cron') || hasPermission('system', 'admin') ? [{
+        key: 'cron',
+        name: t('cron_page_title'),
+        isActive: pathname.startsWith('/cron'),
+        icon: navIcon(<ClockCircleOutlined />),
+        path: '/cron',
+      }] : []),
+      ...(hasResourceRead('channel') || hasPermission('system', 'admin') ? [{
+        key: 'channel',
+        name: t('channel_page_title'),
+        isActive: pathname.startsWith('/channel'),
+        icon: navIcon(<ApiOutlined />),
+        path: '/channel',
+      }] : []),
+      ...(hasResourceRead('tool') ? [{
+        key: 'jobs',
+        name: '任务引擎',
+        isActive: pathname.startsWith('/jobs'),
+        icon: navIcon(<ThunderboltOutlined />),
+        path: '/jobs',
+      }] : []),
+      ...(hasPermission('system', 'admin') ? [{
+        key: 'monitoring',
+        name: t('monitoring_page_title'),
+        isActive: pathname.startsWith('/monitoring'),
+        icon: navIcon(<DashboardOutlined />),
+        path: '/monitoring',
+      }] : []),
+      ...(hasPermission('system', 'admin') ? [{
+        key: 'usage',
+        name: t('usage_page_title'),
+        isActive: pathname.startsWith('/usage'),
+        icon: navIcon(<BarChartOutlined />),
+        path: '/usage',
+      }] : []),
+      ...(hasPermission('system', 'admin') ? [{
+        key: 'system_config',
+        name: t('system_config'),
+        isActive: pathname.startsWith('/settings/config'),
+        icon: navIcon(<SettingOutlined />),
+        path: '/settings/config',
+      }] : []),
+      ...(hasPermission('system', 'admin') ? [{
+        key: 'permissions',
+        name: t('permissions_title'),
+        isActive: pathname.startsWith('/settings/permissions'),
+        icon: navIcon(<SafetyOutlined />),
+        path: '/settings/permissions',
+      }] : []),
+      ...(hasPermission('system', 'admin') ? [{
+        key: 'audit_logs',
+        name: t('audit_logs_title'),
+        isActive: pathname.startsWith('/audit-logs'),
+        icon: navIcon(<SafetyOutlined />),
+        path: '/audit-logs',
+      }] : []),
+      ...(hasPermission('system', 'admin') ? [{
+        key: 'vis_merge_test',
+        name: 'GUI',
+        isActive: pathname.startsWith('/vis-merge-test'),
+        icon: navIcon(<DesktopOutlined />),
+        path: '/vis-merge-test',
+      }] : []),
+    ];
+
+    return [
+      { key: 'main', label: '', icon: null, items: mainItems, defaultOpen: true, flat: true },
+      { key: 'resources', label: t('resource_management'), icon: navIcon(<DeploymentUnitOutlined />), items: resourceItems, defaultOpen: false },
+      { key: 'admin', label: t('configuration_management'), icon: navIcon(<SettingOutlined />), items: adminItems, defaultOpen: false },
+    ].filter(s => s.items.length > 0);
+  }, [t, pathname, hasResourceRead, hasPermission]);
 
   useEffect(() => {
     const language = i18n.language;
@@ -778,41 +714,60 @@ function SideBar() {
 
   if (!isMenuExpand) {
     return (
-      <div className='flex flex-col justify-between pt-3 h-screen bg-[#F9FAFB] dark:bg-[#111] border-r border-gray-100 dark:border-gray-800 animate-fade animate-duration-300 '>
-        <div>
-          <Link href='/' className='flex justify-center items-center pb-2'>
-            <Image src={isMenuExpand ? logo : '/LOGO_SMALL.png'} alt='DB-GPT' width={40} height={40} />
+      <div className='flex flex-col justify-between items-center pt-3 h-screen w-[64px] bg-[#f7f8fa] dark:bg-[#111] animate-fade animate-duration-300'>
+        <div className='flex flex-col items-center'>
+          <Link
+            href='/'
+            className='flex justify-center items-center w-11 h-11 mb-2 mt-0.5 rounded-[14px] bg-white dark:bg-[#232734] shadow-[0_1px_3px_rgba(16,24,40,0.08)] hover:shadow-[0_4px_12px_rgba(16,24,40,0.12)] transition-shadow'
+          >
+            <Image src='/LOGO_SMALL.png' alt='DeRisk' width={24} height={24} className='object-contain' />
           </Link>
-          <div className='flex flex-col gap-3 items-center px-2'>
-            {functions.map(item => {
-              if (item?.children) {
-                return (
-                  <div className='w-10 h-10 flex items-center justify-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors' onClick={() => setIsMenuExpand(true)}>{item.icon}</div>
-                )
+          <div className='flex flex-col gap-1.5 items-center px-2'>
+            {navSections.map(section => {
+              // 一级单项(智能体空间/场景空间):直接是图标链接
+              if ((section as any).flat) {
+                return section.items.map(item => (
+                  <Tooltip key={item.key} title={item.name} placement='right'>
+                    <Link
+                      className={cls(
+                        'h-10 w-10 flex items-center justify-center rounded-xl transition-colors text-[#8a92a6] hover:bg-[#f2f4f8] hover:text-[#3b4154] dark:hover:bg-gray-800',
+                        item.isActive && 'bg-[#e9eaee] text-[#3b4154]'
+                      )}
+                      href={item.path || '#'}
+                    >
+                      {item.icon}
+                    </Link>
+                  </Tooltip>
+                ));
               }
-              if ((item as any).app) {
-                return (
-                  <div className='h-10 w-10 flex items-center justify-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors' onClick={() => handleChat((item as any).app)} key={item.key + Date.now()}>
-                    <div className='w-6 h-6 flex items-center justify-center'>{item.icon}</div>
-                  </div>
-                );
-              }
-
+              // 分组(资源/设置):单个组图标,点击展开侧边栏并打开该组
+              const anyActive = section.items.some(i => i.isActive);
               return (
-                <Link key={item.key} className='h-10 w-10 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors' href={item.path || '#'}>
-                  <div className='w-5 h-5 flex items-center justify-center'>{item.icon}</div>
-                </Link>
+                <Tooltip key={section.key} title={section.label} placement='right'>
+                  <div
+                    className={cls(
+                      'h-10 w-10 flex items-center justify-center rounded-xl cursor-pointer transition-colors text-[#8a92a6] hover:bg-[#f2f4f8] hover:text-[#3b4154] dark:hover:bg-gray-800',
+                      anyActive && 'bg-[#e9eaee] text-[#3b4154]'
+                    )}
+                    onClick={() => {
+                      setClosedSections(prev => ({ ...prev, [section.key]: false }));
+                      setIsMenuExpand(true);
+                    }}
+                  >
+                    {(section as any).icon}
+                  </div>
+                </Tooltip>
               );
             })}
           </div>
         </div>
-        <div className='py-4 flex flex-col items-center gap-2'>
+        <div className='py-4 flex flex-col items-center gap-1.5'>
           <UserBar onlyAvatar />
           {settings
             .filter(item => item.noDropdownItem)
             .map(item => (
               <Tooltip key={item.key} title={item.name} placement='right'>
-                <div className='w-10 h-10 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer transition-colors' onClick={item.onClick}>
+                <div className='w-10 h-10 flex items-center justify-center hover:bg-[#f2f4f8] dark:hover:bg-gray-800 rounded-xl cursor-pointer transition-colors' onClick={item.onClick}>
                   {item.icon}
                 </div>
               </Tooltip>
@@ -826,82 +781,91 @@ function SideBar() {
     <div
       className={cls(
         'flex flex-col justify-between flex-1 pt-3 overflow-hidden h-screen',
-        'bg-[#F9FAFB] dark:bg-[#111] border-r border-gray-100 dark:border-gray-800',
+        'bg-[#f7f8fa] dark:bg-[#111]',
         'animate-fade animate-duration-300 max-w-[260px] w-[260px]',
       )}
     >
       <div className='flex flex-col w-full px-4 shrink-0'>
         {/* LOGO */}
-        <Link href='/' className='flex flex-row justify-between items-center mb-2 pl-1'>
+        <Link href='/' className='flex flex-row justify-between items-center mb-4 pl-1'>
           <Image src={isMenuExpand ? logo : '/LOGO_SMALL.png'} alt='DB-GPT' width={120} height={30} className="object-contain" />
-        </Link>
-
-        {/* New Chat Button */}
-        <Link 
-          href="/chat" 
-          className="flex items-center gap-2 px-3 py-2 mb-4 bg-white dark:bg-[#1F1F1F] hover:bg-gray-50 dark:hover:bg-[#2A2A2A] border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm transition-all group"
-        >
-           <div className="w-5 h-5 flex items-center justify-center text-gray-500 group-hover:text-blue-500 transition-colors">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 4V20M4 12H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-           </div>
-           <span className="font-medium text-gray-700 dark:text-gray-200 text-sm">新对话</span>
         </Link>
 
         </div>
 
       <div className="flex-1 min-h-0 flex flex-col px-4">
         <div className='flex-1 min-h-0 overflow-y-auto -mx-2 px-2 custom-scrollbar pr-1'>
-        {/* Navigation Menu */}
-        <div className='flex flex-col w-full space-y-1 mb-6'>
-          {functions.map(item => {
-            if (item?.children) {
-              return <MenuList value={item} isStow={false} key={item.key} defaultOpen={item.key === 'application'} />;
+        {/* Navigation Menu — 一级分组:Agent / 场景空间 / 资源 / 设置 */}
+        <nav className='flex flex-col w-full mb-4'>
+          {navSections.map((section) => {
+            const linkCls = (active?: boolean) => cls(
+              'flex items-center w-full h-8 cursor-pointer px-2.5 rounded-lg transition-all duration-150',
+              active
+                ? 'bg-[#e9eaee] dark:bg-gray-800 text-[#14161c] dark:text-white font-medium'
+                : 'text-[#3b4154] dark:text-gray-400 hover:bg-[#efeff1] dark:hover:bg-gray-800'
+            );
+            const iconCls = (active?: boolean) => cls(
+              'mr-2.5 flex items-center justify-center flex-shrink-0',
+              active ? 'text-[#3b4154]' : 'text-[#5d6577]'
+            );
+
+            // 场景空间等一级单项:直接渲染
+            if ((section as any).flat) {
+              return section.items.map(item => (
+                <Link href={item.path ?? '/'} className={cls(linkCls(item.isActive), 'h-9 px-3')} key={item.key}>
+                  <span className={iconCls(item.isActive)}>{item.icon}</span>
+                  <span className='text-[13px] truncate'>{item.name}</span>
+                </Link>
+              ));
             }
 
-            // 应用列表项单独处理点击事件
-            if ((item as any).app) {
-              return (
-                <div
-                  onClick={() => handleChat((item as any).app)}
-                  className={cls(
-                    'flex items-center w-full h-9 cursor-pointer px-3 rounded-lg transition-all duration-200',
-                    item.isActive
-                      ? 'bg-gray-200/50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  )}
-                  key={item.key + Date.now()}
-                >
-                  <div className='mr-3 w-5 h-5 flex-shrink-0 flex items-center justify-center opacity-80'>{item.icon}</div>
-                  <span className='text-sm truncate'>{item.name}</span>
-                </div>
-              );
-            }
+            const anyActive = section.items.some(i => i.isActive);
+            const open = closedSections[section.key] !== undefined
+              ? !closedSections[section.key]
+              : (section as any).defaultOpen || anyActive;
 
             return (
-              <Link
-                href={item.path ?? '/'}
-                className={cls(
-                  'flex items-center w-full h-9 cursor-pointer px-3 rounded-lg transition-all duration-200',
-                  item.isActive
-                    ? 'bg-gray-200/50 dark:bg-gray-800 text-gray-900 dark:text-white font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
-                  item.key === 'application' ? 'mt-4' : ''
+              <div key={section.key} className='mb-1'>
+                {/* 分组头:一级分类,可折叠 */}
+                <div
+                  className='flex items-center w-full h-9 px-3 rounded-lg cursor-pointer select-none hover:bg-[#efeff1] dark:hover:bg-gray-800 transition-colors group/nav'
+                  onClick={() => setClosedSections(prev => ({ ...prev, [section.key]: open }))}
+                >
+                  <span className={cls('mr-2.5 flex items-center justify-center flex-shrink-0', anyActive ? 'text-[#3b4154]' : 'text-[#5d6577]')}>
+                    {(section as any).icon}
+                  </span>
+                  <span className={cls('text-[13px] truncate flex-1', anyActive ? 'font-semibold text-[#14161c]' : 'font-medium text-[#14161c]')}>
+                    {section.label}
+                  </span>
+                  <RightOutlined className={cls(
+                    'text-[9px] text-[#b4bac8] group-hover/nav:text-[#8a92a6] transition-transform duration-200',
+                    open && 'rotate-90'
+                  )} />
+                </div>
+                {/* 子项:引导线缩进 */}
+                {open && (
+                  <div className='flex flex-col gap-0.5 ml-[21px] pl-2.5 mt-0.5 mb-1 border-l border-[#eff1f6] dark:border-gray-800'>
+                    {section.items.map(item => (
+                      <Link href={item.path ?? '/'} className={linkCls(item.isActive)} key={item.key}>
+                        <span className='text-[13px] truncate'>{item.name}</span>
+                      </Link>
+                    ))}
+                  </div>
                 )}
-                key={item.key}
-              >
-                <div className='mr-3 w-5 h-5 flex-shrink-0 flex items-center justify-center opacity-80'>{item.icon}</div>
-                <span className='text-sm truncate'>{t(item.name as any)}</span>
-              </Link>
+              </div>
             );
           })}
-        </div>
+        </nav>
 
         {/* Chat History Header */}
-        <div className="flex items-center justify-between text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
+        <div className="flex items-center justify-between text-[11px] font-medium tracking-wider text-[#8a92a6] mb-1.5 px-3">
            <span>{t('chat_history')}</span>
-           <SearchOutlined className="cursor-pointer hover:text-gray-600" />
+           <Tooltip title='⌘K' placement='left'>
+             <SearchOutlined
+               className="cursor-pointer text-[#b4bac8] hover:text-[#5d6577] transition-colors"
+               onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+             />
+           </Tooltip>
         </div>
 
         {listLoading ? (
@@ -924,7 +888,7 @@ function SideBar() {
       </div>
 
       {/* User & Settings */}
-      <div className='px-4 py-4 mt-2 border-t border-gray-100 dark:border-gray-800 bg-[#F9FAFB] dark:bg-[#111] flex items-center justify-between gap-2'>
+      <div className='px-4 py-4 mt-2 border-t border-[#eff1f6] dark:border-gray-800 bg-[#f7f8fa] dark:bg-[#111] flex items-center justify-between gap-2'>
         <div className='flex-1 min-w-0 overflow-hidden'>
            <UserBar />
         </div>

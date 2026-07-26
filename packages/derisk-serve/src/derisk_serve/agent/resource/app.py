@@ -74,6 +74,17 @@ class GptAppResource(AppResource):
 
         child_context: Optional[AgentContext] = None
         if parent_depth is not None:
+            # 透传主对话上下文到子 agent：main_conv_id（授权通知主 agent 用，P1）
+            # 和 workspace_id（沙箱共用用，P2）。嵌套时继承父的 main_conv_id，顶层用父 conv_id。
+            child_extra: dict = {"subagent_depth": parent_depth + 1}
+            parent_ctx = getattr(sender, "agent_context", None)
+            if parent_ctx is not None:
+                parent_extra = parent_ctx.extra or {}
+                child_extra["main_conv_id"] = (
+                    parent_extra.get("main_conv_id") or parent_ctx.conv_id
+                )
+                if "workspace_id" in parent_extra:
+                    child_extra["workspace_id"] = parent_extra["workspace_id"]
             child_context = AgentContext(
                 conv_id=conv_uid,
                 conv_session_id=conv_uid,
@@ -81,7 +92,7 @@ class GptAppResource(AppResource):
                 gpts_app_name=gpts_app.app_name,
                 language=gpts_app.language,
                 enable_vis_message=False,
-                extra={"subagent_depth": parent_depth + 1},
+                extra=child_extra,
             )
 
         app_agent = await get_app_manager().create_agent_by_app_code(

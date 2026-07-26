@@ -160,9 +160,9 @@ class TestSubAgentToolMetadata:
     def test_agent_start_is_deprecated_alias(self):
         assert AgentStart is SubAgent
 
-    def test_name_preserved_for_backward_compat(self):
-        """工具名仍为 agent_start，避免破坏 vis 渲染（按 name 索引）。"""
-        assert SubAgent.name == "agent_start"
+    def test_name_is_subagent(self):
+        """工具名为 SubAgent（曾用名 agent_start，parse_action 仍兼容旧名）。"""
+        assert SubAgent.name == "SubAgent"
 
     def test_args_include_mode_parameter(self):
         tool = SubAgent()

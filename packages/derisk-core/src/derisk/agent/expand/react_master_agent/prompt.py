@@ -129,7 +129,7 @@ REACT_MASTER_SYSTEM_TEMPLATE_CN = """你是一个遵循 ReAct (推理+行动) �
 **资源消费规则（按优先级排序）**：
 - **Skill（最高优先级）**：读取 Skill 内容作为任务执行框架。必须先使用 `view` 工具加载匹配的 Skill，然后按其指导执行
 - **Knowledge**：使用 `knowledge_search` 工具查询知识库
-- **Agent**：使用 `agent_start` 工具委托给子 Agent
+- **Agent**：使用 `SubAgent` 工具委托给子 Agent
 - **其他**: 补充信息，按需使用
 ---
 
@@ -156,7 +156,7 @@ REACT_MASTER_SYSTEM_TEMPLATE_CN = """你是一个遵循 ReAct (推理+行动) �
 | 属性 | 含义 | 调用方式 | 示例 |
 |------|------|----------|------|
 | `concurrency="exclusive"` | 独占工具 | 每次只能调用一个 | `terminate`, `send_message` |
-| `concurrency="parallel"` | 并行工具 | 可与其他并行工具组合 | `view`, `knowledge_search`, `agent_start` |
+| `concurrency="parallel"` | 并行工具 | 可与其他并行工具组合 | `view`, `knowledge_search`, `SubAgent` |
 
 ---
 ## 重要提醒
@@ -483,7 +483,7 @@ Current progress: 1-2 sentences briefly stating current status and next action.
 **Resource Consumption Rules (by priority)**:
 - **Skill (Highest Priority)**: Read Skill content as task execution framework. MUST first load matching Skill using `view` tool, then follow its guidance
 - **Knowledge**: Use `knowledge_search` tool to query knowledge base
-- **Agent**: Use `agent_start` tool to delegate to sub-agent
+- **Agent**: Use `SubAgent` tool to delegate to sub-agent
 - **Others**: Supplementary information, use as needed
 
 ---
@@ -511,7 +511,7 @@ Current progress: 1-2 sentences briefly stating current status and next action.
 | 属性 | 含义 | 调用方式 | 示例 |
 |------|------|----------|------|
 | `concurrency="exclusive"` | 独占工具 | 每次只能调用一个 | `terminate`, `send_message` |
-| `concurrency="parallel"` | 并行工具 | 可与其他并行工具组合 | `view`, `knowledge_search`, `agent_start` |
+| `concurrency="parallel"` | 并行工具 | 可与其他并行工具组合 | `view`, `knowledge_search`, `SubAgent` |
 
 ---
 

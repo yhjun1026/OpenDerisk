@@ -55,7 +55,7 @@ function ShareBar({
   label,
   value,
   total,
-  color = '#0C75FC',
+  color = '#4f46e5',
 }: {
   label: string;
   value: number;
@@ -158,7 +158,7 @@ export default function UsageView({ slug }: { slug: string }) {
             </div>
             <div className="rounded-lg border border-gray-100 bg-white px-4 py-3">
               <div className="text-[12px] text-gray-400">整理任务 token</div>
-              <div className="text-[20px] font-medium text-[#0C75FC] mt-1 tabular-nums">
+              <div className="text-[20px] font-medium text-[#4f46e5] mt-1 tabular-nums">
                 {fmtNum(curateTokens)}
               </div>
               <div className="text-[10px] text-gray-400 mt-0.5">entity_curate / curate</div>
@@ -181,7 +181,7 @@ export default function UsageView({ slug }: { slug: string }) {
                         label={TASK_LABEL[k] || k}
                         value={v}
                         total={taskTotal}
-                        color={k === 'entity_curate' || k === 'curate' ? '#B5462E' : '#0C75FC'}
+                        color={k === 'entity_curate' || k === 'curate' ? '#B5462E' : '#4f46e5'}
                       />
                     ))}
                 </div>

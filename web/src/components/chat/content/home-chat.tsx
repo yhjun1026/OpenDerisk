@@ -1253,15 +1253,15 @@ const [recommendedMcps, setRecommendedMcps] = useState<any[]>([]);
       onClick={onClick}
     >
       <div className={cls(
-        "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 group-hover:scale-110 group-hover:shadow-lg relative",
+        "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1 group-hover:shadow-[0_8px_20px_rgba(16,24,40,0.14)] relative",
         isOutline
           ? "bg-white dark:bg-[#232734] border-2 border-dashed border-gray-300 dark:border-gray-600"
           : bgColor,
-        isSelected && "ring-2 ring-offset-2 ring-blue-500 scale-110 shadow-lg shadow-blue-200/50 dark:shadow-blue-900/50 dark:ring-offset-gray-900"
+        isSelected && "ring-2 ring-offset-2 ring-[#4f46e5] scale-110 shadow-lg shadow-[#4f46e5]/25 dark:ring-offset-gray-900"
       )}>
         <span className={cls("text-xl", iconColor)}>{icon}</span>
         {isSelected && (
-          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-sm">
+          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#4f46e5] flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-sm">
             <CheckOutlined className="text-white text-[10px]" />
           </div>
         )}
@@ -1269,7 +1269,7 @@ const [recommendedMcps, setRecommendedMcps] = useState<any[]>([]);
       <span className={cls(
         "text-xs text-center max-w-[80px] leading-tight transition-colors",
         isSelected
-          ? "text-blue-600 dark:text-blue-400 font-medium"
+          ? "text-[#4f46e5] dark:text-indigo-400 font-medium"
           : "text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200"
       )}>
         {text}
@@ -1509,27 +1509,23 @@ const [recommendedMcps, setRecommendedMcps] = useState<any[]>([]);
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#FAFAFA] dark:bg-[#111] overflow-y-auto relative">
-      <div className="flex justify-end items-center px-8 py-5 w-full absolute top-0 left-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-white dark:bg-[#232734] flex items-center justify-center shadow-sm border border-gray-200/60 dark:border-gray-700/60 cursor-pointer hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600 transition-all">
-            <Badge dot offset={[-2, 2]}>
-              <span className="text-lg">🔔</span>
-            </Badge>
-          </div>
-        </div>
+    <div className="h-full flex flex-col bg-[#f7f7f8] dark:bg-[#111] overflow-y-auto relative">
+      {/* 极光背景:品牌签名元素,只在首页仪式感出现 */}
+      <div className="aurora-stage">
+        <div className="aurora-blob aurora-blob--brand" style={{ width: 560, height: 560, top: '-12%', left: '18%' }} />
+        <div className="aurora-blob aurora-blob--cyan" style={{ width: 480, height: 480, top: '6%', right: '12%' }} />
+        <div className="aurora-blob aurora-blob--violet" style={{ width: 420, height: 420, top: '26%', left: '42%' }} />
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col items-center w-full max-w-5xl mx-auto px-4 pt-[12vh]">
+      <div className="flex-1 flex flex-col items-center w-full max-w-5xl mx-auto px-4 pt-[12vh] relative z-10">
         {/* Title */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-medium text-gray-900 dark:text-gray-100 tracking-tight mb-3">
-            <span className="mr-2">🚀</span>
+        <div className="text-center mb-8 animate-rise">
+          <h1 className="text-4xl font-medium text-[#14161c] dark:text-gray-100 tracking-tight mb-3">
             You Command, We
-            <span className="text-orange-500 ml-2">Defend.</span>
+            <span className="text-[#4f46e5] ml-2">Defend.</span>
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-base">
+          <p className="text-[#8a92a6] dark:text-gray-400 text-[15px]">
             OpenDeRisk—AI原生风险智能系统，为每个应用系统提供一个7*24H的AI系统数字管家
           </p>
         </div>
@@ -1565,11 +1561,12 @@ const [recommendedMcps, setRecommendedMcps] = useState<any[]>([]);
         {/* Input Box Area */}
         <div
           className={cls(
-            'w-full max-w-4xl bg-white dark:bg-[#232734] rounded-[24px] shadow-sm hover:shadow-md transition-all duration-300 border',
+            'w-full max-w-4xl glass-panel dark:bg-[#232734] rounded-[28px] transition-all duration-300 border animate-rise',
             isFocus
-              ? 'border-blue-500/50 shadow-lg ring-4 ring-blue-500/5'
-              : 'border-gray-200 dark:border-gray-800',
+              ? 'border-[#4f46e5]/50 shadow-[0_0_0_4px_rgba(79,70,229,0.08),0_12px_40px_rgba(16,24,40,0.10)]'
+              : 'border-[#eeeff3] dark:border-gray-800 shadow-[0_8px_32px_rgba(16,24,40,0.07)] hover:shadow-[0_12px_40px_rgba(16,24,40,0.10)]',
           )}
+          style={{ animationDelay: '120ms' }}
           onDragOver={(e) => {
             e.preventDefault();
             setIsFocus(true);
@@ -1690,7 +1687,7 @@ const [recommendedMcps, setRecommendedMcps] = useState<any[]>([]);
                   className={cls(
                     'h-9 w-9 rounded-full flex items-center justify-center transition-all',
                     userInput.trim() || uploadedResources.length > 0 || uploadingFiles.length > 0
-                      ? 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-md hover:shadow-lg'
+                      ? 'bg-[#4f46e5] hover:bg-[#6366f1] text-white shadow-[0_2px_8px_rgba(79,70,229,0.35)] hover:shadow-[0_4px_14px_rgba(79,70,229,0.42)]'
                       : 'bg-gray-100 text-gray-400 border-none dark:bg-gray-800 dark:text-gray-600',
                   )}
                   onClick={onSubmit}
@@ -1704,7 +1701,7 @@ const [recommendedMcps, setRecommendedMcps] = useState<any[]>([]);
         </div>
 
         {/* Quick Actions - 动态场景入口 */}
-        <div className="flex flex-wrap justify-center gap-10 mt-10 max-w-4xl">
+        <div className="flex flex-wrap justify-center gap-10 mt-10 max-w-4xl animate-rise" style={{ animationDelay: '240ms' }}>
           {homeSceneApps.map((app) => {
             const homeScene = app.ext_config?.home_scene;
             const IconComp = HOME_SCENE_ICON_MAP[homeScene?.icon_type || ''] || RobotOutlined;

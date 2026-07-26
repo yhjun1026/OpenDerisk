@@ -13,6 +13,7 @@ from .schemas import (
 )
 from ..config import ServeConfig
 from ..service.service import TASK_SERVICE_COMPONENT_NAME, TaskService as Service
+from derisk_serve.agent.agents.controller import multi_agents
 from derisk_serve.playbook import runtime as playbook_runtime
 
 router = APIRouter()
@@ -112,6 +113,50 @@ async def start_task(
         return Result.succ(result)
     except Exception as e:
         logger.exception("task start exception!")
+        return Result.failed(str(e))
+
+
+@router.post("/tasks/{task_id}/terminate", response_model=Result[TaskResponse],
+             dependencies=[Depends(check_api_key)])
+async def terminate_task(
+    task_id: int,
+    service: Service = Depends(get_service),
+) -> Result[TaskResponse]:
+    """终止任务:停止对应 Agent 运行(与 /v1/chat/stop 同语义),状态转为 closed。"""
+    try:
+        task = service.get_by_id(task_id)
+        if not task:
+            return Result.failed(f"task {task_id} not found")
+        if task.status not in ("running", "awaiting_human"):
+            return Result.failed(f"task status {task.status} cannot be terminated")
+        if task.conv_session_id:
+            try:
+                await multi_agents.stop_chat(task.conv_session_id)
+            except Exception as e:
+                logger.warning(f"stop agent chat failed for task {task_id}: {e}")
+        return Result.succ(service.transition(task_id, "closed"))
+    except Exception as e:
+        logger.exception("task terminate exception!")
+        return Result.failed(str(e))
+
+
+@router.post("/tasks/{task_id}/delete", response_model=Result[bool],
+             dependencies=[Depends(check_api_key)])
+async def delete_task(
+    task_id: int,
+    service: Service = Depends(get_service),
+) -> Result[bool]:
+    """删除任务记录。运行中/待介入的任务需先终止。"""
+    try:
+        task = service.get_by_id(task_id)
+        if not task:
+            return Result.failed(f"task {task_id} not found")
+        if task.status in ("running", "awaiting_human"):
+            return Result.failed("task is active — terminate it before delete")
+        service.delete(task_id)
+        return Result.succ(True)
+    except Exception as e:
+        logger.exception("task delete exception!")
         return Result.failed(str(e))
 
 

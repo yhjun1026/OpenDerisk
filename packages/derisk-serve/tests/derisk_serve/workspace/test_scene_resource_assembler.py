@@ -59,6 +59,27 @@ def test_workbench_with_playbook_assembles_playbook_resource():
     assert out[0].type == "playbook"
 
 
+def test_workbench_materializes_playbook_skills():
+    """_assemble_workbench 把剧本 declaration.skills/resources 物化成 agent 工具。
+
+    否则剧本 skill 只在 system prompt 里是名字(剧本技能:...),agent 看到却没真实
+    工具可调 -- 这是"还在用默认剧本 mock skill"问题的根因。
+    """
+    from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
+    task = MagicMock(); task.playbook_id = 7
+    pb = MagicMock(); pb.id = 7; pb.name = "营收分析"
+    pb.declaration = {
+        "skills": ["data-analysis", "doc-coauthoring"],
+        "context": {"resources": [{"type": "datasource", "ref": "prod_db"}]},
+    }
+    sa = _mock_system_app(task=task, playbook=pb)
+    out = SceneResourceAssembler.assemble(sa, workspace_id=1, task_id=99, conv_uid="c1")
+    types = [r.type for r in out]
+    assert "playbook" in types                    # 剧本元资源
+    assert types.count("skill(derisk)") == 2      # 2 个 skill 物化成工具
+    assert "datasource" in types                  # context.resources 物化
+
+
 def test_workbench_without_playbook_returns_empty():
     from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
     task = MagicMock(); task.playbook_id = None

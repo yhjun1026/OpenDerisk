@@ -26,6 +26,7 @@ import {
   DatabaseOutlined,
   EyeOutlined,
   HistoryOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 
 const TAB_KEYS = ['artifacts', 'management', 'deliveries', 'archive'] as const;
@@ -202,11 +203,20 @@ export default function DeliveriesPage() {
     {
       title: '',
       key: 'view',
-      width: 90,
+      width: 150,
       render: (_: any, r: ArtifactItem) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => setActiveArtifact(r)}>
-          {t('view') || 'View'}
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => setActiveArtifact(r)}>
+            {t('view') || 'View'}
+          </Button>
+          {r.content_ref && (
+            <Button
+              size="small"
+              icon={<LinkOutlined />}
+              onClick={() => window.open(r.content_ref, '_blank')}
+            />
+          )}
+        </div>
       ),
     },
   ];
@@ -256,11 +266,20 @@ export default function DeliveriesPage() {
     {
       title: '',
       key: 'view',
-      width: 90,
+      width: 150,
       render: (_: any, r: ArtifactItem) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => setActiveArtifact(r)}>
-          {t('view') || 'View'}
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => setActiveArtifact(r)}>
+            {t('view') || 'View'}
+          </Button>
+          {r.content_ref && (
+            <Button
+              size="small"
+              icon={<LinkOutlined />}
+              onClick={() => window.open(r.content_ref, '_blank')}
+            />
+          )}
+        </div>
       ),
     },
   ];
@@ -463,7 +482,24 @@ export default function DeliveriesPage() {
               <Descriptions.Item label="Created">{activeArtifact.gmt_created}</Descriptions.Item>
             </Descriptions>
             <h3 className="text-sm font-medium mt-4">Content</h3>
-            <ArtifactContent text={activeArtifact.content_text || activeArtifact.content_ref || ''} />
+            {activeArtifact.content_text ? (
+              <ArtifactContent text={activeArtifact.content_text} />
+            ) : activeArtifact.content_ref ? (
+              <div>
+                {activeArtifact.provenance?.description && (
+                  <p className="text-sm text-gray-600 mb-2">{activeArtifact.provenance.description}</p>
+                )}
+                <Button
+                  type="primary"
+                  icon={<LinkOutlined />}
+                  onClick={() => window.open(activeArtifact.content_ref, '_blank')}
+                >
+                  打开 / 下载文件
+                </Button>
+              </div>
+            ) : (
+              <ArtifactContent text="" />
+            )}
             <h3 className="text-sm font-medium mt-4">Provenance</h3>
             <pre className="text-xs bg-gray-50 p-3 max-h-40 overflow-auto rounded">
               {JSON.stringify(activeArtifact.provenance || {}, null, 2)}

@@ -95,14 +95,14 @@ const getTaskIcon = (taskType: string): string => {
  * Returns a React node if a match is found, null otherwise (falls back to image icon).
  */
 const toolNameIconMap: Array<{ keywords: string[]; icon: React.ReactNode; color: string; label: string }> = [
-  { keywords: ['skill'], icon: <ThunderboltOutlined />, color: '#8b5cf6', label: '技能' },
-  { keywords: ['sql', 'database', 'db_', 'mysql', 'postgres', 'sqlite', 'query', 'table_spec', 'table_info', 'schema', 'get_table'], icon: <DatabaseOutlined />, color: '#1677ff', label: 'SQL' },
-  { keywords: ['shell', 'bash', 'terminal', 'command', 'exec_command', 'ssh'], icon: <CodeOutlined />, color: '#52c41a', label: '终端' },
-  { keywords: ['browser', 'web', 'http', 'url', 'crawl', 'scrape', 'fetch_url'], icon: <GlobalOutlined />, color: '#722ed1', label: '浏览器' },
-  { keywords: ['file', 'read_file', 'write_file', 'write', 'read', 'upload', 'download', 'document', 'csv', 'excel', 'pdf', 'save', 'mkdir', 'copy', 'move', 'rename', 'delete_file'], icon: <FileTextOutlined />, color: '#fa8c16', label: '文件' },
-  { keywords: ['api', 'rest', 'graphql', 'endpoint'], icon: <ApiOutlined />, color: '#13c2c2', label: 'API' },
-  { keywords: ['search', 'retrieve', 'lookup', 'find'], icon: <SearchOutlined />, color: '#eb2f96', label: '搜索' },
-  { keywords: ['cloud', 'deploy', 'server', 'container', 'docker'], icon: <CloudOutlined />, color: '#2f54eb', label: '云服务' },
+  { keywords: ['skill'], icon: <ThunderboltOutlined />, color: '#5d6577', label: '技能' },
+  { keywords: ['sql', 'database', 'db_', 'mysql', 'postgres', 'sqlite', 'query', 'table_spec', 'table_info', 'schema', 'get_table'], icon: <DatabaseOutlined />, color: '#5d6577', label: 'SQL' },
+  { keywords: ['shell', 'bash', 'terminal', 'command', 'exec_command', 'ssh'], icon: <CodeOutlined />, color: '#5d6577', label: '终端' },
+  { keywords: ['browser', 'web', 'http', 'url', 'crawl', 'scrape', 'fetch_url'], icon: <GlobalOutlined />, color: '#5d6577', label: '浏览器' },
+  { keywords: ['file', 'read_file', 'write_file', 'write', 'read', 'upload', 'download', 'document', 'csv', 'excel', 'pdf', 'save', 'mkdir', 'copy', 'move', 'rename', 'delete_file'], icon: <FileTextOutlined />, color: '#5d6577', label: '文件' },
+  { keywords: ['api', 'rest', 'graphql', 'endpoint'], icon: <ApiOutlined />, color: '#5d6577', label: 'API' },
+  { keywords: ['search', 'retrieve', 'lookup', 'find'], icon: <SearchOutlined />, color: '#5d6577', label: '搜索' },
+  { keywords: ['cloud', 'deploy', 'server', 'container', 'docker'], icon: <CloudOutlined />, color: '#5d6577', label: '云服务' },
 ];
 
 export const getToolNameIcon = (toolName?: string, title?: string): { icon: React.ReactNode; color: string; label: string } | null => {
@@ -151,13 +151,13 @@ const getTaskLabel = (taskType: string): string => {
 };
 
 const IconMap = {
-  complete: <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 12 }} />,
-  todo: <CheckCircleOutlined style={{ color: '#595959', fontSize: 12 }} />,
-  running: <LoadingOutlined style={{ color: '#1677ff', fontSize: 12 }} />,
-  waiting: <PauseCircleOutlined style={{ color: '#f5dc62', fontSize: 12 }} />,
-  retrying: <SyncOutlined style={{ color: '#1677ff', fontSize: 12 }} />,
+  complete: <CheckCircleOutlined style={{ color: '#22c55e', fontSize: 12 }} />,
+  todo: <CheckCircleOutlined style={{ color: '#b4bac8', fontSize: 12 }} />,
+  running: <LoadingOutlined style={{ color: '#4f46e5', fontSize: 12 }} />,
+  waiting: <PauseCircleOutlined style={{ color: '#f59e0b', fontSize: 12 }} />,
+  retrying: <SyncOutlined style={{ color: '#f59e0b', fontSize: 12 }} />,
   failed: (
-    <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 12 }} />
+    <ExclamationCircleOutlined style={{ color: '#ef4444', fontSize: 12 }} />
   ),
 };
 
@@ -298,7 +298,7 @@ const VisAgentPlanCard: React.FC<IProps> = ({ otherComponents, data }) => {
               {(isTask || isStage) && (
                 isStage ? (
                   <div className="task-icon stage-icon-wrapper">
-                     <FlagFilled style={{ color: '#1677ff', fontSize: 14 }} />
+                     <FlagFilled style={{ color: '#4f46e5', fontSize: 14 }} />
                   </div>
                 ) : (() => {
                   const toolMeta = getToolNameIcon(data?.tool_name as string, data?.title as string);

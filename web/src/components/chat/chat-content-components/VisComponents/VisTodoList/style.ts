@@ -63,6 +63,17 @@ export const VisTodoListWrap = styled.div`
       padding: 8px 12px;
       cursor: default;
       transition: background-color 0.15s ease;
+      border-left: 3px solid transparent;
+
+      &.working {
+        background-color: #f5f3ff;
+        border-left-color: #4f46e5;
+      }
+
+      &.failed {
+        background-color: #fef2f2;
+        border-left-color: #ef4444;
+      }
 
       &:hover {
         background-color: #fafafa;
@@ -90,6 +101,31 @@ export const VisTodoListWrap = styled.div`
             font-weight: bold;
           }
         }
+
+        &.working {
+          border-color: #4f46e5;
+
+          .spinner {
+            width: 10px;
+            height: 10px;
+            border: 1.5px solid #4f46e5;
+            border-top-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            animation: todo-spin 0.8s linear infinite;
+          }
+        }
+
+        &.failed {
+          background-color: #ef4444;
+          border-color: #ef4444;
+
+          .checkmark {
+            color: #fff;
+            font-size: 12px;
+            font-weight: bold;
+          }
+        }
       }
 
       .todo-title {
@@ -103,6 +139,11 @@ export const VisTodoListWrap = styled.div`
           color: #8c8c8c;
           text-decoration: line-through;
         }
+
+        &.failed {
+          color: #ef4444;
+          text-decoration: line-through;
+        }
       }
     }
 
@@ -113,6 +154,12 @@ export const VisTodoListWrap = styled.div`
       padding: 16px 12px;
       color: #bfbfbf;
       font-size: 13px;
+    }
+  }
+
+  @keyframes todo-spin {
+    to {
+      transform: rotate(360deg);
     }
   }
 `;
