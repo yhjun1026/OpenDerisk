@@ -466,3 +466,70 @@ relation 增加 decomposes_into 子类型(含 formula)
 patterns/ 增加"全局分析类"模式规范 + 无模式时的"大纲先行"行为约定
 度量增加:检索 top-k 召回率、歧义反问率(过高说明 scope/默认标记治理不足)
 一句话:大目录靠分层披露和上下文消歧,不靠大上下文;全局分析靠分解树和分析模式,不靠全知视野。两者的解法都不是更强的检索,而是更多的资产——和整个 ECP 的逻辑一脉相承。
+
+
+有,而且 ECP 的 graph 比 llm-wiki 的更强——但两者的重心相反,这个差别值得说清楚:
+
+llm-wiki 的 graph 是给人看的(Obsidian graph view,浏览知识形状),边是无类型的 markdown 链接;
+ECP 的 graph 首先是给机器用的(join 规划、下钻导航、影响分析都在图上跑),可视化是它的副产品。而且 ECP 的边是有类型、有版本、可确认的。
+
+一、图其实已经存在了——把散落在协议里的边收拢起来看
+前面各节定义的对象引用,拼起来就是一张跨四层的图:
+
+物理层          硬语义层                软知识层            交付层
+─────          ──────                ──────             ─────
+tb_so_01 ◄─绑定─ ent.order ◄─属于─ mtr.net_sales ◄─ref─ 词条页 ◄─link─ 惯例页
+tb_cu_01 ◄─绑定─ ent.customer                │                │
+              ▲                            │              provenance
+              └────rel(join路径,confirmed)   │                ▼
+                                            │            财务核算办法.docx
+              mtr.avg_ticket ◄─分解─────────┘
+                                            │
+                              lineage ──────┴──► 周报 dlv.2025w03 / b1块
+节点类型:表/字段、entity、metric、dimension、词条页、分析模式页、源文档、deliverable、feedback。
+
+边类型(全部来自已有协议定义,没有新发明):
+
+边	来源	层
+binding(语义→物理表/字段)	entity/metric payload	硬→物理
+joins(实体间路径)	relation 对象	硬
+decomposes_into(指标分解)	relation 子类型	硬
+belongs_to(metric→entity, dim→entity)	payload 引用	硬
+ref(词条→硬对象)	frontmatter	软→硬
+wiki-link(页↔页)	正文链接	软
+provenance(知识→源文档)	frontmatter	软→原始
+lineage(报告块→metric@version→SQL→表)	deliverable	交付→硬→物理
+triggered(feedback→新版本对象)	source 字段	治理
+和 llm-wiki 相比多出来的东西一目了然:边有类型和方向、边有确认状态、图一直延伸到物理表和交付物两端——所以它不只是知识关联图,是一张从"老板看到的数字"到"数据库字段"的全链路血缘图。
+
+二、实现:图是投影,不是存储——不要上图数据库
+边全部已经存在于 semantic_object payload 和 markdown 链接里,只需要一张物化的边表:
+
+CREATE TABLE semantic_edge (          -- 由解析 payload/markdown 自动维护,不手工编辑
+  src TEXT, edge_type TEXT, dst TEXT,
+  src_version INT, status TEXT,       -- 继承对象的 confirmed/proposed
+  PRIMARY KEY (src, edge_type, dst)
+);
+-- 对象写入/新版本时增量重算其出边;软层页面 ingest 时解析链接更新
+一两万节点、几万条边的规模,SQL 递归查询/应用层遍历绰绰有余。Neo4j 之类的图数据库进"不做清单"——那是百万节点、复杂图算法的场景,现在引入纯属徒增运维。
+
+这张边表其实在第 3 步(回写闭环)就需要了——影响分析("改这个口径波及周报 3 处")就是在它上面做反向遍历,所以它不是第 4 步软层的附属品,要提前建。
+
+三、三个消费方(图的用途清单,前面散落的在此收拢)
+1. Agent(执行,最重要): join 路径规划(只走 confirmed joins 边)、全局分析沿 decomposes_into 下钻、命中对象后沿 ref/wiki-link 一跳扩展拉软知识、多候选裁决时的图邻近度信号。
+
+2. Lint(治理): 孤儿节点检测、软硬矛盾(ref 边两端不一致)、绑定漂移(binding 边指向已变更的表)、陈旧确认的影响范围评估。
+
+3. 人(可视化,你问的"能不能看到"): 能,两个视图就够——
+
+词条页局部图:每个实体/指标页侧边栏显示一跳邻域(绑定哪张表、被哪些指标引用、哪些词条讲它、进了哪些报告)。这是确认人做判断时最有用的上下文
+全局图视图(管理面):节点按类型着色、按状态着色——confirmed 绿色,proposed 黄色。这个视图有个额外价值:一眼看出企业语义资产的"固化程度和形状"——绿色区域逐周扩张的过程,就是北极星指标(⚠️→✅ 转化率)的可视化,也是给客户展示"你在平台上积累了什么"的最直观画面,续费谈判时它就是资产证明
+llm-wiki 用 Obsidian 白拿了 graph view;你的软层如果照建议用 markdown repo,管理员甚至真的可以直接用 Obsidian 打开软层看图,第一阶段连全局图 UI 都可以先不开发。
+
+四、落进文档(v1.2 追加)与分期
+新增 semantic_edge 边表定义 + 自动维护规则(对象写入/软层 ingest 时增量重算)
+边类型清单收拢为独立小节(上表)
+建设时点调整:边表提前至第 3 步(影响分析依赖);词条页局部图在第 4 步;全局图视图列入第 4 步之后的可选项(短期用 Obsidian 顶)
+不做清单追加:图数据库
+度量可选项:图连通性指标(孤儿率)并入 Lint 报表
+一句话:ECP 天然就是一张图——llm-wiki 的图靠链接涌现、供人浏览;ECP 的图靠协议定义、供机器执行,顺带给人一个"企业语义资产固化程度"的实时地图。 图不需要单独建设,它是资产积累的免费副产品,这一点和 llm-wiki 完全一致。
