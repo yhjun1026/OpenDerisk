@@ -1694,6 +1694,41 @@ class Service(BaseService[ServeEntity, ServeRequest, ServerResponse]):
                 logger.warning(f"转换 llm_config 失败: {str(e)}")
         return request
 
+    def _sync_define_prompt(
+        self, app_code: str, app_name: str, prompt_template: Optional[str]
+    ) -> None:
+        """内置应用已存在时,把 JSON 中的 system_prompt_template 同步进 DB。
+
+        历史行为是已存在即整体跳过,导致仓库里 prompt 模板的改进永远进不了 DB
+        (旧 prompt 一直生效)。这里只同步 prompt 模板一个字段,其余配置不动;
+        内置应用的 prompt 以代码仓库为准。
+        """
+        if not prompt_template:
+            return
+        from derisk_serve.building.config.models.models import (
+            ServeEntity as AppConfigEntity,
+        )
+
+        try:
+            with self.dao.session() as session:
+                entries = (
+                    session.query(AppConfigEntity)
+                    .filter(AppConfigEntity.app_code == app_code)
+                    .all()
+                )
+                changed = 0
+                for entry in entries:
+                    if entry.system_prompt_template != prompt_template:
+                        entry.system_prompt_template = prompt_template
+                        changed += 1
+                if changed:
+                    logger.info(
+                        f"应用 [{app_name}:{app_code}] system_prompt_template "
+                        f"已同步({changed} 条配置更新)"
+                    )
+        except Exception as e:
+            logger.warning(f"同步应用 [{app_code}] prompt 模板失败: {e}")
+
     async def load_define_app(self):
         """加载并初始化内置的默认应用
 
@@ -1740,10 +1775,15 @@ class Service(BaseService[ServeEntity, ServeRequest, ServerResponse]):
                         logger.info(f"检查应用 [{app_name}:{app_code}]")
 
                         # 冲突检测 - 检查应用是否已存在
-                        existing_app = self.get(ServeRequest(app_code=app_code))
+                        # 注意:不能用 self.get(ServeRequest(app_code=...))——
+                        # ServeRequest.published 默认 False,会被带入查询条件,
+                        # 而 DB 中已发布应用 published=1,导致永远查不到、
+                        # 每次都走创建然后报"应用名称或代码冲突"。
+                        existing_app = self.dao.get_one({"app_code": app_code})
                         if existing_app:
-                            logger.info(
-                                f"应用 [{app_code}-{app_name}] 已存在，跳过初始化"
+                            self._sync_define_prompt(
+                                app_code, app_name,
+                                item.get("system_prompt_template"),
                             )
                             skipped_count += 1
                             continue

@@ -252,24 +252,22 @@ export const VisAgentPlanCardWrap = styled.div`
   .header-task {
     width: fit-content;
     max-width: 85%;
-    background: #ffffff;
+    background: #eff1f6;
     border: 1px solid transparent;
     border-radius: 10px;
     padding: 3px 10px 3px 4px;
-    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
     transition: all 0.15s ease;
     cursor: pointer;
 
     &:hover {
-      background: #f7f8fa;
+      background: #e5e8ef;
     }
 
     body.dark & {
-      background: #232734;
-      box-shadow: none;
+      background: #2a2f3e;
 
       &:hover {
-        background: #2a2f3e;
+        background: #333949;
       }
     }
 
@@ -289,7 +287,11 @@ export const VisAgentPlanCardWrap = styled.div`
     }
 
     .task-icon-chip-default {
-      background: #eff1f6;
+      background: #ffffff;
+
+      body.dark & {
+        background: #394052;
+      }
     }
 
     .title-task-with-markdown {

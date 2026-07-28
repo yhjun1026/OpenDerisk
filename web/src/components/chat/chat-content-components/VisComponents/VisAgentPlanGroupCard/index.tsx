@@ -75,7 +75,7 @@ const VisAgentPlanGroupCard: React.FC<{ data: GroupData }> = ({ data }) => {
   };
 
   return (
-    <div className="w-fit max-w-[85%] rounded-[10px] bg-white dark:bg-[#232734] shadow-[0_1px_2px_rgba(16,24,40,0.05)] dark:shadow-none transition-colors hover:bg-[#f7f8fa] dark:hover:bg-[#2a2f3e]">
+    <div className="w-fit max-w-[85%] rounded-[10px] bg-[#eff1f6] dark:bg-[#2a2f3e] transition-colors hover:bg-[#e5e8ef] dark:hover:bg-[#333949]">
       {/* Summary row — always visible, toggles the group */}
       <button
         className="flex items-center gap-1.5 w-full pl-1 pr-2.5 py-[3px]"
@@ -131,7 +131,7 @@ const VisAgentPlanGroupCard: React.FC<{ data: GroupData }> = ({ data }) => {
                 <button
                   className={classNames(
                     'flex items-center gap-1.5 flex-1 min-w-0 ml-1.5 px-1.5 py-[5px] rounded-md text-left transition-colors',
-                    'hover:bg-[#eceef3]',
+                    'hover:bg-[#e5e8ef]',
                     item.status === 'running' && 'bg-[#eef0fe]/70',
                   )}
                   onClick={() => handleItemClick(item.uid)}

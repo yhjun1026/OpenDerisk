@@ -1052,14 +1052,26 @@ class ToolAction(Action[ToolInput]):
                 if agent and "agent" not in arguments:
                     arguments["agent"] = agent
 
-                # Build context with sandbox_manager for sandbox tools
+                # Build context,按工具类型选择形态:
+                # - 沙箱工具/旧框架工具: {"sandbox_manager": ...}
+                # - 统一框架非沙箱 ToolBase 工具(如 todowrite/todoread):
+                #   约定 context 即 agent 本身(见 builtin 工具
+                #   getattr(context, "agent", None) or context 的取法)
+                tool_base = getattr(tool_info, "_tool_base", None)
+                is_sandbox_tool = (
+                    tool_base is not None
+                    and hasattr(tool_base, "_get_sandbox_client")
+                ) or hasattr(tool_info, "_get_sandbox_client")
                 tool_context = None
                 if (
                     agent
                     and hasattr(agent, "sandbox_manager")
                     and agent.sandbox_manager
+                    and (is_sandbox_tool or tool_base is None)
                 ):
                     tool_context = {"sandbox_manager": agent.sandbox_manager}
+                elif agent is not None and tool_base is not None:
+                    tool_context = agent
 
                 # Merge system context into arguments before filtering
                 if tool_context:
@@ -1097,16 +1109,16 @@ class ToolAction(Action[ToolInput]):
                         )
                     arguments = {k: v for k, v in arguments.items() if k in valid_keys}
 
-                # Restore context for sandbox tools if it was filtered out
-                # Check if tool needs sandbox context by checking _get_sandbox_client method
-                # (inherited from SandboxToolBase) or by checking tool_info._tool_base
+                # Restore context after filtering.
+                # - UnifiedToolAdapter 包装的 ToolBase 工具:async_execute 会
+                #   pop "context" 并传给 execute(args, context),恢复是安全的
+                #   (沙箱工具拿 sandbox_manager,todowrite 等拿 agent)
+                # - 旧框架工具:仅沙箱工具或 args 显式声明 "context" 的恢复
                 needs_sandbox_context = False
                 if saved_context:
-                    # Check if this is a UnifiedToolAdapter wrapping a SandboxToolBase
+                    # Check if this is a UnifiedToolAdapter wrapping a ToolBase
                     if hasattr(tool_info, "_tool_base"):
-                        tool_base = tool_info._tool_base
-                        if hasattr(tool_base, "_get_sandbox_client"):
-                            needs_sandbox_context = True
+                        needs_sandbox_context = True
                     # Check if tool_info itself has _get_sandbox_client (direct SandboxToolBase)
                     elif hasattr(tool_info, "_get_sandbox_client"):
                         needs_sandbox_context = True

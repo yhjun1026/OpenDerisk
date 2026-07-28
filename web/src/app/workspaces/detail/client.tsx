@@ -18,7 +18,6 @@ import {
   SettingOutlined,
   BookOutlined,
   AppstoreOutlined,
-  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { SceneWorkspaceShell } from './scene-workspace-shell';
 import { ChatContext } from '@/contexts';
@@ -170,9 +169,6 @@ export default function WorkspaceDetailPage() {
             </Link>
             <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('tasks')}`}>
               <ThunderboltOutlined />{t('workspaces.tasks') || 'Tasks'}
-            </Link>
-            <Link href={`/workspaces/detail/triggers?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('triggers')}`}>
-              <ClockCircleOutlined />{t('workspaces.triggers') || 'Triggers'}
             </Link>
             <Link href={`/workspaces/detail/deliveries?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('deliveries')}`}>
               <DeliveredProcedureOutlined />{t('workspaces.deliveries') || 'Delivery Space'}

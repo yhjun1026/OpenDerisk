@@ -420,3 +420,20 @@ class UsageDao(BaseDao[LLMUsageEntity, Any, Any]):
             count = q.count()
             q.delete(synchronize_session=False)
         return int(count)
+
+    def distinct_agents(
+        self,
+        start_ms: Optional[int] = None,
+        end_ms: Optional[int] = None,
+    ) -> List[str]:
+        """Get distinct agent_ids from usage records."""
+        with self.session(commit=False) as session:
+            query = session.query(LLMUsageEntity.agent_id).filter(
+                LLMUsageEntity.agent_id.isnot(None)
+            )
+            if start_ms is not None:
+                query = query.filter(LLMUsageEntity.started_at >= start_ms)
+            if end_ms is not None:
+                query = query.filter(LLMUsageEntity.started_at < end_ms)
+            rows = query.distinct().order_by(LLMUsageEntity.agent_id).all()
+        return [r.agent_id for r in rows if r.agent_id]

@@ -4,7 +4,7 @@ Layer 1 (空间基线, both Lobby + Workbench): list_tasks, get_task_info,
 list_artifacts, list_deliveries, list_assets.
 Layer 2 (空间操作, Lobby only): get_workspace_memory, list_workspace_members.
 Layer 3 (剧本能力, Workbench only): list_playbooks, get_playbook_detail,
-list_interventions.
+list_interventions, list_triggers.
 """
 from typing import Any, List
 
@@ -77,6 +77,18 @@ def get_intervention_service(system_app):
 
     return system_app.get_component(
         INTERVENTION_SERVICE_COMPONENT_NAME, InterventionService
+    )
+
+
+def get_trigger_service(system_app):
+    """Resolve the trigger service from ``system_app``."""
+    from derisk_serve.trigger.service.service import (
+        TRIGGER_SERVICE_COMPONENT_NAME,
+        TriggerService,
+    )
+
+    return system_app.get_component(
+        TRIGGER_SERVICE_COMPONENT_NAME, TriggerService
     )
 
 
@@ -213,6 +225,16 @@ def _get_playbook_detail(system_app, workspace_id: int, playbook_id: int):
     return _to_jsonable(item) if item else {"error": "playbook not found"}
 
 
+def _list_triggers(system_app, workspace_id: int, type: str = None, is_active: bool = None):
+    from derisk_serve.trigger.api.schemas import TriggerListFilter
+
+    svc = get_trigger_service(system_app)
+    items = svc.list_triggers(
+        TriggerListFilter(workspace_id=workspace_id, type=type, is_active=is_active)
+    ) or []
+    return _to_jsonable(items)
+
+
 def _list_interventions(system_app, workspace_id: int, task_id: int = None):
     from derisk_serve.intervention.api.schemas import InterventionListFilter
 
@@ -276,6 +298,10 @@ def build_read_tools(system_app, workspace_id: int) -> List[FunctionTool]:
         }),
         ("list_interventions", "列出空间下（可选指定任务）的人工介入记录", _list_interventions, {
             "task_id": _p("task_id", "integer", "任务 ID,不传则列出空间全部"),
+        }),
+        ("list_triggers", "列出空间下的触发规则(定时/webhook/告警)", _list_triggers, {
+            "type": _p("type", "string", "按类型过滤,如 timer/webhook/alert/manual"),
+            "is_active": _p("is_active", "boolean", "按启用状态过滤"),
         }),
     ]
     tools: List[FunctionTool] = []

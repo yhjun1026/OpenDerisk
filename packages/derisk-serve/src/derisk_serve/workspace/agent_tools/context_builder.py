@@ -42,6 +42,7 @@ class WorkspaceContextSnapshot:
     task_id: Optional[int] = None
     playbooks: List[Any] = field(default_factory=list)
     active_tasks: List[Any] = field(default_factory=list)
+    triggers: List[Any] = field(default_factory=list)
     focused_artifact: Optional[Any] = None  # 用户当前关注的交付物(隐式上下文)
 
 
@@ -84,6 +85,18 @@ def get_artifact_service(system_app):
 
     return system_app.get_component(
         ARTIFACT_SERVICE_COMPONENT_NAME, ArtifactService
+    )
+
+
+def get_trigger_service(system_app):
+    """Resolve the trigger service from ``system_app``."""
+    from derisk_serve.trigger.service.service import (
+        TRIGGER_SERVICE_COMPONENT_NAME,
+        TriggerService,
+    )
+
+    return system_app.get_component(
+        TRIGGER_SERVICE_COMPONENT_NAME, TriggerService
     )
 
 
@@ -152,11 +165,14 @@ def build_workspace_context(
             active_tasks = task_service.list_tasks(
                 TaskListFilter(workspace_id=workspace_id)
             ) or []
-            # Keep only tasks that are not terminal/archived
+            # Keep only genuinely active tasks (状态枚举见 task/api/schemas.py:
+            # draft/pending_trigger/running/awaiting_human/blocked/delivered/
+            # closed/archived/failed;delivered/closed/failed 为终态,不属"进行中")
             active_tasks = [
                 t
                 for t in active_tasks
-                if getattr(t, "status", None) not in {"done", "archived", "cancelled"}
+                if getattr(t, "status", None)
+                in {"running", "awaiting_human", "blocked"}
             ]
         except Exception:
             pass
@@ -169,6 +185,18 @@ def build_workspace_context(
 
             playbooks = pb_service.list_playbooks(
                 PlaybookListFilter(workspace_id=workspace_id, is_active=True)
+            ) or []
+        except Exception:
+            pass
+
+    triggers: List[Any] = []
+    if mode == "lobby":
+        try:
+            trigger_service = get_trigger_service(system_app)
+            from derisk_serve.trigger.api.schemas import TriggerListFilter
+
+            triggers = trigger_service.list_triggers(
+                TriggerListFilter(workspace_id=workspace_id)
             ) or []
         except Exception:
             pass
@@ -197,6 +225,7 @@ def build_workspace_context(
         task_id=task_id,
         active_tasks=active_tasks,
         playbooks=playbooks,
+        triggers=triggers,
         focused_artifact=focused_artifact,
     )
 
@@ -233,8 +262,23 @@ def render_workspace_context_summary(
         )
 
     if ctx.playbooks:
-        pb_names = [getattr(pb, "name", str(pb)) for pb in ctx.playbooks]
-        lines.append(f"可用剧本：{', '.join(pb_names)}")
+        lines.append("可用剧本：")
+        for pb in ctx.playbooks:
+            lines.append(f"- id={getattr(pb, 'id', '')} {getattr(pb, 'name', '')}")
+
+    if ctx.triggers:
+        lines.append("已有触发规则(定时/条件任务,勿重复创建)：")
+        for tr in ctx.triggers:
+            tr_type = getattr(tr, "type", "")
+            config = getattr(tr, "config", None) or {}
+            cron = config.get("cron") if isinstance(config, dict) else None
+            schedule = f"cron={cron}" if cron else tr_type
+            active = "active" if getattr(tr, "is_active", False) else "paused"
+            lines.append(
+                f"- id={getattr(tr, 'id', '')} [{schedule}] "
+                f"→ 剧本#{getattr(tr, 'target_playbook_id', '')} "
+                f"{getattr(tr, 'name', '')}({active})"
+            )
 
     if ctx.playbook_declaration:
         skills = (ctx.playbook_declaration or {}).get("skills", []) or []

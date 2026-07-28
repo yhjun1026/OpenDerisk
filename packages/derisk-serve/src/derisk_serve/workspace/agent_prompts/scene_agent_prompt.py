@@ -12,14 +12,17 @@ SCENE_AGENT_STATIC_PROMPT = """\
 _LOBBY_TOOLS = [
     "list_tasks", "get_task_info", "list_artifacts", "list_deliveries", "list_assets",
     "get_workspace_memory", "list_workspace_members", "get_playbook_detail",
+    "list_triggers",
     "start_task", "close_task", "publish_asset", "create_delivery", "update_workspace",
+    "update_trigger", "delete_trigger", "fire_trigger",
 ]
 
 _WORKBENCH_TOOLS = [
     "list_tasks", "get_task_info", "list_artifacts", "list_deliveries", "list_assets",
-    "list_playbooks", "get_playbook_detail", "list_interventions",
+    "list_playbooks", "get_playbook_detail", "list_interventions", "list_triggers",
     "start_task", "close_task", "publish_asset", "create_delivery", "update_workspace",
-    "launch_playbook", "update_playbook", "archive_playbook",
+    "create_playbook", "update_playbook", "delete_playbook",
+    "update_trigger", "delete_trigger", "fire_trigger",
 ]
 
 

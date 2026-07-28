@@ -8,6 +8,7 @@ import {
   getUsageTimeSeries,
   listUsageCalls,
   deleteUsageRecords,
+  getDistinctAgents,
   UsageOverview,
   AgentUsage,
   ModelUsage,
@@ -15,7 +16,7 @@ import {
   TimeSeriesPoint,
   UsageCall,
 } from '@/client/api/usage';
-import { apiInterceptors, getAgents } from '@/client/api';
+import { apiInterceptors } from '@/client/api';
 import {
   BarChartOutlined,
   ReloadOutlined,
@@ -91,14 +92,19 @@ export default function UsagePage() {
     end_ms: endMs,
   };
 
-  // agent list for filter
+  // agent list for filter (from actual usage data)
   const { data: agents } = useRequest(
     async () => {
-      const [err, res] = await apiInterceptors(getAgents());
-      if (err) return [] as { name: string; label?: string }[];
+      const [err, res] = await apiInterceptors(
+        getDistinctAgents({
+          start_ms: startMs,
+          end_ms: endMs,
+        })
+      );
+      if (err) return [] as string[];
       return res || [];
     },
-    { cacheKey: 'usage-agents' }
+    { refreshDeps: [rangeKey] }
   );
 
   // overview
@@ -363,7 +369,7 @@ export default function UsagePage() {
   const singleConv = !!convId;
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-6 h-full overflow-auto">
       <Row justify="space-between" align="middle" className="mb-4">
         <Title level={3} className="m-0">
           <BarChartOutlined className="mr-2" />
@@ -411,7 +417,7 @@ export default function UsagePage() {
             style={{ width: 200 }}
             value={agentId}
             onChange={v => setAgentId(v)}
-            options={(agents || []).map(a => ({ label: a.label || a.name, value: a.name }))}
+            options={(agents || []).map(a => ({ label: a, value: a }))}
           />
           <span>{t('usage_model')}:</span>
           <Input

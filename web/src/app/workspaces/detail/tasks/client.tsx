@@ -1,7 +1,7 @@
 'use client';
 
 import { apiInterceptors, listTasks, getWorkspaceInfo } from '@/client/api';
-import { Button, Empty, Spin } from 'antd';
+import { Button, Empty, Spin, Tabs } from 'antd';
 import { PlusOutlined, ThunderboltOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import type { ColumnsType } from 'antd/es/table';
 import Table from 'antd/es/table';
+import TriggersTable from './triggers-table';
 import '../../workspaces.css';
 
 interface TaskRow {
@@ -38,6 +39,7 @@ function statusLabel(s: string) { return (s || '').replace(/_/g, ' '); }
 export default function TaskListPage() {
   const searchParams = useSearchParams();
   const workspaceCode = searchParams?.get('id') || '';
+  const activeTab = searchParams?.get('tab') === 'triggers' ? 'triggers' : 'runs';
   const { t } = useTranslation();
 
   const { data: ws } = useRequest(async () => {
@@ -126,7 +128,7 @@ export default function TaskListPage() {
               </div>
               <h1 className="ws-page-title">{t('tasks.title_page') || 'Tasks'}</h1>
               <p className="ws-page-subtitle">
-                {t('tasks.subtitle') || 'Every run of a playbook — manual, triggered, or alert-driven — lands here.'}
+                {t('tasks.subtitle') || 'Playbook runs land here; timer/webhook/alert rules that spawn them live under Trigger Rules.'}
               </p>
             </div>
           </div>
@@ -140,17 +142,41 @@ export default function TaskListPage() {
           </div>
         </div>
 
-        <div className="ws-table-wrap">
-          <Table<TaskRow>
-            rowKey="id"
-            columns={columns}
-            dataSource={tasks || []}
-            pagination={{ pageSize: 20, showSizeChanger: true }}
-            locale={{
-              emptyText: <Empty description={t('tasks.empty') || 'No tasks'} style={{ padding: '48px 0' }} />,
-            }}
-          />
-        </div>
+        <Tabs
+          activeKey={activeTab}
+          onChange={(key) => {
+            const qs = key === 'triggers' ? `id=${workspaceCode}&tab=triggers` : `id=${workspaceCode}`;
+            window.history.replaceState(null, '', `/workspaces/detail/tasks?${qs}`);
+          }}
+          items={[
+            {
+              key: 'runs',
+              label: t('tasks.tab_runs') || '执行记录',
+              children: (
+                <div className="ws-table-wrap">
+                  <Table<TaskRow>
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={tasks || []}
+                    pagination={{ pageSize: 20, showSizeChanger: true }}
+                    locale={{
+                      emptyText: <Empty description={t('tasks.empty') || 'No tasks'} style={{ padding: '48px 0' }} />,
+                    }}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'triggers',
+              label: t('tasks.tab_triggers') || '触发规则',
+              children: ws?.id ? (
+                <div className="ws-table-wrap">
+                  <TriggersTable workspaceId={ws.id} workspaceCode={workspaceCode} />
+                </div>
+              ) : null,
+            },
+          ]}
+        />
       </div>
     </div>
   );

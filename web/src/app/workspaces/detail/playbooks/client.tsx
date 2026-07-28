@@ -117,7 +117,6 @@ export default function PlaybookListPage() {
         name: createName || 'New Playbook',
         scenario_type: createScenario,
         task_type: createTaskType,
-        trigger: { type: 'manual' },
         declaration: parsed,
       }));
       if (err) {

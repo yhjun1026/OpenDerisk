@@ -1044,18 +1044,34 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
   if (!displayStep && !hasSummary && !hasTaskFiles && !hasDeliverables) {
     if (is_running) {
       return (
-        <div className="flex flex-col items-center justify-center h-full">
-          <div className="relative w-16 h-16 mb-5">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-              <DesktopOutlined className="text-3xl text-blue-400" />
-            </div>
-            <div className="absolute inset-0 rounded-2xl border-2 border-blue-200 animate-ping opacity-30" />
+        <div
+          className="relative flex flex-col items-center justify-center overflow-hidden"
+          style={{ height: 'calc(100vh - 56px)' }}
+        >
+          {/* 极光氛围底 — 空态仪式场景专用 */}
+          <div className="aurora-stage">
+            <div
+              className="aurora-blob aurora-blob--brand"
+              style={{ width: 260, height: 260, top: '50%', left: '50%', marginTop: -160, marginLeft: -130 }}
+            />
+            <div
+              className="aurora-blob aurora-blob--cyan"
+              style={{ width: 200, height: 200, top: '60%', left: '30%' }}
+            />
           </div>
-          <div className="text-sm font-medium mb-2 text-gray-700">执行中</div>
-          <div className="flex items-center gap-1.5 h-5">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+          <div className="relative animate-rise flex flex-col items-center">
+            {/* 呼吸光环:弥散阴影代替描边 */}
+            <div className="relative w-14 h-14 mb-4">
+              <div
+                className="absolute inset-0 rounded-2xl animate-pulse"
+                style={{ boxShadow: '0 0 0 10px rgba(79, 70, 229, 0.07), 0 0 32px rgba(79, 70, 229, 0.18)' }}
+              />
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-brand-soft">
+                <DesktopOutlined className="text-2xl text-brand" />
+              </div>
+            </div>
+            <div className="text-sm font-medium text-shimmer">执行中</div>
+            <div className="text-xs mt-1.5 text-ink-400">智能体正在处理任务…</div>
           </div>
         </div>
       );

@@ -163,6 +163,16 @@ async def delete_records(
     return Result.succ(service.delete_records(conv_id=conv_id, before_ms=before_ms))
 
 
+@router.get("/distinct-agents", response_model=Result[List[str]])
+async def distinct_agents(
+    start_ms: Optional[int] = Query(default=None),
+    end_ms: Optional[int] = Query(default=None),
+    service: Service = Depends(get_service),
+) -> Result[List[str]]:
+    """Get distinct agent_ids from usage records."""
+    return Result.succ(service.distinct_agents(start_ms=start_ms, end_ms=end_ms))
+
+
 def init_endpoints(system_app: SystemApp, config: ServeConfig) -> None:
     """Initialize the endpoints."""
     global global_system_app

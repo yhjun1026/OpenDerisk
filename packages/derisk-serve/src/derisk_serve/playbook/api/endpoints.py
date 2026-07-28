@@ -155,7 +155,7 @@ async def seed_builtin(
                 name=tmpl["name"],
                 scenario_type=tmpl["scenario_type"],
                 task_type=tmpl["task_type"],
-                trigger=tmpl["trigger"],
+                trigger=tmpl.get("trigger"),
                 declaration=tmpl["declaration"],
                 is_active=True,
             )

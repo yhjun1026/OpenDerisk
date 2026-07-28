@@ -88,3 +88,9 @@ class Service(BaseService[LLMUsageEntity, Any, Any]):
     ) -> DeleteResultVO:
         deleted = self._dao.delete_records(conv_id=conv_id, before_ms=before_ms)
         return DeleteResultVO(deleted=deleted)
+
+    def distinct_agents(
+        self, start_ms: Optional[int] = None, end_ms: Optional[int] = None
+    ) -> list[str]:
+        """Get distinct agent_ids from usage records."""
+        return self._dao.distinct_agents(start_ms=start_ms, end_ms=end_ms)

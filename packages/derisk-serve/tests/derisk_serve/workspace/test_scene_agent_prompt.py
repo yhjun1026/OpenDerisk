@@ -37,6 +37,8 @@ def test_render_lobby_includes_playbooks_and_active_tasks():
     assert "修复告警" in result
     assert "get_playbook_detail" in result
     assert "start_task" in result
+    assert "list_triggers" in result
+    assert "fire_trigger" in result
 
 
 def test_render_workbench_includes_current_task():
@@ -54,7 +56,8 @@ def test_render_workbench_includes_current_task():
     result = render_scene_dynamic_context(ctx, mode="workbench")
     assert "Fix bug" in result
     assert "当前任务详情" in result
-    assert "launch_playbook" in result
+    assert "create_playbook" in result
+    assert "update_trigger" in result
     assert "list_interventions" in result
 
 

@@ -118,7 +118,6 @@ export default function PlaybookEditorPage() {
         name: metaName || playbook?.name,
         scenario_type: metaScenarioType || playbook?.scenario_type,
         task_type: metaTaskType || playbook?.task_type,
-        trigger: playbook?.trigger,
         declaration: parsed,
         is_active: playbook?.is_active,
       }));

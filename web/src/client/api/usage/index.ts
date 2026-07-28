@@ -142,3 +142,6 @@ export const deleteUsageRecords = (
   `${API_PREFIX}/records`,
   params
 );
+
+export const getDistinctAgents = (params: UsageFilters = {}) =>
+  GET<UsageFilters, string[]>(`${API_PREFIX}/distinct-agents`, params);

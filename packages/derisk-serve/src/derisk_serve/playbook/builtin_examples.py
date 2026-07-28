@@ -12,10 +12,6 @@ DATA_OPS_WEEKLY_REPORT: Dict[str, Any] = {
     "name": "Data Operations Weekly Report",
     "scenario_type": "data_ops",
     "task_type": "routine",
-    "trigger": {
-        "type": "timer",
-        "cron": "0 9 * * 1",  # every Monday 9am
-    },
     "declaration": {
         # NEW: RFC-005 独立文本部分
         "text_content": {
@@ -57,10 +53,6 @@ SRE_CAPACITY_INSPECTION: Dict[str, Any] = {
     "name": "SRE Capacity Inspection",
     "scenario_type": "sre",
     "task_type": "routine",
-    "trigger": {
-        "type": "timer",
-        "cron": "0 2 * * *",  # daily 2am
-    },
     "declaration": {
         # NEW: RFC-005 独立文本部分
         "text_content": {

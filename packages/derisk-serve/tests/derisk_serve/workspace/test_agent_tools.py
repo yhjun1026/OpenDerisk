@@ -14,7 +14,7 @@ def _find_tool(tools, name):
 
 
 def test_read_tools_count(fake_system_app):
-    """build_read_tools returns exactly the 10 expected read tools."""
+    """build_read_tools returns exactly the 11 expected read tools."""
     from derisk_serve.workspace.agent_tools.read_tools import build_read_tools
 
     with patch(
@@ -48,6 +48,7 @@ def test_read_tools_count(fake_system_app):
         "list_playbooks",
         "get_playbook_detail",
         "list_interventions",
+        "list_triggers",
     }
 
 

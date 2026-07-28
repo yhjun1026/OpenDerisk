@@ -77,15 +77,17 @@ class WorkspaceSceneResource(ResourceProtocol):
         # Tool names below MUST exist in build_scene_management_tools output
         # (reads: list_tasks, get_task_info, list_artifacts, list_deliveries,
         # list_assets, get_workspace_memory, list_workspace_members,
-        # list_playbooks, get_playbook_detail, list_interventions;
+        # list_playbooks, get_playbook_detail, list_interventions, list_triggers;
         # writes: start_task, close_task, publish_asset, create_delivery,
         # update_workspace, create_playbook, update_playbook,
-        # delete_playbook, resolve_intervention, abort_intervention).
+        # delete_playbook, resolve_intervention, abort_intervention,
+        # update_trigger, delete_trigger, fire_trigger).
         # Do NOT reference tools the agent doesn't have (e.g. create_task).
         return (
             f"# 场景空间:{config.workspace_name}\n"
-            "你是场景空间助手。可管理任务、剧本、介入、产物/交付/资产。\n"
+            "你是场景空间助手。可管理任务、剧本、触发规则、介入、产物/交付/资产。\n"
             "- 看任务:list_tasks(可按状态过滤);细节 get_task_info。发起:start_task;关闭:close_task。\n"
+            "- 触发规则(定时/条件执行):list_triggers 查看;start_task 传 trigger_type+cron 创建;update_trigger/delete_trigger 管理;fire_trigger 立即跑一次。\n"
             "- 看剧本:list_playbooks;细节 get_playbook_detail。管理:create_playbook/update_playbook/delete_playbook。\n"
             "- 介入:list_interventions 看待介入;处理:resolve_intervention/abort_intervention。\n"
             "- 产物/交付/资产:list_artifacts/list_deliveries/list_assets。\n"

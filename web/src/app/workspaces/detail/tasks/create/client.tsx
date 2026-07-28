@@ -55,7 +55,7 @@ const TYPE_CONFIG: Record<TriggerType, {
   adhoc: {
     label: '手动执行',
     desc: '一次性临时任务',
-    detail: '创建后立即启动剧本执行，在任务详情查看对话、产出和交付。',
+    detail: '立即创建并执行一次任务，在任务详情查看对话、产出和交付。',
     icon: <ThunderboltOutlined />,
     iconBg: 'bg-blue-100',
     iconText: 'text-blue-600',
@@ -67,7 +67,7 @@ const TYPE_CONFIG: Record<TriggerType, {
   timer: {
     label: '定时触发',
     desc: '按 Cron 周期执行',
-    detail: '按 Cron 表达式定时自动触发，每次用剧本执行你设定的指令。',
+    detail: '创建定时触发规则：到点自动按剧本创建任务，每次执行你设定的指令。',
     icon: <ClockCircleOutlined />,
     iconBg: 'bg-emerald-100',
     iconText: 'text-emerald-600',
@@ -79,7 +79,7 @@ const TYPE_CONFIG: Record<TriggerType, {
   webhook: {
     label: 'Webhook',
     desc: '外部请求触发',
-    detail: '外部系统向 Webhook URL 发 POST 即触发执行。',
+    detail: '创建 Webhook 触发规则：外部系统向 Webhook URL 发 POST 即自动按剧本创建任务。',
     icon: <GlobalOutlined />,
     iconBg: 'bg-violet-100',
     iconText: 'text-violet-600',
@@ -91,7 +91,7 @@ const TYPE_CONFIG: Record<TriggerType, {
   alert: {
     label: '告警触发',
     desc: '告警事件触发',
-    detail: '监控系统向告警 URL 推送事件即触发执行。',
+    detail: '创建告警触发规则：监控系统向告警 URL 推送事件即自动按剧本创建任务。',
     icon: <AlertOutlined />,
     iconBg: 'bg-amber-100',
     iconText: 'text-amber-600',
@@ -230,8 +230,8 @@ export default function TaskCreatePage() {
       );
       setSubmitting(false);
       if (err) { message.error(err.message); return; }
-      message.success(editTriggerId ? '触发器已更新' : '触发器已创建');
-      router.push(`/workspaces/detail/triggers?id=${workspaceCode}`);
+      message.success(editTriggerId ? '触发规则已更新' : '触发规则已创建，到点/事件发生时将自动按剧本创建任务');
+      router.push(`/workspaces/detail/tasks?id=${workspaceCode}&tab=triggers`);
     } catch {
       setSubmitting(false);
     }
@@ -280,7 +280,7 @@ export default function TaskCreatePage() {
               </div>
             </div>
             <div className="ws-page-actions">
-              <Link href={isEditing ? `/workspaces/detail/triggers?id=${workspaceCode}` : `/workspaces/detail/tasks?id=${workspaceCode}`}>
+              <Link href={isEditing ? `/workspaces/detail/tasks?id=${workspaceCode}&tab=triggers` : `/workspaces/detail/tasks?id=${workspaceCode}`}>
                 <Button icon={<ArrowLeftOutlined />} size="large">
                   {t('back') || '返回'}
                 </Button>
@@ -462,7 +462,7 @@ export default function TaskCreatePage() {
                 )}
 
                 <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-[var(--ws-border-subtle)]">
-                  <Link href={isEditing ? `/workspaces/detail/triggers?id=${workspaceCode}` : `/workspaces/detail/tasks?id=${workspaceCode}`}>
+                  <Link href={isEditing ? `/workspaces/detail/tasks?id=${workspaceCode}&tab=triggers` : `/workspaces/detail/tasks?id=${workspaceCode}`}>
                     <Button size="large">{t('tasks.cancel') || '取消'}</Button>
                   </Link>
                   <Button type="primary" size="large" loading={submitting} onClick={handleSubmit} className="!rounded-lg">
