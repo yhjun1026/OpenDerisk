@@ -55,6 +55,14 @@ class LintRules:
     contradiction_detection: bool = True
     uncited_sources: bool = True
     dangling_links: bool = True
+    index_drift: bool = True
+    # RFC 003 §5.2/§5.4/§5.5: schema-drift warnings. Report docs/edges
+    # whose type/predicate/path no longer matches schema.md after the
+    # user edited it (deleted a page type, removed a relation type, or
+    # changed a page type's dir).
+    unknown_type: bool = True
+    unknown_predicate: bool = True
+    path_mismatch: bool = True
     frontmatter_required: list[str] = field(
         default_factory=lambda: ["type", "title", "created", "updated"]
     )
@@ -171,9 +179,12 @@ def default_schema_md(space_name: str = "Knowledge Space") -> str:
 - contradiction_detection: true
 - uncited_sources: true
 - dangling_links: true
+- index_drift: true
+- unknown_type: true
+- unknown_predicate: true
+- path_mismatch: true
 - frontmatter_required: [type, title, created, updated]
 """
-
 
 # ---------------------------------------------------------------------------
 # Default schema.md for per-agent memory spaces (hermes-aligned 4-tier)
@@ -250,6 +261,10 @@ tier1 每轮对话片段落 L0 Verbat（extract_mode=convo），tier2 每 N 轮
 - contradiction_detection: true
 - uncited_sources: true
 - dangling_links: true
+- index_drift: true
+- unknown_type: true
+- unknown_predicate: true
+- path_mismatch: true
 - frontmatter_required: [type, title, created, updated]
 """
 
@@ -417,6 +432,14 @@ def _parse_lint_rules(body: str) -> LintRules:
             rules.dangling_links = value.lower() in (
                 "true", "1", "yes", "on"
             )
+        elif key == "index_drift":
+            rules.index_drift = value.lower() in ("true", "1", "yes", "on")
+        elif key == "unknown_type":
+            rules.unknown_type = value.lower() in ("true", "1", "yes", "on")
+        elif key == "unknown_predicate":
+            rules.unknown_predicate = value.lower() in ("true", "1", "yes", "on")
+        elif key == "path_mismatch":
+            rules.path_mismatch = value.lower() in ("true", "1", "yes", "on")
         elif key == "frontmatter_required":
             # Parse [a, b, c] or a, b, c
             v = value.strip()

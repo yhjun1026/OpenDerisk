@@ -11,11 +11,12 @@ import json
 from unittest.mock import MagicMock, patch
 
 
-def _ws_mock(name="营收空间"):
+def _ws_mock(name="营收空间", code="ws_abc123"):
     """构造 workspace mock,确保 .name 是真实字符串(避开 MagicMock name= 构造陷阱:
     Magicmock(name=...) 设置的是 mock 自身的标识名,而非 .name 属性)。"""
     m = MagicMock()
     m.name = name  # 构造后赋值,使 getattr(ws, "name") 返回字符串
+    m.workspace_code = code
     return m
 
 
@@ -38,12 +39,24 @@ def test_lobby_assembles_workspace_scene_resource():
     from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
     sa = _mock_system_app(workspace=_ws_mock("营收空间"))
     out = SceneResourceAssembler.assemble(sa, workspace_id=1, task_id=None, conv_uid="c1")
-    assert len(out) == 1
+    assert len(out) == 2
     assert out[0].type == "workspace_scene"
     data = json.loads(out[0].value) if isinstance(out[0].value, str) else out[0].value
     assert data["workspace_id"] == 1
     assert data["conv_uid"] == "c1"
     assert data["workspace_name"] == "营收空间"
+
+
+def test_lobby_injects_derived_ecp_resource():
+    """lobby 自动注入派生 ECP 资源:场景 agent 的语意资产落在本空间专属
+    ECP workspace(ecp_<workspace_code>),而非全局 default。"""
+    from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
+    sa = _mock_system_app(workspace=_ws_mock(code="ws_abc123"))
+    out = SceneResourceAssembler.assemble(sa, workspace_id=1, task_id=None, conv_uid="c1")
+    ecp = [r for r in out if r.type == "ecp"]
+    assert len(ecp) == 1
+    data = json.loads(ecp[0].value) if isinstance(ecp[0].value, str) else ecp[0].value
+    assert data["workspace_id"] == "ecp_ws_abc123"
 
 
 def test_workbench_with_playbook_assembles_playbook_resource():
@@ -55,8 +68,22 @@ def test_workbench_with_playbook_assembles_playbook_resource():
     pb.declaration = {"text_content": {"workflow": "step1"}}
     sa = _mock_system_app(task=task, playbook=pb)
     out = SceneResourceAssembler.assemble(sa, workspace_id=1, task_id=99, conv_uid="c1")
-    assert len(out) == 1
+    assert len(out) == 2
     assert out[0].type == "playbook"
+
+
+def test_workbench_injects_derived_ecp_resource():
+    """workbench(任务运行时)同样注入派生 ECP 资源。"""
+    from derisk_serve.workspace.scene_resource_assembler import SceneResourceAssembler
+    task = MagicMock(); task.playbook_id = 7
+    pb = MagicMock(); pb.id = 7; pb.name = "营收分析"
+    pb.declaration = {"text_content": {"workflow": "step1"}}
+    sa = _mock_system_app(workspace=_ws_mock(code="ws_task9"), task=task, playbook=pb)
+    out = SceneResourceAssembler.assemble(sa, workspace_id=1, task_id=99, conv_uid="c1")
+    ecp = [r for r in out if r.type == "ecp"]
+    assert len(ecp) == 1
+    data = json.loads(ecp[0].value) if isinstance(ecp[0].value, str) else ecp[0].value
+    assert data["workspace_id"] == "ecp_ws_task9"
 
 
 def test_workbench_materializes_playbook_skills():

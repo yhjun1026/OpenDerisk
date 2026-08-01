@@ -10,3 +10,5 @@ export const deleteTask = (task_id: number) => POST(`/api/v1/serve_task_service/
 export const closeTask = (data: any) => POST('/api/v1/serve_task_service/tasks/close', data);
 export const archiveTask = (task_id: number) => POST(`/api/v1/serve_task_service/tasks/${task_id}/archive`, {});
 export const spawnTask = (data: any) => POST('/api/v1/serve_task_service/tasks/spawn', data);
+export const reassignTask = (task_id: number, assignee_user_id: number) =>
+  POST(`/api/v1/serve_task_service/tasks/${task_id}/reassign`, { assignee_user_id });

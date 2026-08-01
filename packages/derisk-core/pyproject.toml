@@ -84,7 +84,7 @@ simple_framework = [
     #  find a new toolkit.
     "pympler",
     "duckdb",
-    "duckdb-engine==0.9.1",
+    "duckdb-engine==0.17.0",
     # lightweight python library for scheduling jobs
     "schedule",
     # For datasource subpackage

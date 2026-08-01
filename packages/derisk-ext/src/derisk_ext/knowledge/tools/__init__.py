@@ -35,6 +35,7 @@ from derisk_ext.knowledge.tools.space import (
     SchemaReadTool,
     SchemaWriteTool,
     LintRunTool,
+    LintSuggestTool,
 )
 from derisk_ext.knowledge.tools.admin import (
     ReindexTool,
@@ -61,6 +62,7 @@ ALL_KNOWLEDGE_TOOLS = [
     SchemaReadTool,
     SchemaWriteTool,
     LintRunTool,
+    LintSuggestTool,
     ReindexTool,
     SetEmbedderIdentityTool,
 ]
@@ -99,6 +101,7 @@ __all__ = [
     "SchemaReadTool",
     "SchemaWriteTool",
     "LintRunTool",
+    "LintSuggestTool",
     # Admin
     "ReindexTool",
     "SetEmbedderIdentityTool",

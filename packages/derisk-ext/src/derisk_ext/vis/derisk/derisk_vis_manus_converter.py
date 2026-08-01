@@ -1687,6 +1687,11 @@ class DeriskIncrVisManusConverter(DeriskIncrVisWindow3Converter):
             return "image"
         if mime_lower.startswith("image/"):
             return "image"
+        # Video
+        if any(name_lower.endswith(ext) for ext in (".mp4", ".mov", ".webm", ".avi", ".mkv", ".flv", ".wmv", ".m4v")):
+            return "video"
+        if mime_lower.startswith("video/"):
+            return "video"
         # PDF
         if name_lower.endswith(".pdf") or "application/pdf" in mime_lower:
             return "pdf"

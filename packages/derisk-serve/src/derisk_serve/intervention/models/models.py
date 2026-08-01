@@ -46,6 +46,7 @@ class InterventionEntity(Model):
     type = Column(String(32), nullable=False, default="review")
     status = Column(String(32), nullable=False, default="requested")
     requested_by = Column(String(32), nullable=False, default="system")
+    assignee_user_id = Column(Integer, nullable=True, index=True, comment="该谁来处理(事前),≠resolved_by_user_id(事后)")
     requested_at = Column(DateTime, default=datetime.now)
     question_json = Column(Text, nullable=True)
     context_json = Column(Text, nullable=True)
@@ -82,6 +83,7 @@ class InterventionDao(BaseDao[InterventionEntity, InterventionRequest, Intervent
             workspace_id=entity.workspace_id,
             type=entity.type,
             requested_by=entity.requested_by,
+            assignee_user_id=entity.assignee_user_id,
             question=_load_json(entity.question_json),
             context=_load_json(entity.context_json),
         )
@@ -99,6 +101,7 @@ class InterventionDao(BaseDao[InterventionEntity, InterventionRequest, Intervent
             requested_at=entity.requested_at.isoformat() if entity.requested_at else "",
             question=_load_json(entity.question_json),
             context=_load_json(entity.context_json),
+            assignee_user_id=entity.assignee_user_id,
             resolved_by_user_id=entity.resolved_by_user_id,
             resolved_at=entity.resolved_at.isoformat() if entity.resolved_at else None,
             decision=_load_json(entity.decision_json),

@@ -15,9 +15,8 @@ import TabPrompts from './components/tab-prompts';
 import TabSkills from './components/tab-skills';
 import TabTools from './components/tab-tools';
 import TabAgents from './components/tab-agents';
-import TabKnowledge from './components/tab-knowledge';
 import TabMemory from './components/tab-memory';
-import TabDatabase from './components/tab-database';
+import TabAssets from './components/tab-assets';
 import TabScenes from './components/tab-scenes';
 import TabRuntime from './components/tab-runtime';
 import TabHooks from './components/tab-hooks';
@@ -169,12 +168,10 @@ export default function AgentBuilder() {
         return <TabSkills />;
       case 'sub-agents':
         return <TabAgents />;
-      case 'knowledge':
-        return <TabKnowledge />;
       case 'memory':
         return <TabMemory />;
-      case 'database':
-        return <TabDatabase />;
+      case 'assets':
+        return <TabAssets />;
       case 'scenes':
         return <TabScenes />;
       case 'runtime':

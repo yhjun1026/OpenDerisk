@@ -21,6 +21,7 @@ class TaskRequest(BaseModel):
     playbook_version_id: Optional[int] = None
     conv_session_id: Optional[str] = Field(None, description="conversation session id bound to this task")
     created_by_user_id: Optional[int] = None
+    assignee_user_id: Optional[int] = None
     assigned_agents: Optional[List[str]] = Field(default_factory=list)
     context: Optional[Dict[str, Any]] = Field(default_factory=dict)
     due_at: Optional[datetime] = None
@@ -43,6 +44,7 @@ class TaskResponse(BaseModel):
     playbook_version_id: Optional[int] = None
     conv_session_id: Optional[str] = None
     created_by_user_id: Optional[int] = None
+    assignee_user_id: Optional[int] = None
     assigned_agents: List[str] = Field(default_factory=list)
     context: Dict[str, Any] = Field(default_factory=dict)
     due_at: Optional[str] = None
@@ -59,6 +61,8 @@ class TaskListFilter(BaseModel):
     status: Optional[str] = None
     type: Optional[str] = None
     user_id: Optional[int] = None
+    assignee_user_id: Optional[int] = None
+    mine: bool = Field(False, description="我发起的或指派给我的(created_by or assignee)")
     include_archived: bool = False
     limit: int = 100
 

@@ -11,6 +11,7 @@ import {
   GlobalOutlined,
   CloseOutlined,
   FormatPainterOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 import { CodePreview } from '../../code-preview';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -42,6 +43,7 @@ const FILE_TYPES = {
   CODE: 'code',
   MARKDOWN: 'markdown',
   TEXT: 'text',
+  VIDEO: 'video',
   UNKNOWN: 'unknown',
 };
 
@@ -57,16 +59,19 @@ const getFileType = (fileName: string, mimeType?: string): string => {
   const htmlExts = ['html', 'htm', 'xhtml'];
   const codeExts = ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'css', 'scss', 'less', 'xml', 'json', 'yaml', 'yml', 'sql', 'sh', 'bash', 'php', 'rb', 'swift', 'kt', 'scala'];
   const markdownExts = ['md', 'markdown'];
+  const videoExts = ['mp4', 'mov', 'webm', 'avi', 'mkv'];
 
   if (imageExts.includes(ext)) return FILE_TYPES.IMAGE;
   if (htmlExts.includes(ext)) return FILE_TYPES.HTML;
   if (markdownExts.includes(ext)) return FILE_TYPES.MARKDOWN;
+  if (videoExts.includes(ext)) return FILE_TYPES.VIDEO;
   if (codeExts.includes(ext)) return FILE_TYPES.CODE;
 
   if (mimeType) {
     if (mimeType.startsWith('image/')) return FILE_TYPES.IMAGE;
     if (mimeType === 'text/html' || mimeType.includes('html')) return FILE_TYPES.HTML;
     if (mimeType.includes('markdown') || mimeType.includes('md')) return FILE_TYPES.MARKDOWN;
+    if (mimeType.startsWith('video/')) return FILE_TYPES.VIDEO;
     if (mimeType.includes('json') || mimeType.includes('javascript') || mimeType.includes('typescript') || mimeType.includes('python')) return FILE_TYPES.CODE;
     if (mimeType.startsWith('text/')) return FILE_TYPES.TEXT;
   }
@@ -95,6 +100,7 @@ const getFileTypeIcon = (fileType: string) => {
     case FILE_TYPES.HTML: return <GlobalOutlined />;
     case FILE_TYPES.CODE: return <CodeOutlined />;
     case FILE_TYPES.MARKDOWN: return <FileTextOutlined />;
+    case FILE_TYPES.VIDEO: return <VideoCameraOutlined />;
     default: return <FileTextOutlined />;
   }
 };
@@ -265,8 +271,8 @@ ${content}
         try {
           const response = await fetch(previewUrl, { method: 'GET' });
           if (response.ok) {
-            // 对于非图片文件，先获取内容，再设置 URL（避免触发第二个 useEffect 时标志位还是 false）
-            if (fileType !== FILE_TYPES.IMAGE) {
+            // 对于非图片/视频文件，先获取内容，再设置 URL（避免触发第二个 useEffect 时标志位还是 false）
+            if (fileType !== FILE_TYPES.IMAGE && fileType !== FILE_TYPES.VIDEO) {
               setLoading(true);
               try {
                 const textContent = await response.text();
@@ -319,7 +325,7 @@ ${content}
       return;
     }
 
-    if (fileType === FILE_TYPES.IMAGE) return;
+    if (fileType === FILE_TYPES.IMAGE || fileType === FILE_TYPES.VIDEO) return;
 
     // 如果已经通过 OSS 接口直接获取了内容，跳过代理接口
     if (useDirectOssContent) return;
@@ -393,6 +399,20 @@ ${content}
                   <FileTextOutlined spin style={{ fontSize: 32, color: '#6366f1' }} />
                 </div>
               }
+            />
+          </div>
+        );
+      }
+
+      case FILE_TYPES.VIDEO: {
+        if (!actualPreviewUrl) return null;
+        return (
+          <div className={styles.imageContainer}>
+            <video
+              src={actualPreviewUrl}
+              controls
+              autoPlay
+              style={{ maxWidth: '100%', maxHeight: '70vh' }}
             />
           </div>
         );
@@ -532,7 +552,7 @@ ${content}
       <Modal
         open={shouldRender}
         onCancel={handleClose}
-        width={fileType === FILE_TYPES.IMAGE || fileType === FILE_TYPES.HTML ? '90%' : 900}
+        width={fileType === FILE_TYPES.IMAGE || fileType === FILE_TYPES.HTML || fileType === FILE_TYPES.VIDEO ? '90%' : 900}
         footer={null}
         destroyOnClose
         closable={false}

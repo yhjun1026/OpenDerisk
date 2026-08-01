@@ -202,6 +202,24 @@ async def spawn_task(
         return Result.failed(str(e))
 
 
+@router.post("/tasks/{task_id}/reassign", response_model=Result[TaskResponse],
+             dependencies=[Depends(check_api_key)])
+async def reassign_task(
+    task_id: int,
+    request: dict,
+    service: Service = Depends(get_service),
+) -> Result[TaskResponse]:
+    """转交任务:改 assignee + 新负责人待办出现 + 原 assignee 待办消除。"""
+    try:
+        new_assignee = request.get("assignee_user_id")
+        if not new_assignee:
+            return Result.failed("assignee_user_id is required")
+        return Result.succ(service.reassign(task_id, int(new_assignee)))
+    except Exception as e:
+        logger.exception("task reassign exception!")
+        return Result.failed(str(e))
+
+
 def init_endpoints(system_app: SystemApp, config: ServeConfig) -> None:
     global global_system_app
     system_app.register(Service, config=config)

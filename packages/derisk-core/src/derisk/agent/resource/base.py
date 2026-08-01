@@ -64,6 +64,7 @@ class ResourceType(str, Enum):
     CodeWiki = "code_wiki"
     Monitor = "monitor"
     YUQUE = "yuque"
+    ECP = "ecp"
 
 
 FILE_RESOURCES = [ResourceType.ImageFile.value, ResourceType.ExcelFile.value, ResourceType.TextFile.value, ResourceType.CommonFile.value]

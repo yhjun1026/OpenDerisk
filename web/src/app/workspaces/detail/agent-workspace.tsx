@@ -48,7 +48,7 @@ export function AgentWorkspace({
 }: AgentWorkspaceProps) {
   const inputRefInner = useRef<AgentWorkspaceInputHandle>(null);
   const inputRef = inputRefProp ?? inputRefInner;
-  const { steps, workspaceView, loading, error, lastInput, send, clearSteps, clearWorkspaceView } = useSceneAgentChat({
+  const { steps, workspaceView, loading, error, lastInput, convState, send, clearSteps, clearWorkspaceView } = useSceneAgentChat({
     convUid,
     appCode,
     workspaceId,
@@ -62,12 +62,15 @@ export function AgentWorkspace({
     clearWorkspaceView();
   }, [convUid, clearSteps, clearWorkspaceView]);
 
+  // loading(SSE 进行中) 或后端会话仍 RUNNING(关闭页面后重开,轮询恢复中)均视为运行中
+  const running = loading || convState === 'RUNNING';
+
   return (
     <div className="ws-agent-workspace">
       <div className="ws-agent-workspace__header">
         <span
           className={`ws-agent-workspace__status${
-            loading ? ' ws-agent-workspace__status--running' : error ? ' ws-agent-workspace__status--error' : ''
+            running ? ' ws-agent-workspace__status--running' : error ? ' ws-agent-workspace__status--error' : ''
           }`}
         />
         <span className="ws-agent-workspace__header-title">
@@ -81,7 +84,7 @@ export function AgentWorkspace({
           />
         )}
         <span className="ws-agent-workspace__header-state">
-          {loading ? '运行中…' : error ? '出错了' : '就绪'}
+          {running ? '运行中…' : error ? '出错了' : convState === 'FAILED' ? '已失败' : '就绪'}
         </span>
       </div>
       <div className="ws-agent-workspace__process">

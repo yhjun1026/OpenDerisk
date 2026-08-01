@@ -18,7 +18,6 @@ import Icon, {
   MessageOutlined,
   SettingOutlined,
   ShareAltOutlined,
-  AppstoreOutlined,
   SearchOutlined,
   RobotOutlined,
   ExperimentOutlined,
@@ -460,19 +459,19 @@ function SideBar() {
         icon: navIcon(<BookOutlined />),
         path: '/knowledge-vault',
       }] : []),
+      {
+        key: 'ecp',
+        name: t('ecp_page_title'),
+        isActive: pathname.startsWith('/ecp'),
+        icon: navIcon(<DeploymentUnitOutlined />),
+        path: '/ecp',
+      },
       ...(hasResourceRead('database') || hasResourceRead('tool') ? [{
         key: 'database',
         name: t('Database'),
         isActive: pathname.startsWith('/database'),
         icon: navIcon(<DatabaseOutlined />),
         path: '/database',
-      }] : []),
-      ...(hasResourceRead('tool') ? [{
-        key: 'plugin_market',
-        name: t('plugin_market'),
-        isActive: pathname.startsWith('/settings/plugin-market'),
-        icon: navIcon(<AppstoreOutlined />),
-        path: '/settings/plugin-market',
       }] : []),
     ];
 

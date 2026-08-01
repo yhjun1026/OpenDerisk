@@ -68,7 +68,7 @@ datasource_oracle = [
 
 datasource_duckdb = [
     "duckdb",
-    "duckdb-engine==0.9.1",
+    "duckdb-engine==0.17.0",
 ]
 # datasource_doris = ["pydoris>=1.0.2,<2.0.0"]
 storage_milvus = ["pymilvus"]

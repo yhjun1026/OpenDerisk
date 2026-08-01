@@ -14,7 +14,7 @@ const { Text, Paragraph } = Typography;
  * pointer-events and blocks all clicks (Switch, 新建分组, etc.). Only use full
  * List loading on the first fetch; refreshes after toggle run silently.
  */
-export default function FeaturePluginsSection({ onChange }: { onChange?: () => void }) {
+export default function FeaturePluginsSection({ onChange, hideAlert }: { onChange?: () => void; hideAlert?: boolean }) {
   const { t } = useTranslation();
   const { message, notification } = App.useApp();
   const [initialLoading, setInitialLoading] = useState(true);
@@ -75,12 +75,14 @@ export default function FeaturePluginsSection({ onChange }: { onChange?: () => v
 
   return (
     <div className="space-y-4">
-      <Alert
-        type="info"
-        showIcon
-        message={t('plugin_market_alert_title')}
-        description={t('plugin_market_alert_desc')}
-      />
+      {!hideAlert && (
+        <Alert
+          type="info"
+          showIcon
+          message={t('plugin_market_alert_title')}
+          description={t('plugin_market_alert_desc')}
+        />
+      )}
       <List
         loading={initialLoading}
         dataSource={items}

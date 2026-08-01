@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button, Dropdown, Form, Input, Modal, message } from 'antd';
-import { CommentOutlined, LinkOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
+import { CheckOutlined, CommentOutlined, LinkOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { apiInterceptors, createAsset, resolveAndExecuteIntervention, abortIntervention, terminateTask, deleteTask } from '@/client/api';
+import { apiInterceptors, createAsset, resolveAndExecuteIntervention, abortIntervention, terminateTask, deleteTask, reassignTask } from '@/client/api';
+import { listInbox, updateInboxStatus, listMembers, type InboxItem } from '@/client/api/workspace';
 import { getUserId } from '@/utils';
 
 export type TaskTabKey = 'all' | 'running' | 'awaiting' | 'done' | 'failed';
@@ -27,6 +29,13 @@ const TRIGGER_LABEL: Record<string, string> = {
   timer: '定时',
   webhook: 'Webhook',
   alert: '告警',
+};
+
+const INBOX_SOURCE_LABEL: Record<string, string> = {
+  task: '任务',
+  intervention: '介入',
+  ecp_proposal: '提案',
+  manual: '手动',
 };
 
 function triggerLabel(task: any): string {
@@ -135,6 +144,74 @@ export function SceneTaskRail({
   onReference,
   onRefreshLists,
 }: SceneTaskRailProps) {
+  const router = useRouter();
+  const [view, setView] = useState<'inbox' | 'tasks'>('inbox');
+  const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
+  const [inboxSource, setInboxSource] = useState<string>('all');
+
+  const refreshInbox = async () => {
+    if (!workspaceId) return;
+    setInboxLoading(true);
+    const [err, res] = await apiInterceptors(listInbox(workspaceId));
+    setInboxLoading(false);
+    if (err) return;
+    const items = Array.isArray(res) ? res : ((res as any)?.data || []);
+    setInboxItems(items);
+  };
+
+  useEffect(() => { refreshInbox(); }, [workspaceId]);
+
+  const handleInboxClick = (item: InboxItem) => {
+    if (item.source_type === 'task') {
+      onEnterConversation(Number(item.source_id));
+    } else if (item.source_type === 'intervention') {
+      onPreview(
+        { id: Number(item.source_id), question: { message: item.title }, status: 'requested' },
+        'intervention',
+      );
+    } else if (item.source_type === 'ecp_proposal') {
+      // 提案确认在 ECP 模块进行
+      router.push('/ecp');
+    }
+  };
+
+  const handleInboxDone = async (item: InboxItem, e: any) => {
+    e?.stopPropagation?.();
+    if (!workspaceId) return;
+    const [err] = await apiInterceptors(updateInboxStatus(workspaceId, item.id, 'done'));
+    if (err) { message.error(err.message); return; }
+    message.success('已标记完成');
+    refreshInbox();
+  };
+
+  // ---------------- 任务转交 ----------------
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferTaskId, setTransferTaskId] = useState<number | null>(null);
+  const [members, setMembers] = useState<any[]>([]);
+  const [transferring, setTransferring] = useState(false);
+
+  const handleTransferOpen = async (taskId: number, wsId: number) => {
+    setTransferTaskId(taskId);
+    setTransferOpen(true);
+    const [err, res] = await apiInterceptors(listMembers({ workspace_id: wsId }));
+    if (err) { message.error(err.message); return; }
+    const list = Array.isArray(res) ? res : ((res as any)?.data || []);
+    setMembers(list);
+  };
+
+  const handleTransferSubmit = async (userId: number) => {
+    if (!transferTaskId) return;
+    setTransferring(true);
+    const [err] = await apiInterceptors(reassignTask(transferTaskId, userId));
+    setTransferring(false);
+    if (err) { message.error(err.message); return; }
+    message.success('已转交');
+    setTransferOpen(false);
+    refreshInbox();
+    onRefreshLists?.();
+  };
+
   const [filter, setFilter] = useState('');
   const [tab, setTab] = useState<TaskTabKey>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -334,6 +411,102 @@ export function SceneTaskRail({
 
   return (
     <div className="ws-scene-task-rail">
+      <div className="ws-rail-view-switch">
+        <span
+          className={`ws-rail-view-tab${view === 'inbox' ? ' ws-rail-view-tab--on' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => setView('inbox')}
+          onKeyDown={(e) => { if (e.key === 'Enter') setView('inbox'); }}
+        >
+          待办{inboxItems.length > 0 ? ` ${inboxItems.length}` : ''}
+        </span>
+        <span
+          className={`ws-rail-view-tab${view === 'tasks' ? ' ws-rail-view-tab--on' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => setView('tasks')}
+          onKeyDown={(e) => { if (e.key === 'Enter') setView('tasks'); }}
+        >
+          任务
+        </span>
+      </div>
+      {view === 'inbox' ? (
+        <div className="ws-rail-inbox">
+          <div className="ws-rail-inbox-filter">
+            {['all', 'intervention', 'ecp_proposal', 'task', 'manual'].map((s) => {
+              const count = s === 'all'
+                ? inboxItems.length
+                : inboxItems.filter((it) => it.source_type === s).length;
+              if (s !== 'all' && count === 0 && inboxSource !== s) return null;
+              return (
+                <span
+                  key={s}
+                  className={`ws-rail-inbox-chip${inboxSource === s ? ' ws-rail-inbox-chip--on' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setInboxSource(s)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setInboxSource(s); }}
+                >
+                  {s === 'all' ? '全部' : INBOX_SOURCE_LABEL[s] || s}{count > 0 ? ` ${count}` : ''}
+                </span>
+              );
+            })}
+          </div>
+          {inboxLoading && (
+            <div className="ws-rail-empty"><div className="ws-rail-empty-t">加载中...</div></div>
+          )}
+          {!inboxLoading && inboxItems.length === 0 && (
+            <div className="ws-rail-empty">
+              <div className="ws-rail-empty-t">暂无待办</div>
+              <div className="ws-rail-empty-h">没有需要你介入的事项。可在右侧对话框发起新任务。</div>
+            </div>
+          )}
+          {inboxItems
+            .filter((item) => inboxSource === 'all' || item.source_type === inboxSource)
+            .map((item) => (
+            <div
+              key={item.id}
+              className={`ws-rail-card ws-rail-card--inbox${item.inbox_status === 'doing' ? ' ws-rail-card--inbox-doing' : ''}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => handleInboxClick(item)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleInboxClick(item); } }}
+            >
+              <div className="ws-rail-ttl">{item.title}</div>
+              <div className="ws-rail-meta">
+                <span className="ws-rail-src">{INBOX_SOURCE_LABEL[item.source_type] || item.source_type}</span>
+                <span className="ws-rail-meta-sep">·</span>
+                <span>{item.visibility === 'shared' ? '共享' : '个人'}</span>
+                {item.inbox_status === 'doing' && (
+                  <>
+                    <span className="ws-rail-meta-sep">·</span>
+                    <span>处理中</span>
+                  </>
+                )}
+              </div>
+              <div className="ws-rail-foot">
+                <span className="ws-rail-tm">{dayjs(item.gmt_modified).format('MM-DD HH:mm')}</span>
+                <div className="ws-rail-card-actions">
+                  {item.inbox_status !== 'done' && (
+                    <span
+                      className="ws-rail-card-act"
+                      title="标记完成"
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => handleInboxDone(item, e)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInboxDone(item, e); } }}
+                    >
+                      <CheckOutlined />
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
       <div className="ws-scene-task-rail__header">
         <div className="ws-rail-h-top">
           <span className="ws-rail-title">任务与介入</span>
@@ -399,9 +572,12 @@ export function SceneTaskRail({
           const pbName = t.playbook_id ? pbNameById.get(t.playbook_id) : null;
           const isActive = activeTaskId === t.id;
           const canTerminate = t.status === 'running' || t.status === 'awaiting_human';
-          const moreItems = canTerminate
-            ? [{ key: 'terminate', danger: true, label: '终止任务' }]
-            : [{ key: 'delete', danger: true, label: '删除任务' }];
+          const moreItems = [
+            { key: 'reassign', label: '转交任务' },
+            ...(canTerminate
+              ? [{ key: 'terminate', danger: true, label: '终止任务' }]
+              : [{ key: 'delete', danger: true, label: '删除任务' }]),
+          ];
           return (
             <div
               key={`task-${t.id}`}
@@ -457,6 +633,7 @@ export function SceneTaskRail({
                       onClick: ({ key, domEvent }) => {
                         domEvent.stopPropagation();
                         if (key === 'terminate') handleTerminate(t.id);
+                        else if (key === 'reassign') handleTransferOpen(t.id, t.workspace_id);
                         else handleDelete(t.id);
                       },
                     }}
@@ -488,6 +665,8 @@ export function SceneTaskRail({
           </div>
         )}
       </div>
+      </>
+      )}
 
       <Modal
         open={!!resolveOpen}
@@ -515,6 +694,31 @@ export function SceneTaskRail({
             <Input.TextArea rows={5} placeholder="关键事实、决策理由、下次可复用的内容..." />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={transferOpen}
+        onCancel={() => setTransferOpen(false)}
+        title="转交任务"
+        footer={null}
+      >
+        <p style={{ fontSize: 13, color: 'var(--ws-ink-2)', margin: '12px 0' }}>
+          选择要转交给的成员,转交后任务会出现在对方的待办里。
+        </p>
+        <div>
+          {members.length === 0 && <div style={{ color: 'var(--ws-ink-2)' }}>暂无成员</div>}
+          {members.map((m: any) => (
+            <Button
+              key={m.user_id}
+              style={{ margin: 4 }}
+              loading={transferring}
+              disabled={String(m.user_id) === String(getUserId())}
+              onClick={() => handleTransferSubmit(m.user_id)}
+            >
+              {m.user_name || `用户 ${m.user_id}`}（{m.role}）
+            </Button>
+          ))}
+        </div>
       </Modal>
     </div>
   );

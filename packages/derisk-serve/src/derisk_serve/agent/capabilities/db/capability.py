@@ -189,6 +189,7 @@ class DBCapability(Capability):
         return contribs
 
     def _build_basic_info(self) -> str:
+        """库基本信息:db_name/db_type/dialect + datasource_id(供工具参数)。"""
         if not self._db_name:
             return ""
         lines = [f"<database>", f"  <name>{self._db_name}</name>"]
@@ -196,6 +197,9 @@ class DBCapability(Capability):
             lines.append(f"  <db_type>{self._db_type}</db_type>")
         if self._dialect and self._dialect != self._db_type:
             lines.append(f"  <dialect>{self._dialect}</dialect>")
+        # Inject datasource_id so Agent knows which parameter to pass to tools
+        if self._datasource_id is not None:
+            lines.append(f"  <datasource_id>{self._datasource_id}</datasource_id>")
         lines.append("</database>")
         return "\n".join(lines)
 

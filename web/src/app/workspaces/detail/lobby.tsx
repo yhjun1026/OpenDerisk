@@ -9,11 +9,12 @@ import {
 } from '@ant-design/icons';
 import {
   apiInterceptors,
-  listTasks,
   listArtifacts,
   listDeliveries,
 } from '@/client/api';
+import { listInbox, type InboxItem } from '@/client/api/workspace';
 import { GrowthCard } from './growth-card';
+import { SpaceGuideCard } from './space-guide-card';
 import './lobby.css';
 
 export interface LobbyProps {
@@ -55,14 +56,15 @@ function EmptyState({ title, hint }: { title: string; hint?: string }) {
 
 export function Lobby({
   workspaceId,
+  workspaceCode,
   onSelectTask,
   onSelectArtifact,
 }: LobbyProps) {
-  const { data: tasksRes } = useRequest(
-    async () => apiInterceptors(listTasks({ workspace_id: workspaceId, status: 'running' })),
+  const { data: inboxRes } = useRequest(
+    async () => apiInterceptors(listInbox(workspaceId)),
     { refreshDeps: [workspaceId] },
   );
-  const tasks = tasksRes?.[1];
+  const inboxItems: InboxItem[] = (Array.isArray(inboxRes?.[1]) ? inboxRes[1] : (inboxRes?.[1]?.data || [])) as InboxItem[];
 
   const { data: deliveriesRes } = useRequest(
     async () => apiInterceptors(listDeliveries({ workspace_id: workspaceId })),
@@ -76,37 +78,39 @@ export function Lobby({
   );
   const artifacts = artifactsRes?.[1];
 
-  const runningTasks = (tasks || []).slice(0, 5);
   const recentDeliveries = (deliveries || []).slice(0, 3);
   const recentArtifacts = (artifacts || []).slice(0, 4);
 
   return (
     <div className="ws-lobby">
       <div className="ws-lobby__scroll">
+        {/* 空间导览(新人第一小时:有什么/会什么/怎么干) */}
+        <SpaceGuideCard workspaceId={workspaceId} workspaceCode={workspaceCode} />
+
         {/* 空间成长概览(横向紧凑条) */}
         <GrowthCard workspaceId={workspaceId} />
 
         <div className="ws-lobby__grid">
-          {/* 进行中任务 */}
+          {/* 我的待办(个人工作台) */}
           <section className="ws-lobby__section">
-            <SectionHead icon={<ThunderboltOutlined />} title="进行中任务" count={runningTasks.length} />
+            <SectionHead icon={<ThunderboltOutlined />} title="我的待办" count={inboxItems.length} />
             <div className="ws-lobby__section-body">
-              {runningTasks.length === 0 && (
-                <EmptyState title="暂无进行中任务" hint="在下方输入指令开始任务" />
+              {inboxItems.length === 0 && (
+                <EmptyState title="暂无待办" hint="需要你介入的事项会出现在这里" />
               )}
-              {runningTasks.map((t: any) => (
+              {inboxItems.slice(0, 5).map((item) => (
                 <div
-                  key={t.id}
+                  key={item.id}
                   className="ws-lobby__task-card"
                   role="button"
                   tabIndex={0}
-                  onClick={() => onSelectTask(t.id)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectTask(t.id); }}
+                  onClick={() => item.source_type === 'task' && onSelectTask(Number(item.source_id))}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && item.source_type === 'task') onSelectTask(Number(item.source_id)); }}
                 >
-                  <div className="ws-lobby__task-title">{t.title}</div>
+                  <div className="ws-lobby__task-title">{item.title}</div>
                   <div className="ws-lobby__task-meta">
-                    <Tag color="blue">{t.status}</Tag>
-                    <span>{t.triggered_by}</span>
+                    <Tag color="blue">{item.source_type}</Tag>
+                    <span>{item.visibility === 'shared' ? '共享' : '个人'}</span>
                   </div>
                 </div>
               ))}

@@ -234,6 +234,7 @@ const getFileIcon = (fileName: string): string => {
     sql: '🗄️', csv: '📊', xlsx: '📊', xls: '📊',
     json: '📋', yaml: '📋', yml: '📋', xml: '📋',
     txt: '📄', log: '📄', zip: '📦', tar: '📦', gz: '📦',
+    mp4: '🎬', mov: '🎬', webm: '🎬', avi: '🎬', mkv: '🎬',
   };
   return map[ext] || '📄';
 };
@@ -522,6 +523,17 @@ const DeliverableContentView: FC<{ file: ManusDeliverableFile }> = ({ file }) =>
           ) : (
             <span className="text-sm">无法获取下载链接</span>
           )}
+        </div>
+      );
+    case 'video':
+      return (
+        <div style={{ width: '100%' }}>
+          <video
+            src={resolvedUrl || undefined}
+            controls
+            autoPlay
+            style={{ width: '100%', borderRadius: '8px' }}
+          />
         </div>
       );
     default:

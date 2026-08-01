@@ -117,6 +117,9 @@ class Vis:
             ),
             "d-attach": ("derisk_ext.vis.common.tags.derisk_attach", "DeriskAttach"),
             "d-sql-query": ("derisk_ext.vis.common.tags.derisk_sql_query", "DeriskSqlQuery"),
+            "d-ecp-search": ("derisk_ext.vis.common.tags.derisk_ecp_search", "DeriskEcpSearch"),
+            "d-ecp-metric": ("derisk_ext.vis.common.tags.derisk_ecp_metric", "DeriskEcpMetric"),
+            "d-ecp-object": ("derisk_ext.vis.common.tags.derisk_ecp_object", "DeriskEcpObject"),
         }
 
         if vis_type in vis_map:

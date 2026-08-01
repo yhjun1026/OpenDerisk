@@ -1,103 +1,125 @@
 'use client';
 
-import { apiInterceptors, listAssets, getWorkspaceInfo } from '@/client/api';
-import { Button, Card, Empty, Modal, Spin, Table, Tabs, Tag } from 'antd';
+import { apiInterceptors, getWorkspaceInfo } from '@/client/api';
+import { Button, Card, Empty, Spin, Tabs } from 'antd';
+import {
+  DatabaseOutlined,
+  SendOutlined,
+  ToolOutlined,
+} from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DataAssetsTab } from './data-assets-tab';
+import { DeliveryPanel } from './delivery-panel';
+import { CapabilityTab } from './capability-tab';
 
+const TAB_KEYS = ['data', 'delivery', 'capability'] as const;
+type TabKey = typeof TAB_KEYS[number];
+
+/** 资产页:数据资产(能碰什么) / 交付沉淀(干出了什么) / 能力(会干什么)。 */
 export default function AssetsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const workspaceCode = searchParams?.get('id') || '';
+  const tabParam = searchParams?.get('tab');
+  const activeTab: TabKey = (TAB_KEYS as readonly string[]).includes(tabParam || '')
+    ? (tabParam as TabKey)
+    : 'data';
   const { t } = useTranslation();
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [activeAsset, setActiveAsset] = useState<any | null>(null);
 
-  const { data: ws } = useRequest(async () => {
+  const { data: ws, loading: wsLoading } = useRequest(async () => {
     if (!workspaceCode) return null;
     const [err, res] = await apiInterceptors(getWorkspaceInfo(workspaceCode));
     return err ? null : res;
   }, { refreshDeps: [workspaceCode] });
 
-  const { data: assets, loading } = useRequest(async () => {
-    if (!ws?.id) return [];
-    const [err, res] = await apiInterceptors(listAssets({ workspace_id: ws.id, limit: 200 }));
-    return err ? [] : res || [];
-  }, { refreshDeps: [ws?.id] });
+  const handleTabChange = (key: string) => {
+    router.replace(`${pathname}?id=${workspaceCode}&tab=${key}`);
+  };
 
-  const filtered = (assets || []).filter((a: any) =>
-    typeFilter === 'all' || a.type === typeFilter
-  );
+  if (wsLoading || !searchParams) {
+    return (
+      <div className="flex justify-center py-20">
+        <Spin size="large" />
+      </div>
+    );
+  }
 
-  const columns = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: t('assets.name') || 'Name', dataIndex: 'name' },
-    { title: t('assets.type') || 'Type', dataIndex: 'type', width: 150,
-      render: (v: string) => <Tag color={v === 'historical_artifact' ? 'purple' : 'cyan'}>{v}</Tag> },
-    { title: 'Source Task', dataIndex: 'source_task_id', width: 110 },
-    { title: 'Published', dataIndex: 'is_published', width: 100,
-      render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'yes' : 'no'}</Tag> },
-    { title: 'Tags', dataIndex: 'tags', render: (tags: string[]) =>
-      (tags || []).map((tg, i) => <Tag key={i}>{tg}</Tag>) },
-    { title: 'Created', dataIndex: 'gmt_created', width: 180 },
+  if (!ws) {
+    return (
+      <div className="p-6">
+        <Empty description="Workspace not found" />
+      </div>
+    );
+  }
+
+  const tabs = [
     {
-      title: '', key: 'view', width: 80,
-      render: (_: any, r: any) => (
-        <Button size="small" onClick={() => setActiveAsset(r)}>View</Button>
+      key: 'data',
+      label: (
+        <span>
+          <DatabaseOutlined style={{ marginRight: 6 }} />
+          {t('assets.tab_data') || '数据资产'}
+        </span>
       ),
+      children: <DataAssetsTab workspaceId={ws.id} workspaceCode={ws.workspace_code} />,
+    },
+    {
+      key: 'delivery',
+      label: (
+        <span>
+          <SendOutlined style={{ marginRight: 6 }} />
+          {t('assets.tab_delivery') || '交付沉淀'}
+        </span>
+      ),
+      children: <DeliveryPanel workspaceId={ws.id} />,
+    },
+    {
+      key: 'capability',
+      label: (
+        <span>
+          <ToolOutlined style={{ marginRight: 6 }} />
+          {t('assets.tab_capability') || '能力'}
+        </span>
+      ),
+      children: <CapabilityTab workspaceId={ws.id} />,
     },
   ];
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-semibold">{t('assets.title') || 'Workspace Memory (Assets)'}</h1>
-        <Link href={`/workspaces/detail?id=${workspaceCode}`}><Button>{t('back') || 'Back'}</Button></Link>
-      </div>
-      <Card>
-        <Tabs
-          activeKey={typeFilter}
-          onChange={setTypeFilter}
-          items={[
-            { key: 'all', label: 'All' },
-            { key: 'historical_artifact', label: 'Historical Artifacts' },
-            { key: 'case', label: 'Cases' },
-          ]}
-        />
-        {loading ? <div className="flex justify-center py-8"><Spin /></div> : (
-          <Table
-            rowKey="id"
-            columns={columns}
-            dataSource={filtered}
-            pagination={{ pageSize: 20 }}
-            locale={{ emptyText: <Empty description="No assets yet — distilled tasks will produce them" /> }}
-          />
-        )}
-      </Card>
-
-      <Modal
-        open={!!activeAsset}
-        onCancel={() => setActiveAsset(null)}
-        footer={null}
-        width={900}
-        title={activeAsset?.name}
-      >
-        {activeAsset && (
-          <div>
-            <p className="text-sm text-gray-600 mb-2">
-              <Tag color="purple">{activeAsset.type}</Tag>
-              {' '}v{activeAsset.current_version} · Source Task #{activeAsset.source_task_id}
-            </p>
-            <p className="text-sm">{activeAsset.description}</p>
-            <h3 className="text-sm font-medium mt-4">Content</h3>
-            <pre className="text-xs bg-gray-50 p-3 max-h-96 overflow-auto whitespace-pre-wrap">
-              {activeAsset.content_text || activeAsset.content_ref || '(no content stored)'}
-            </pre>
+    <div className="ws-page">
+      <div className="ws-page-bg" />
+      <div className="ws-page-content" style={{ paddingTop: 16, paddingBottom: 48 }}>
+        <div className="ws-page-header mb-6">
+          <div className="ws-page-header-left">
+            <div className="ws-page-icon">
+              <DatabaseOutlined />
+            </div>
+            <div>
+              <p className="ws-page-eyebrow">
+                {ws.name}
+                <span className="ws-page-eyebrow-code">{ws.workspace_code}</span>
+              </p>
+              <h1 className="ws-page-title">{t('assets.title_page') || '资产'}</h1>
+              <p className="ws-page-subtitle">
+                {t('assets.subtitle') || '空间的数据资产、能力,与任务交付沉淀 —— 大家共同维护的公共环境。'}
+              </p>
+            </div>
           </div>
-        )}
-      </Modal>
+          <div className="ws-page-actions">
+            <Link href={`/workspaces/detail?id=${workspaceCode}`}>
+              <Button>{t('back') || '返回'}</Button>
+            </Link>
+          </div>
+        </div>
+
+        <Card className="ws-surface">
+          <Tabs activeKey={activeTab} onChange={handleTabChange} items={tabs} />
+        </Card>
+      </div>
     </div>
   );
 }

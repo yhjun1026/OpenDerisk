@@ -155,6 +155,18 @@ const ImageOutput: FC<{ content: string }> = ({ content }) => (
   </div>
 );
 
+/** Video display */
+const VideoOutput: FC<{ content: string }> = ({ content }) => (
+  <div className="flex justify-center p-2">
+    <video
+      src={content}
+      controls
+      autoPlay
+      className="max-w-full max-h-[500px] rounded-lg shadow-sm"
+    />
+  </div>
+);
+
 /** Markdown renderer - same style as SummaryView for consistent rendering */
 const MarkdownOutput: FC<{ content: string }> = ({ content }) => (
   <div className="py-2 px-3">
@@ -192,6 +204,8 @@ const OutputItem: FC<{ output: ManusExecutionOutput }> = ({ output }) => {
       return <HtmlOutput content={String(content)} />;
     case 'image':
       return <ImageOutput content={String(content)} />;
+    case 'video':
+      return <VideoOutput content={String(content)} />;
     case 'chart':
       return <MarkdownOutput content={String(content)} />;
     case 'thought':

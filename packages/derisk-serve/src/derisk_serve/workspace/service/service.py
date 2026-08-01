@@ -114,7 +114,44 @@ class WorkspaceService(BaseService[WorkspaceEntity, WorkspaceRequest, WorkspaceR
                 )
         except Exception as e:
             logger.warning(f"auto bind default scene agent failed: {e}")
+        self._provision_ecp_workspace(response)
         return self.get_by_id(response.id)  # reload to get member_count
+
+    def _provision_ecp_workspace(self, response: WorkspaceResponse) -> None:
+        """供给派生 ECP workspace(best-effort,任一步失败不影响建空间)。
+
+        - owner 写入确认白名单:收紧该空间的提案确认权限(空白名单=放行一切,
+          见 ConfirmerDao.is_confirmer bootstrap 规则)。
+        - 预建 ECP 软知识空间(get_or_create_space 幂等):异步,fire-and-forget。
+        """
+        import asyncio
+
+        from derisk_serve.workspace.ecp_derive import derived_ecp_workspace_id
+
+        ecp_ws = derived_ecp_workspace_id(response.workspace_code)
+        owner_id = str(response.owner_user_id)
+        try:
+            from derisk_serve.ecp.models.models import ConfirmerDao
+
+            ConfirmerDao().add(ecp_ws, owner_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ecp confirmer provision failed for {ecp_ws}: {e}")
+        try:
+            from derisk_serve.ecp.config import (
+                SERVE_SERVICE_COMPONENT_NAME as ECP_SERVICE,
+            )
+            from derisk_serve.ecp.service.service import Service as EcpService
+
+            if not self._system_app:
+                return
+            ecp_service = self._system_app.get_component(ECP_SERVICE, EcpService)
+            coro = ecp_service.get_or_create_space(ecp_ws, owner_id=owner_id)
+            try:
+                asyncio.get_running_loop().create_task(coro)
+            except RuntimeError:  # 无运行中事件循环(脚本/测试上下文)
+                asyncio.run(coro)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ecp space provision failed for {ecp_ws}: {e}")
 
     def update(self, request: WorkspaceRequest) -> WorkspaceResponse:
         if not request.workspace_code:

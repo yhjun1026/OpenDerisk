@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import useChat from '@/hooks/use-chat';
 import type { WorkspaceEvent } from '@/hooks/use-chat';
-import { queryChatStatus } from '@/client/api';
+import { useChatPolling, type ConversationState } from '@/hooks/use-chat-polling';
+import type { ChatQueryResponse } from '@/client/api/chat';
 import type { AgentStep } from './agent-types';
 import { parseAgentSteps } from './parse-agent-steps';
 import { parseWorkspaceView } from './parse-workspace-view';
@@ -29,6 +30,8 @@ interface UseSceneAgentChatResult {
   loading: boolean;
   error: string | null;
   lastInput: SceneAgentSendPayload | null;
+  /** 后端会话运行状态:RUNNING 表示后台仍在执行(可关闭页面后恢复) */
+  convState: ConversationState;
   send: (payload: SceneAgentSendPayload) => void;
   abort: () => void;
   clearSteps: () => void;
@@ -84,28 +87,31 @@ export function useSceneAgentChat({
     optimisticUserRef.current = null;
   }, []);
 
-  // 历史恢复:重开已有会话时,拉取 vis_final 还原步骤与总结。
-  // query_chat 后端按 session_id 兜底取最新一轮 agent 会话,
-  // 未产生过对话的会话返回空视图,天然幂等。
-  useEffect(() => {
-    if (!convUid) return;
-    optimisticUserRef.current = null;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await queryChatStatus(convUid, 'scene_agent_workspace');
-        const parsed = parseSceneAgentWorkspaceString(res?.data?.data?.vis_final);
-        if (!cancelled && parsed && Array.isArray(parsed.execution)) {
-          setWorkspaceView((prev) => parseWorkspaceView(parsed, prev));
-        }
-      } catch {
-        // 历史恢复失败不阻断新对话
+  // 历史恢复 + 运行中续传(关闭页面后重开可继续接收产出):
+  // 由 useChatPolling 统一驱动,先拉 vis_final 全量渲染历史,再按 state 决定是否增量轮询。
+  // - 首次 checkStatus 拉取 vis_final → onPoll 合并历史(先渲染历史所有)
+  // - state===RUNNING → 自动 2.5s 轮询 → onPoll 持续增量合并新产出
+  // - send 发起新对话 loading=true → enabled=false 停轮询,SSE 接管
+  // - SSE 结束 loading=false → enabled true,convId effect 自动 checkStatus 恢复
+  const handlePoll = useCallback(
+    (res: ChatQueryResponse) => {
+      // 过滤 convUid 快速切换时滞后的旧会话响应,避免脏合并
+      if (res.conv_id && convUid && res.conv_id !== convUid) return;
+      const parsed = parseSceneAgentWorkspaceString(res.vis_final);
+      if (parsed && Array.isArray(parsed.execution)) {
+        setWorkspaceView((prev) => parseWorkspaceView(parsed, prev));
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [convUid]);
+    },
+    [convUid],
+  );
+
+  const { state: convState } = useChatPolling({
+    convId: convUid ?? null,
+    enabled: !loading,
+    visRender: 'scene_agent_workspace',
+    interval: 2500,
+    onPoll: handlePoll,
+  });
 
   const send = useCallback(
     (payload: SceneAgentSendPayload) => {
@@ -236,5 +242,5 @@ export function useSceneAgentChat({
     setLoading(false);
   }, []);
 
-  return { steps, workspaceView, loading, error, lastInput, send, abort, clearSteps, clearWorkspaceView };
+  return { steps, workspaceView, loading, error, lastInput, convState, send, abort, clearSteps, clearWorkspaceView };
 }

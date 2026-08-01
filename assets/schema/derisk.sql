@@ -9,7 +9,7 @@ use derisk;
 -- MySQL DDL Script for Derisk
 -- Version: 0.3.0
 -- Generated from SQLAlchemy ORM Models
--- Generated: 2026-07-26 19:38:02
+-- Generated: 2026-07-31 22:39:41
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -574,11 +574,13 @@ CREATE TABLE IF NOT EXISTS `connect_config` (
   `gmt_created` DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation time',
   `gmt_modified` DATETIME NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record update time',
   `ext_config` TEXT NULL COMMENT 'Extended configuration, json format',
+  `owner_workspace_id` INT NULL COMMENT 'Owner workspace id for workspace-owned datasets; NULL means global',
   `gmt_create` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `gmt_modify` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_db` (`db_name`),
-  KEY `idx_q_db_type` (`db_type`)
+  KEY `idx_q_db_type` (`db_type`),
+  KEY `idx_q_owner_workspace` (`owner_workspace_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: db_spec

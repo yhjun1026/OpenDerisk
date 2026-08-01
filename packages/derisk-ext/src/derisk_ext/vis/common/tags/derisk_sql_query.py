@@ -137,6 +137,18 @@ class DeriskSqlQuery(Vis):
         if raw_result:
             result["raw_result"] = raw_result
 
+        # Preserve any additional fields (e.g., trust, warning from ECP)
+        reserved_keys = {
+            "sql", "db_name", "db_type", "dialect", "columns", "rows",
+            "total_rows", "page", "total_pages", "page_size", "has_more",
+            "csv_file", "csv_export_reason", "file_path", "file_size",
+            "file_format", "file_mode", "file_export_error", "download_url",
+            "preview_url", "raw_result"
+        }
+        for key, value in kwargs.items():
+            if key not in reserved_keys and value is not None:
+                result[key] = value
+
         return result
 
     async def generate_param(self, **kwargs) -> Optional[Dict[str, Any]]:

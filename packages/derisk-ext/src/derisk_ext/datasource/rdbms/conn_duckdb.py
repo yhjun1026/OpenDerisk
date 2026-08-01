@@ -69,6 +69,15 @@ class DuckDbConnector(RDBMSConnector):
         _engine_args = engine_args or {}
         return cls(create_engine("duckdb:///" + file_path, **_engine_args), **kwargs)
 
+    def _get_schema_for_inspection(self) -> Optional[str]:
+        """Return the schema name for table inspection.
+
+        For DuckDB, engine.url.database is the backing file path, not a
+        schema name. Passing it through would make duckdb_engine split the
+        path on dots as "<db>.<schema>" and fail. None means default schema.
+        """
+        return None
+
     def get_users(self):
         """Get users."""
         with self.session_scope() as session:

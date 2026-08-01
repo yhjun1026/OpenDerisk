@@ -1,8 +1,10 @@
 'use client';
 
 import { apiInterceptors, listTasks, getWorkspaceInfo } from '@/client/api';
+import { getUserId } from '@/utils';
+import { useState } from 'react';
 import { Button, Empty, Spin, Tabs } from 'antd';
-import { PlusOutlined, ThunderboltOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { ScheduleOutlined, PlusOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -39,7 +41,7 @@ function statusLabel(s: string) { return (s || '').replace(/_/g, ' '); }
 export default function TaskListPage() {
   const searchParams = useSearchParams();
   const workspaceCode = searchParams?.get('id') || '';
-  const activeTab = searchParams?.get('tab') === 'triggers' ? 'triggers' : 'runs';
+  const activeTab = searchParams?.get('tab') === 'runs' ? 'runs' : 'triggers';
   const { t } = useTranslation();
 
   const { data: ws } = useRequest(async () => {
@@ -48,11 +50,16 @@ export default function TaskListPage() {
     return err ? null : res;
   }, { refreshDeps: [workspaceCode] });
 
+  const [showAll, setShowAll] = useState(false);
   const { data: tasks, loading } = useRequest(async () => {
     if (!ws?.id) return [];
-    const [err, res] = await apiInterceptors(listTasks({ workspace_id: ws.id, limit: 200 }));
+    const uid = Number(getUserId()) || 0;
+    const [err, res] = await apiInterceptors(listTasks({
+      workspace_id: ws.id, limit: 200,
+      mine: !showAll, user_id: uid || undefined,
+    }));
     return err ? [] : res || [];
-  }, { refreshDeps: [ws?.id] });
+  }, { refreshDeps: [ws?.id, showAll] });
 
   const columns: ColumnsType<TaskRow> = [
     {
@@ -118,17 +125,14 @@ export default function TaskListPage() {
       <div className="ws-page-content">
         <div className="ws-page-header">
           <div className="ws-page-header-left">
-            <div className="ws-page-icon"><ThunderboltOutlined /></div>
+            <div className="ws-page-icon"><ScheduleOutlined /></div>
             <div>
               <div className="ws-page-eyebrow">
-                {t('workspaces.tasks') || 'Tasks'}
-                {(tasks || []).length > 0 && (
-                  <span className="ws-page-eyebrow-code">{(tasks || []).length} total</span>
-                )}
+                {t('workspaces.subscriptions') || '订阅'}
               </div>
-              <h1 className="ws-page-title">{t('tasks.title_page') || 'Tasks'}</h1>
+              <h1 className="ws-page-title">{t('workspaces.subscriptions') || '订阅'}</h1>
               <p className="ws-page-subtitle">
-                {t('tasks.subtitle') || 'Playbook runs land here; timer/webhook/alert rules that spawn them live under Trigger Rules.'}
+                {t('tasks.subtitle') || '给场景订阅触发源:定时 / Webhook / 告警,到点或事件发生时自动按剧本创建任务;「执行记录」查看每次运行。'}
               </p>
             </div>
           </div>
@@ -136,8 +140,13 @@ export default function TaskListPage() {
             <Link href={`/workspaces/detail?id=${workspaceCode}`}>
               <Button icon={<ArrowLeftOutlined />}>{t('back') || 'Back'}</Button>
             </Link>
-            <Link href={`/workspaces/detail/tasks/create?id=${workspaceCode}`}>
-              <Button type="primary" icon={<PlusOutlined />}>{t('tasks.create') || 'New Task'}</Button>
+            {activeTab === 'runs' && (
+              <Button onClick={() => setShowAll(v => !v)}>
+                {showAll ? '只看我的' : '看全部'}
+              </Button>
+            )}
+            <Link href={`/workspaces/detail/tasks/create?id=${workspaceCode}&type=timer`}>
+              <Button type="primary" icon={<PlusOutlined />}>新建订阅</Button>
             </Link>
           </div>
         </div>
@@ -151,7 +160,7 @@ export default function TaskListPage() {
           items={[
             {
               key: 'runs',
-              label: t('tasks.tab_runs') || '执行记录',
+              label: '执行记录',
               children: (
                 <div className="ws-table-wrap">
                   <Table<TaskRow>
@@ -168,7 +177,7 @@ export default function TaskListPage() {
             },
             {
               key: 'triggers',
-              label: t('tasks.tab_triggers') || '触发规则',
+              label: '触发规则',
               children: ws?.id ? (
                 <div className="ws-table-wrap">
                   <TriggersTable workspaceId={ws.id} workspaceCode={workspaceCode} />

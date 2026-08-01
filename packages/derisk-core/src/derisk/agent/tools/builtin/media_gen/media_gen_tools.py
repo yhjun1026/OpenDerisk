@@ -3,12 +3,19 @@
 Agent tools for generating images and videos using AI models.
 Integrates with MediaGenProviderRegistry for multi-provider support
 and AgentFileSystem/d-attach for file delivery.
+
+Supported providers:
+- Image: openai (DALL-E 3/2, gpt-image-1), wanxiang (通义万相 wan2.6/wanx2.1/wanx-v1), google (Nano Banana)
+- Video: openai_video (Sora), seedance (豆包 Seedance 2.0/1.5 Pro/1.0 Pro)
+
+Tool descriptions are dynamically augmented with currently available providers/models
+based on which API keys are configured in environment variables.
 """
 
 import logging
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from derisk.agent.tools.base import ToolBase, ToolCategory, ToolRiskLevel, ToolSource
 from derisk.agent.tools.context import ToolContext
@@ -19,43 +26,90 @@ logger = logging.getLogger(__name__)
 
 _GENERATE_IMAGE_PROMPT = """使用 AI 模型生成图片。
 
+**支持的 Provider 和模型：**
+
+| Provider | 模型 | 说明 |
+|----------|------|------|
+| openai | dall-e-3, dall-e-2, gpt-image-1 | OpenAI DALL-E 系列 |
+| wanxiang | wan2.6-t2i, wan2.5-t2i-preview, wan2.2-t2i-flash, wan2.2-t2i-plus, wanx2.1-t2i-turbo, wanx2.1-t2i-plus, wanx2.0-t2i-turbo, wanx-v1 | 阿里云通义万相 |
+| google | gemini-2.5-flash-image-preview, gemini-2.5-flash-image | Google Nano Banana (支持图片生成和编辑) |
+
 **使用场景：**
-- 根据文字描述生成图片 (如 DALL-E 3, Stable Diffusion, Flux)
+- 根据文字描述生成图片
 - 生成数据可视化、插图、概念图等
+- Google Nano Banana 还支持图片编辑 (通过 image_url 传入参考图)
 - 生成的图片会自动保存并交付给用户
 
 **推荐用法：**
 ```
-# 生成一张图片
-generate_image(prompt="一只在星空下弹吉他的猫，赛博朋克风格", model="dall-e-3", size="1024x1024")
+# 使用 OpenAI DALL-E 3 生成图片
+generate_image(prompt="一只在星空下弹吉他的猫，赛博朋克风格", provider="openai", model="dall-e-3", size="1024x1024")
 
-# 生成高质量图片
-generate_image(prompt="产品界面设计图", model="dall-e-3", quality="hd", size="1792x1024")
+# 使用阿里云通义万相生成图片 (支持中英文)
+generate_image(prompt="一只坐着的橘黄色的猫，表情愉悦，活泼可爱", provider="wanxiang", model="wan2.6-t2i", size="1280*1280")
+
+# 使用通义万相极速版 (更快的生成速度)
+generate_image(prompt="产品界面设计图", provider="wanxiang", model="wanx2.1-t2i-turbo", size="1024*1024")
+
+# 使用 Google Nano Banana 生成图片 (支持中英文)
+generate_image(prompt="一只在星空下弹吉他的猫，赛博朋克风格", provider="google", model="gemini-2.5-flash-image-preview")
+
+# 使用 Google Nano Banana 编辑图片 (传入参考图)
+generate_image(prompt="把背景改成日落场景", provider="google", model="gemini-2.5-flash-image-preview", image_url="https://example.com/original.jpg")
+
+# 使用反向提示词 (排除不想要的内容)
+generate_image(prompt="一座美丽的城市夜景", provider="wanxiang", model="wan2.6-t2i", negative_prompt="低分辨率，模糊，变形")
 ```
 
 **注意事项：**
 - 生成图片需要消耗 API 配额，请合理使用
-- 图片生成通常需要 10-30 秒
+- 图片生成通常需要 10-60 秒 (通义万相异步任务可能需要更长时间)
 - 生成的图片会自动上传到存储并生成交付链接
+- OpenAI 需设置 OPENAI_API_KEY 环境变量
+- 通义万相需设置 DASHSCOPE_API_KEY 环境变量
+- Google Nano Banana 需设置 GOOGLE_API_KEY 环境变量
 """
 
 _GENERATE_VIDEO_PROMPT = """使用 AI 模型生成视频。
 
+**支持的 Provider 和模型：**
+
+| Provider | 模型 | 说明 |
+|----------|------|------|
+| openai_video | sora | OpenAI Sora |
+| seedance | doubao-seedance-2-0-250428, doubao-seedance-1-5-pro-251215, doubao-seedance-1-0-pro-250428, doubao-seedance-1-0-pro-fast-250428 | 火山引擎豆包 Seedance |
+
 **使用场景：**
-- 根据文字描述生成短视频 (如 Sora, Runway)
+- 根据文字描述生成短视频 (文生视频)
+- 根据首帧图片 + 文字描述生成视频 (图生视频)
+- 根据首帧 + 尾帧图片生成视频 (首尾帧生视频，仅 Seedance)
 - 生成产品演示、概念视频等
-- 生成的视频会自动保存并交付给用户
 
 **推荐用法：**
 ```
-# 生成一段视频
-generate_video(prompt="日落时分海浪拍打沙滩的慢镜头", model="sora", duration=5)
+# 使用 OpenAI Sora 生成视频
+generate_video(prompt="日落时分海浪拍打沙滩的慢镜头", provider="openai_video", model="sora", duration=5)
+
+# 使用火山引擎 Seedance 文生视频
+generate_video(prompt="一只小猫对着镜头打哈欠", provider="seedance", model="doubao-seedance-1-0-pro-250428", duration=5, resolution="720p")
+
+# 使用 Seedance 图生视频 (首帧图片)
+generate_video(prompt="镜头缓慢推进，女孩转头微笑", provider="seedance", model="doubao-seedance-2-0-250428", image_url="https://example.com/first_frame.jpg", duration=5)
+
+# 使用 Seedance 首尾帧生视频
+generate_video(prompt="从白天过渡到夜晚", provider="seedance", model="doubao-seedance-1-5-pro-251215", image_url="https://example.com/day.jpg", image_url_last="https://example.com/night.jpg", duration=5)
+
+# 生成无声视频
+generate_video(prompt="城市夜景延时摄影", provider="seedance", model="doubao-seedance-2-0-250428", generate_audio=false)
 ```
 
 **注意事项：**
-- 视频生成需要较长时间 (通常 1-5 分钟)
+- 视频生成需要较长时间 (通常 1-10 分钟)
 - 视频生成消耗较多 API 配额
 - 生成的视频会自动上传到存储并生成交付链接
+- OpenAI 需设置 OPENAI_API_KEY 环境变量
+- 火山引擎需设置 ARK_API_KEY 环境变量
+- image_url 支持公网 URL 和 Base64 编码 (data:image/xxx;base64,...)
 """
 
 
@@ -103,7 +157,10 @@ def _get_agent_file_system(context: Optional[ToolContext]) -> Any:
 
 def _resolve_api_key(provider_name: str, context: Optional[ToolContext]) -> Optional[str]:
     """Resolve API key from context config or environment variables."""
-    from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegistry
+    from derisk.agent.util.media_gen.provider_registry import (
+        MediaGenProviderRegistry,
+        PROVIDER_ENV_FALLBACKS,
+    )
 
     # 1. From context config
     if context:
@@ -115,14 +172,21 @@ def _resolve_api_key(provider_name: str, context: Optional[ToolContext]) -> Opti
             if isinstance(media_gen_config, dict) and media_gen_config.get("api_key"):
                 return media_gen_config["api_key"]
 
-    # 2. From provider-specific env var
+    # 2. From provider-specific env var (registered env_key)
     env_key = MediaGenProviderRegistry.get_env_key(provider_name)
     if env_key:
         val = os.environ.get(env_key)
         if val:
             return val
 
-    # 3. Common fallbacks
+    # 3. Provider-specific fallbacks (from registry module)
+    fallback_keys = PROVIDER_ENV_FALLBACKS.get(provider_name, [])
+    for key in fallback_keys:
+        val = os.environ.get(key)
+        if val:
+            return val
+
+    # 4. Common fallbacks
     for key in ["OPENAI_API_KEY", "MEDIA_GEN_API_KEY"]:
         val = os.environ.get(key)
         if val:
@@ -132,7 +196,13 @@ def _resolve_api_key(provider_name: str, context: Optional[ToolContext]) -> Opti
 
 
 class GenerateImageTool(ToolBase):
-    """AI 图片生成工具"""
+    """AI 图片生成工具
+
+    支持多 Provider 图片生成：
+    - OpenAI: dall-e-3, dall-e-2, gpt-image-1
+    - 阿里云通义万相: wan2.6-t2i, wan2.5-t2i-preview, wanx2.1-t2i-turbo, wanx-v1 等
+    - Google Nano Banana: gemini-2.5-flash-image-preview (支持图片编辑)
+    """
 
     def _define_metadata(self) -> ToolMetadata:
         return ToolMetadata(
@@ -143,8 +213,8 @@ class GenerateImageTool(ToolBase):
             risk_level=ToolRiskLevel.MEDIUM,
             source=ToolSource.SYSTEM,
             requires_permission=True,
-            timeout=120,
-            tags=["image", "generation", "ai", "media", "dall-e"],
+            timeout=180,
+            tags=["image", "generation", "ai", "media", "dall-e", "wanxiang", "wanx", "google", "banana"],
             author="openderisk",
         )
 
@@ -154,35 +224,84 @@ class GenerateImageTool(ToolBase):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "图片描述 (英文效果更佳)",
+                    "description": (
+                        "图片描述/提示词。通义万相和 Google Nano Banana 支持中英文，OpenAI 建议用英文。"
+                        "详细描述画面内容、风格、构图等。"
+                    ),
                 },
                 "provider": {
                     "type": "string",
-                    "description": "生成服务提供商",
+                    "description": (
+                        "生成服务提供商: 'openai' (DALL-E), 'wanxiang' (通义万相), 'google' (Nano Banana)"
+                    ),
                     "default": "openai",
                 },
                 "model": {
                     "type": "string",
-                    "description": "模型名称 (dall-e-3, dall-e-2, gpt-image-1 等)",
+                    "description": (
+                        "模型名称。OpenAI: dall-e-3, dall-e-2, gpt-image-1; "
+                        "通义万相: wan2.6-t2i, wan2.5-t2i-preview, wan2.2-t2i-flash, "
+                        "wan2.2-t2i-plus, wanx2.1-t2i-turbo, wanx2.1-t2i-plus, "
+                        "wanx2.0-t2i-turbo, wanx-v1; "
+                        "Google: gemini-2.5-flash-image-preview, gemini-2.5-flash-image"
+                    ),
                     "default": "dall-e-3",
                 },
                 "size": {
                     "type": "string",
-                    "enum": ["1024x1024", "1024x1792", "1792x1024", "512x512", "256x256"],
-                    "description": "图片尺寸",
+                    "description": (
+                        "图片尺寸。OpenAI: '1024x1024', '1024x1792', '1792x1024', '512x512'; "
+                        "通义万相: '1280*1280', '1024*1024', '720*1280', '768*1152', '1280*720' "
+                        "(使用 * 分隔宽高); Google Nano Banana 不支持自定义尺寸"
+                    ),
                     "default": "1024x1024",
+                },
+                "image_url": {
+                    "type": "string",
+                    "description": (
+                        "参考图片 URL (仅 Google Nano Banana 支持，用于图片编辑模式)。"
+                        "传入后模型将基于该图片进行编辑。"
+                        "支持公网 URL 和 Base64 编码 (data:image/xxx;base64,...)"
+                    ),
                 },
                 "quality": {
                     "type": "string",
                     "enum": ["standard", "hd"],
-                    "description": "图片质量 (dall-e-3 支持 hd)",
+                    "description": "图片质量 (仅 OpenAI dall-e-3 支持 hd)",
                     "default": "standard",
                 },
                 "style": {
                     "type": "string",
-                    "enum": ["vivid", "natural"],
-                    "description": "图片风格 (dall-e-3 支持)",
+                    "description": (
+                        "图片风格。OpenAI dall-e-3: 'vivid', 'natural'; "
+                        "通义万相 wanx-v1: 'auto', 'photography', 'portrait', '3d_cartoon', "
+                        "'anime', 'oil_painting', 'watercolor', 'sketch', 'chinese_painting', "
+                        "'flat_illustration'"
+                    ),
                     "default": "vivid",
+                },
+                "negative_prompt": {
+                    "type": "string",
+                    "description": (
+                        "反向提示词，描述不希望在画面中看到的内容 (仅通义万相支持)。"
+                        "例如: '低分辨率，模糊，变形，多余的手指'"
+                    ),
+                },
+                "n": {
+                    "type": "integer",
+                    "description": "生成图片数量 (1-4)，通义万相默认4张，建议设为1以节省配额",
+                    "minimum": 1,
+                    "maximum": 4,
+                },
+                "watermark": {
+                    "type": "boolean",
+                    "description": "是否添加AI水印 (仅通义万相 wan2.6+ 支持，默认 false)",
+                    "default": False,
+                },
+                "seed": {
+                    "type": "integer",
+                    "description": "随机数种子，用于复现结果 (仅通义万相支持)",
+                    "minimum": 0,
                 },
                 "description": {
                     "type": "string",
@@ -191,6 +310,20 @@ class GenerateImageTool(ToolBase):
             },
             "required": ["prompt"],
         }
+
+    def to_openai_tool(self) -> Dict[str, Any]:
+        """Override to dynamically inject available providers/models into description."""
+        tool_dict = super().to_openai_tool()
+        try:
+            from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegistry
+            availability = MediaGenProviderRegistry.format_available_summary()
+            if availability:
+                tool_dict["function"]["description"] = (
+                    tool_dict["function"]["description"] + "\n\n" + availability
+                )
+        except Exception as e:
+            logger.debug(f"[generate_image] Failed to inject dynamic availability: {e}")
+        return tool_dict
 
     async def execute(
         self, args: Dict[str, Any], context: Optional[ToolContext] = None
@@ -225,11 +358,14 @@ class GenerateImageTool(ToolBase):
 
         # Generate image
         try:
-            gen_kwargs = {
-                k: v
-                for k, v in args.items()
-                if k in ("size", "quality", "style") and v
-            }
+            # Collect all supported generation parameters
+            gen_kwargs = {}
+            for k in ("size", "quality", "style", "negative_prompt", "n",
+                      "watermark", "seed", "image_url", "timeout"):
+                v = args.get(k)
+                if v is not None and v != "":
+                    gen_kwargs[k] = v
+
             result = await provider.generate_image(prompt, model, **gen_kwargs)
         except NotImplementedError:
             return ToolResult.fail(
@@ -317,8 +453,14 @@ class GenerateImageTool(ToolBase):
             f"🎨 模型: {result.metadata.get('model', 'unknown')}",
         ]
 
+        if result.metadata.get("provider"):
+            parts.append(f"🔌 服务商: {result.metadata['provider']}")
+
         if result.metadata.get("revised_prompt"):
             parts.append(f"📝 优化后的提示词: {result.metadata['revised_prompt']}")
+
+        if result.metadata.get("image_url"):
+            parts.append(f"🔗 原始图片链接: {result.metadata['image_url']}")
 
         if preview_url:
             parts.append(f"\n![{description}]({preview_url})")
@@ -345,7 +487,13 @@ class GenerateImageTool(ToolBase):
 
 
 class GenerateVideoTool(ToolBase):
-    """AI 视频生成工具"""
+    """AI 视频生成工具
+
+    支持多 Provider 视频生成：
+    - OpenAI: Sora
+    - 火山引擎豆包 Seedance: doubao-seedance-2-0-250428, doubao-seedance-1-5-pro-251215 等
+    - 支持 文生视频、图生视频 (首帧)、首尾帧生视频
+    """
 
     def _define_metadata(self) -> ToolMetadata:
         return ToolMetadata(
@@ -357,7 +505,7 @@ class GenerateVideoTool(ToolBase):
             source=ToolSource.SYSTEM,
             requires_permission=True,
             timeout=600,
-            tags=["video", "generation", "ai", "media", "sora"],
+            tags=["video", "generation", "ai", "media", "sora", "seedance", "doubao"],
             author="openderisk",
         )
 
@@ -367,36 +515,88 @@ class GenerateVideoTool(ToolBase):
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "视频描述 (英文效果更佳)",
+                    "description": (
+                        "视频描述/提示词。通义万相和 Seedance 均支持中英文。"
+                        "详细描述场景、动作、镜头运动、光影等。"
+                    ),
                 },
                 "provider": {
                     "type": "string",
-                    "description": "生成服务提供商",
+                    "description": (
+                        "生成服务提供商: 'openai_video' (Sora) 或 'seedance' (豆包 Seedance)"
+                    ),
                     "default": "openai_video",
                 },
                 "model": {
                     "type": "string",
-                    "description": "模型名称 (sora 等)",
+                    "description": (
+                        "模型名称。OpenAI: 'sora'; "
+                        "Seedance: 'doubao-seedance-2-0-250428', 'doubao-seedance-1-5-pro-251215', "
+                        "'doubao-seedance-1-0-pro-250428', 'doubao-seedance-1-0-pro-fast-250428'"
+                    ),
                     "default": "sora",
+                },
+                "image_url": {
+                    "type": "string",
+                    "description": (
+                        "首帧图片 URL (图生视频模式，仅 Seedance 支持)。"
+                        "支持公网 URL 和 Base64 编码 (data:image/xxx;base64,...)。"
+                        "提供此参数后，模型将以该图片作为视频第一帧生成视频。"
+                    ),
+                },
+                "image_url_last": {
+                    "type": "string",
+                    "description": (
+                        "尾帧图片 URL (首尾帧生视频模式，仅 Seedance 2.0/1.5 Pro/1.0 Pro 支持)。"
+                        "必须与 image_url 同时使用。模型将以 image_url 为首帧、image_url_last 为尾帧生成视频。"
+                    ),
                 },
                 "duration": {
                     "type": "integer",
-                    "description": "视频时长 (秒)",
+                    "description": "视频时长 (秒)。Seedance 范围 1-15 秒",
                     "default": 5,
                     "minimum": 1,
                     "maximum": 60,
                 },
                 "resolution": {
                     "type": "string",
-                    "enum": ["720p", "1080p"],
-                    "description": "视频分辨率",
-                    "default": "1080p",
+                    "enum": ["480p", "720p", "1080p", "4k"],
+                    "description": (
+                        "视频分辨率。Seedance 2.0/1.5 Pro 默认 720p; "
+                        "Seedance 1.0 Pro 默认 1080p; "
+                        "4k 仅 Seedance 2.0 支持"
+                    ),
+                    "default": "720p",
                 },
                 "aspect_ratio": {
                     "type": "string",
-                    "enum": ["16:9", "9:16", "1:1"],
-                    "description": "视频宽高比",
+                    "enum": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+                    "description": (
+                        "视频宽高比。'adaptive' 表示根据输入自动选择 (仅 Seedance 支持)"
+                    ),
                     "default": "16:9",
+                },
+                "seed": {
+                    "type": "integer",
+                    "description": "随机数种子，用于复现结果 (仅 Seedance 支持)",
+                    "minimum": 0,
+                },
+                "watermark": {
+                    "type": "boolean",
+                    "description": "是否添加水印 (仅 Seedance 支持，默认 false)",
+                    "default": False,
+                },
+                "camera_fixed": {
+                    "type": "boolean",
+                    "description": "是否固定相机不移动 (仅 Seedance 支持，默认 false)",
+                    "default": False,
+                },
+                "generate_audio": {
+                    "type": "boolean",
+                    "description": (
+                        "是否生成同步音频 (仅 Seedance 2.0/1.5 Pro 支持，默认 true)。"
+                        "设为 false 生成无声视频"
+                    ),
                 },
                 "description": {
                     "type": "string",
@@ -405,6 +605,20 @@ class GenerateVideoTool(ToolBase):
             },
             "required": ["prompt"],
         }
+
+    def to_openai_tool(self) -> Dict[str, Any]:
+        """Override to dynamically inject available providers/models into description."""
+        tool_dict = super().to_openai_tool()
+        try:
+            from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegistry
+            availability = MediaGenProviderRegistry.format_available_summary()
+            if availability:
+                tool_dict["function"]["description"] = (
+                    tool_dict["function"]["description"] + "\n\n" + availability
+                )
+        except Exception as e:
+            logger.debug(f"[generate_video] Failed to inject dynamic availability: {e}")
+        return tool_dict
 
     async def execute(
         self, args: Dict[str, Any], context: Optional[ToolContext] = None
@@ -438,11 +652,15 @@ class GenerateVideoTool(ToolBase):
 
         # Generate video
         try:
-            gen_kwargs = {
-                k: v
-                for k, v in args.items()
-                if k in ("duration", "resolution", "aspect_ratio") and v
-            }
+            # Collect all supported generation parameters
+            gen_kwargs = {}
+            for k in ("duration", "resolution", "aspect_ratio", "image_url",
+                      "image_url_last", "seed", "watermark", "camera_fixed",
+                      "generate_audio", "timeout"):
+                v = args.get(k)
+                if v is not None and v != "":
+                    gen_kwargs[k] = v
+
             result = await provider.generate_video(prompt, model, **gen_kwargs)
         except NotImplementedError:
             return ToolResult.fail(
@@ -534,8 +752,23 @@ class GenerateVideoTool(ToolBase):
             f"🎬 模型: {result.metadata.get('model', 'unknown')}",
         ]
 
+        if result.metadata.get("provider"):
+            parts.append(f"🔌 服务商: {result.metadata['provider']}")
+
         if result.duration_seconds:
             parts.append(f"⏱️ 时长: {result.duration_seconds}s")
+
+        if result.metadata.get("resolution"):
+            parts.append(f"📐 分辨率: {result.metadata['resolution']}")
+
+        if result.metadata.get("aspect_ratio"):
+            parts.append(f"📱 宽高比: {result.metadata['aspect_ratio']}")
+
+        if result.metadata.get("image_to_video"):
+            parts.append(f"🖼️ 图生视频模式")
+
+        if result.metadata.get("video_url"):
+            parts.append(f"🔗 原始视频链接: {result.metadata['video_url']}")
 
         if preview_url:
             parts.append(f"\n[视频: {description}]({preview_url})")

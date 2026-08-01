@@ -46,7 +46,91 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
 
     def create(self, request: InterventionRequest) -> InterventionResponse:
         response = self._dao.create(request)
+        self._sync_inbox_create(response)
         return response
+
+    # ---------------- 待办收件箱同步 ----------------
+    def _sync_inbox_create(self, response) -> None:
+        """Intervention 创建 -> 给 assignee(或 workspace owner 兜底)写待办。
+
+        Intervention 是 agent 请求人介入的阻塞事件,本质就是待办。assignee
+        优先;未指定则回退到 workspace owner;都没有则不写(不阻塞创建)。
+        """
+        try:
+            from derisk_serve.workspace.inbox import (
+                INBOX_SERVICE_COMPONENT_NAME,
+                SOURCE_INTERVENTION,
+                VIS_PERSONAL,
+                InboxService,
+            )
+            inbox: InboxService = self._system_app.get_component(
+                INBOX_SERVICE_COMPONENT_NAME, InboxService
+            )
+            assignee = getattr(response, "assignee_user_id", None)
+            if assignee is None:
+                assignee = self._resolve_workspace_owner(response.workspace_id)
+            if assignee is None:
+                return
+            inbox.create_item(
+                workspace_id=int(response.workspace_id),
+                user_id=int(assignee),
+                source_type=SOURCE_INTERVENTION,
+                source_id=str(response.id),
+                title=self._build_intervention_title(response),
+                summary=(self._load_question(response).get("tool") or None),
+                visibility=VIS_PERSONAL,
+            )
+        except Exception as e:
+            logger.warning(f"intervention inbox create sync failed: {e}")
+
+    def _sync_inbox_resolve(self, intervention_id: int) -> None:
+        """Intervention 终结(确认/拒绝/中止)-> 消除待办。"""
+        try:
+            from derisk_serve.workspace.inbox import (
+                INBOX_SERVICE_COMPONENT_NAME,
+                SOURCE_INTERVENTION,
+                InboxService,
+            )
+            inbox: InboxService = self._system_app.get_component(
+                INBOX_SERVICE_COMPONENT_NAME, InboxService
+            )
+            session = self._dao.get_raw_session()
+            try:
+                entity = session.query(InterventionEntity).filter(
+                    InterventionEntity.id == intervention_id
+                ).first()
+                ws_id = entity.workspace_id if entity else None
+            finally:
+                session.close()
+            if ws_id is not None:
+                inbox.resolve(
+                    workspace_id=int(ws_id),
+                    source_type=SOURCE_INTERVENTION,
+                    source_id=str(intervention_id),
+                )
+        except Exception as e:
+            logger.warning(f"intervention inbox resolve sync failed: {e}")
+
+    def _resolve_workspace_owner(self, workspace_id):
+        if not workspace_id:
+            return None
+        try:
+            from derisk_serve.workspace.service.service import (
+                WORKSPACE_SERVICE_COMPONENT_NAME,
+                WorkspaceService,
+            )
+            ws_service: WorkspaceService = self._system_app.get_component(
+                WORKSPACE_SERVICE_COMPONENT_NAME, WorkspaceService,
+            )
+            ws = ws_service.get_by_id(int(workspace_id))
+            return getattr(ws, "owner_user_id", None) if ws else None
+        except Exception:
+            return None
+
+    def _build_intervention_title(self, response) -> str:
+        question = self._load_question(response)
+        tool = question.get("tool") if question else None
+        return f"介入确认: {tool}" if tool else f"介入确认 #{response.id}"
 
     def resolve(
         self, intervention_id: int, request: InterventionResolveRequest,
@@ -68,7 +152,9 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
             entity.resolved_at = datetime.now()
             entity.status = "resolved"
             session.commit()
-            return self._dao.to_response(entity)
+            response = self._dao.to_response(entity)
+            self._sync_inbox_resolve(entity.id)
+            return response
         except Exception:
             session.rollback()
             raise
@@ -85,7 +171,9 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
                 raise ValueError(f"intervention {intervention_id} not found")
             entity.status = "aborted"
             session.commit()
-            return self._dao.to_response(entity)
+            response = self._dao.to_response(entity)
+            self._sync_inbox_resolve(entity.id)
+            return response
         except Exception:
             session.rollback()
             raise
@@ -141,7 +229,10 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
         return decision == "approved"
 
     def _load_question(self, entity) -> Dict[str, Any]:
-        raw = entity.question_json
+        raw = getattr(entity, "question_json", None)
+        if raw is None:
+            # InterventionResponse 暴露的是 question(dict)而非 question_json
+            return getattr(entity, "question", None) or {}
         if not raw:
             return {}
         if isinstance(raw, dict):
@@ -188,6 +279,7 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
                         distillation, ensure_ascii=False
                     )
                 session.commit()
+                self._sync_inbox_resolve(entity.id)
                 return entity
 
             question = self._load_question(entity)
@@ -206,6 +298,7 @@ class InterventionService(BaseService[InterventionEntity, InterventionRequest, I
                     distillation, ensure_ascii=False
                 )
             session.commit()
+            self._sync_inbox_resolve(entity.id)
 
             try:
                 await self._post_message_back(

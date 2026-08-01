@@ -54,8 +54,8 @@ const TYPE_CONFIG: Record<TriggerType, {
 }> = {
   adhoc: {
     label: '手动执行',
-    desc: '一次性临时任务',
-    detail: '立即创建并执行一次任务，在任务详情查看对话、产出和交付。',
+    desc: '非订阅,建议对话发起',
+    detail: '手动创建并执行一次任务。订阅类触发请选定时/事件/告警;日常 adhoc 建议在右侧对话中直接发起。',
     icon: <ThunderboltOutlined />,
     iconBg: 'bg-blue-100',
     iconText: 'text-blue-600',
@@ -270,12 +270,12 @@ export default function TaskCreatePage() {
               <div className="ws-page-icon"><ThunderboltOutlined /></div>
               <div>
                 <div className="ws-page-eyebrow">
-                  {isEditing ? '触发器' : (t('workspaces.tasks') || '任务')}
+                  {isEditing ? '订阅' : (selectedType === 'adhoc' ? (t('workspaces.tasks') || '任务') : '订阅')}
                   <span className="ws-page-eyebrow-code">{ws.workspace_code}</span>
                 </div>
-                <h1 className="ws-page-title">{isEditing ? '编辑任务触发' : '新建任务'}</h1>
+                <h1 className="ws-page-title">{isEditing ? '编辑订阅' : (selectedType === 'adhoc' ? '手动执行任务' : '新建订阅')}</h1>
                 <p className="ws-page-subtitle">
-                  选一个剧本（怎么做）+ 写一条指令（做什么）+ 设定触发方式（何时做）
+                  给当前场景订阅一个触发源:定时 / 事件 / 告警,到点或事件发生时自动按剧本创建任务
                 </p>
               </div>
             </div>
@@ -466,7 +466,7 @@ export default function TaskCreatePage() {
                     <Button size="large">{t('tasks.cancel') || '取消'}</Button>
                   </Link>
                   <Button type="primary" size="large" loading={submitting} onClick={handleSubmit} className="!rounded-lg">
-                    {selectedType === 'adhoc' ? '创建并执行' : (isEditing ? '保存' : '创建触发器')}
+                    {selectedType === 'adhoc' ? '创建并执行' : (isEditing ? '保存' : '创建订阅')}
                   </Button>
                 </div>
               </Form>

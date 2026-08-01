@@ -1003,7 +1003,8 @@ class ToolAction(Action[ToolInput]):
 
         # Get environment context
         env_context = (
-            agent.agent_context.env_context if agent and agent.agent_context else {}
+            (agent.agent_context.env_context if agent and agent.agent_context else None)
+            or {}
         )
         eval_mode = env_context.get(EVAL_MODE_KEY, False)
 

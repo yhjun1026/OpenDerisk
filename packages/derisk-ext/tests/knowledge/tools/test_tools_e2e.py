@@ -17,6 +17,8 @@ from derisk_ext.knowledge.tools import (
     DocSearchTool,
     EdgeAddTool,
     GraphQueryTool,
+    LintRunTool,
+    LintSuggestTool,
     SchemaReadTool,
     VerbatAddTool,
     VerbatSearchTool,
@@ -173,3 +175,58 @@ async def test_resource_resolves_vault_lazily(vault):
     r = KnowledgeSpaceResource(name="ks", space_slug="test")
     resolved = await r.get_vault()
     assert resolved is vault
+
+
+@pytest.mark.asyncio
+async def test_lint_run_passes_path(vault):
+    """LintRunTool must forward `path` to doc_lint for single-page lint."""
+    create = DocCreateTool()
+    await create.execute(
+        {
+            "space_slug": "test",
+            "path": "concepts/lonely.md",
+            "content": (
+                "---\ntype: concept\ntitle: Lonely\n"
+                "created: 2026-07-19\nupdated: 2026-07-19\n---\n\nAlone.\n"
+            ),
+        }
+    )
+    lint = LintRunTool()
+    r = await lint.execute({"space_slug": "test", "path": "concepts/lonely.md"})
+    assert r.success, r.error
+    # All issues should be scoped to the requested path
+    paths = {i["path"] for i in r.output["issues"] if i["path"]}
+    assert paths <= {"concepts/lonely.md"}
+    # verbat_id key must be present in each issue dict
+    assert all("verbat_id" in i for i in r.output["issues"])
+
+
+@pytest.mark.asyncio
+async def test_lint_suggest_returns_context(vault):
+    """LintSuggestTool returns a structured health report for the agent."""
+    create = DocCreateTool()
+    await create.execute(
+        {
+            "space_slug": "test",
+            "path": "concepts/alpha.md",
+            "content": (
+                "---\ntype: concept\ntitle: Alpha\n"
+                "created: 2026-07-19\nupdated: 2026-07-19\n---\n\n"
+                "Links to [[missing-concept]].\n"
+            ),
+        }
+    )
+    suggest = LintSuggestTool()
+    r = await suggest.execute({"space_slug": "test"})
+    assert r.success, r.error
+    report = r.output
+    assert "issue_counts" in report
+    assert "doc_inventory" in report
+    assert "index_md" in report
+    assert "missing_pages" in report
+    assert "guidance" in report
+    # The dangling [[missing-concept]] should appear in missing_pages
+    targets = [m["target"] for m in report["missing_pages"]]
+    assert any("missing-concept" in t for t in targets)
+    # Doc inventory should include the created doc
+    assert any(d["path"] == "concepts/alpha.md" for d in report["doc_inventory"])

@@ -1,0 +1,217 @@
+/* 资产页卡片货架样式 — BEM .ws-asset-* */
+
+.ws-asset-section {
+  margin-bottom: 22px;
+}
+
+.ws-asset-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ws-asset-section__icon {
+  color: var(--ws-brand, #4f46e5);
+  font-size: 14px;
+}
+
+.ws-asset-section__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-ink);
+}
+
+.ws-asset-section__count {
+  font-size: 12px;
+  color: var(--ws-ink-2);
+}
+
+.ws-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  gap: 10px;
+}
+
+.ws-asset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius, 12px);
+  background: var(--ws-surface);
+  transition: box-shadow 0.15s;
+}
+
+.ws-asset-card:hover {
+  box-shadow: var(--ws-shadow-sm);
+}
+
+.ws-asset-card--off {
+  opacity: 0.55;
+}
+
+.ws-asset-card__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ws-asset-card__icon {
+  flex-shrink: 0;
+  font-size: 15px;
+}
+
+.ws-asset-card__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-asset-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ws-asset-card__source {
+  font-size: 12px;
+  color: var(--ws-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-asset-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ws-asset-card__time {
+  font-size: 12px;
+  color: var(--ws-ink-2);
+}
+
+.ws-asset-card__ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* === 交付沉淀时间线 .ws-feed-* === */
+
+.ws-feed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ws-feed-chip {
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: var(--ws-ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ws-feed-chip:hover {
+  color: var(--ws-ink);
+  background: var(--ws-hover, rgba(79, 70, 229, 0.06));
+}
+
+.ws-feed-chip--on {
+  background: var(--ws-surface);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow-sm);
+}
+
+.ws-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-feed-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius, 12px);
+  background: var(--ws-surface);
+  transition: box-shadow 0.15s;
+}
+
+.ws-feed-item:hover {
+  box-shadow: var(--ws-shadow-sm);
+}
+
+.ws-feed-item__icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.ws-feed-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-feed-item__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-feed-item__sub {
+  font-size: 12px;
+  color: var(--ws-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-feed-item__time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--ws-ink-2);
+}
+
+.ws-feed-item__ops {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+}
+
+.ws-feed-more {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ws-brand, #4f46e5);
+  cursor: pointer;
+  user-select: none;
+  padding: 6px;
+}
+
+.ws-feed-more:hover {
+  text-decoration: underline;
+}

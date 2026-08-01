@@ -3,7 +3,7 @@
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from sqlalchemy import (
     Column,
@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    or_,
     text,
 )
 
@@ -49,9 +50,15 @@ class ConnectConfigEntity(Model):
     ext_config = Column(
         Text, nullable=True, comment="Extended configuration, json format"
     )
+    owner_workspace_id = Column(
+        Integer,
+        nullable=True,
+        comment="Owner workspace id for workspace-owned datasets; NULL means global",
+    )
     __table_args__ = (
         UniqueConstraint("db_name", name="uk_db"),
         Index("idx_q_db_type", "db_type"),
+        Index("idx_q_owner_workspace", "owner_workspace_id"),
     )
 
 
@@ -288,6 +295,64 @@ class ConnectConfigDao(BaseDao):
         session.commit()
         session.close()
         return True
+
+    def add_workspace_file_db(
+        self,
+        db_name: str,
+        db_type: str,
+        db_path: str,
+        owner_workspace_id: int,
+        comment: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> ConnectConfigEntity:
+        """Add a workspace-owned file db (e.g. Excel/CSV dataset backed by DuckDB)."""
+        session = self.get_raw_session()
+        entity = ConnectConfigEntity(
+            db_name=db_name,
+            db_type=db_type,
+            db_path=db_path,
+            db_host="",
+            db_port=0,
+            db_user="",
+            db_pwd="",
+            comment=comment or "",
+            user_id=user_id or "",
+            owner_workspace_id=owner_workspace_id,
+        )
+        session.add(entity)
+        session.commit()
+        session.refresh(entity)
+        session.close()
+        return entity
+
+    def list_by_workspace(self, workspace_id: int) -> List[ConnectConfigEntity]:
+        """List workspace-owned datasets by owner workspace id."""
+        session = self.get_raw_session()
+        result = (
+            session.query(ConnectConfigEntity)
+            .filter(ConnectConfigEntity.owner_workspace_id == workspace_id)
+            .all()
+        )
+        session.close()
+        return result
+
+    def list_accessible_by_workspace(
+        self, workspace_id: int, db_type: Optional[str] = None
+    ) -> List[ConnectConfigEntity]:
+        """List datasources visible to a workspace: owned by it OR global(NULL)."""
+        session = self.get_raw_session()
+        try:
+            q = session.query(ConnectConfigEntity).filter(
+                or_(
+                    ConnectConfigEntity.owner_workspace_id == workspace_id,
+                    ConnectConfigEntity.owner_workspace_id.is_(None),
+                )
+            )
+            if db_type:
+                q = q.filter(ConnectConfigEntity.db_type == db_type)
+            return q.all()
+        finally:
+            session.close()
 
     def from_request(
         self, request: Union[DatasourceServeRequest, Dict[str, Any]]

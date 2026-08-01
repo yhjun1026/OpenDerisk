@@ -21,6 +21,8 @@ class DBType(Enum):
     OceanBase = DbInfo("oceanbase")
     DuckDb = DbInfo("duckdb", True)
     SQLite = DbInfo("sqlite", True)
+    Excel = DbInfo("excel", True)
+    CSV = DbInfo("csv", True)
     Oracle = DbInfo("oracle")
     MSSQL = DbInfo("mssql")
     Postgresql = DbInfo("postgresql")

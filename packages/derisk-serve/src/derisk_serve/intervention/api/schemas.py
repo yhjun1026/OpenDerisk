@@ -14,6 +14,7 @@ class InterventionRequest(BaseModel):
     workspace_id: int
     type: str = Field(default="review", description="MVP only: review")
     requested_by: str = Field(default="system", description="system / agent / user")
+    assignee_user_id: Optional[int] = None
     question: Optional[Dict[str, Any]] = None
     context: Optional[Dict[str, Any]] = None
 
@@ -27,6 +28,7 @@ class InterventionResponse(BaseModel):
     type: str
     status: str = "requested"
     requested_by: str
+    assignee_user_id: Optional[int] = None
     requested_at: str
     question: Optional[Dict[str, Any]] = None
     context: Optional[Dict[str, Any]] = None

@@ -2,7 +2,7 @@
   {
     "app_code": "main",
     "app_name": "Main Agent",
-    "app_describe": "全局主 Agent，作为场景空间的默认兜底 Agent。具备场景感知、任务调度、资源加载能力，左面板展示对话和执行进展，右面板展示工作产出。适用于数据分析、报告生成、任务执行等场景。",
+    "app_describe": "全局通用Agent，能够完成任何用户需求目标。提供智能对话、任务规划、工具调用、问题解决等能力，适用于各类通用场景和任务需求。",
     "language": "zh",
     "icon": "/agents/agent_main.png",
     "team_mode": "auto_plan",

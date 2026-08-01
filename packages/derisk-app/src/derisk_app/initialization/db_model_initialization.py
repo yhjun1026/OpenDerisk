@@ -42,6 +42,15 @@ from derisk_app.feature_plugins.permissions.models import (
     RolePermissionDefEntity,
 )
 from derisk_app.feature_plugins.system_config_model import SystemConfigEntity
+from derisk_serve.ecp.models.models import (
+    EcpAssetRefEntity,
+    EcpConfirmerEntity,
+    EcpOpLogEntity,
+    EcpResolutionCacheEntity,
+    EcpSemanticEdgeEntity,
+    EcpSemanticObjectEntity,
+    EcpWorkspaceConfigEntity,
+)
 
 _MODELS = [
     FileServeEntity,
@@ -75,4 +84,11 @@ _MODELS = [
     PermissionDefinitionEntity,
     RolePermissionDefEntity,
     SystemConfigEntity,
+    EcpSemanticObjectEntity,
+    EcpResolutionCacheEntity,
+    EcpSemanticEdgeEntity,
+    EcpConfirmerEntity,
+    EcpOpLogEntity,
+    EcpAssetRefEntity,
+    EcpWorkspaceConfigEntity,
 ]

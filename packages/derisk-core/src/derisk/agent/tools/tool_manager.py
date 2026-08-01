@@ -170,6 +170,12 @@ class ToolManager:
         "list_tables",  # 数据库表列表
     ]
 
+    # 多模态生成工具（图片/视频生成，一键绑定）
+    MEDIA_GEN_TOOLS: List[str] = [
+        "generate_image",  # AI 图片生成 (DALL-E/通义万相/Google Banana)
+        "generate_video",  # AI 视频生成 (Sora/Seedance)
+    ]
+
     # 浏览器工具列表（暂不注册，后续按需启用）
     BROWSER_TOOLS: List[str] = []
 
@@ -397,6 +403,10 @@ class ToolManager:
 
         # 检查是否是可选内置工具
         if tool_id in self.BUILTIN_OPTIONAL_TOOLS:
+            return ToolBindingType.BUILTIN_OPTIONAL
+
+        # 检查是否是多模态生成工具
+        if tool_id in self.MEDIA_GEN_TOOLS:
             return ToolBindingType.BUILTIN_OPTIONAL
 
         # 检查是否是系统动态注入工具

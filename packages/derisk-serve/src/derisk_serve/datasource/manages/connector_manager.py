@@ -15,6 +15,7 @@ from derisk_ext.datasource.schema import DBType
 from derisk_serve.core import ResourceParameters, ResourceTypes
 
 from ..api.schemas import DatasourceCreateRequest
+from ..service.file_dataset import FILE_DATASET_EXTS, validate_file_dataset
 from .connect_config_db import ConnectConfigDao
 from .db_conn_info import DBConfig
 
@@ -59,6 +60,10 @@ class ConnectorManager(BaseComponent):
         )
         from derisk_ext.datasource.rdbms.conn_duckdb import (  # noqa: F401
             DuckDbConnector,
+        )
+        from derisk_ext.datasource.rdbms.conn_excel import (  # noqa: F401
+            CsvConnector,
+            ExcelConnector,
         )
         from derisk_ext.datasource.rdbms.conn_mssql import (  # noqa: F401
             MSSQLConnector,
@@ -109,11 +114,24 @@ class ConnectorManager(BaseComponent):
     def _get_all_subclasses(
         self, cls: Type[BaseConnector]
     ) -> List[Type[BaseConnector]]:
-        """Get all subclasses of cls."""
-        subclasses = cls.__subclasses__()
-        for subclass in subclasses:
-            subclasses += self._get_all_subclasses(subclass)
-        return subclasses
+        """Get all subclasses of cls (deduplicated).
+
+        The previous recursive implementation appended children into the
+        list being iterated, so deeper subclasses (e.g. openGauss via
+        PostgreSQL, excel/csv via DuckDB) were collected once per ancestor
+        level and showed up duplicated in supported-type listings.
+        """
+        result: List[Type[BaseConnector]] = []
+        seen = set()
+        stack = list(cls.__subclasses__())
+        while stack:
+            sub = stack.pop()
+            if sub in seen:
+                continue
+            seen.add(sub)
+            result.append(sub)
+            stack.extend(sub.__subclasses__())
+        return result
 
     @Deprecated(
         version="0.7.0", remove_version="0.8.0", alternative="get_supported_types"
@@ -348,6 +366,15 @@ class ConnectorManager(BaseComponent):
         Returns:
             bool: True if connection is successful.
         """
+        # Excel/CSV file datasets: no live connection to test, validate the
+        # uploaded file is readable instead.
+        if request.type in FILE_DATASET_EXTS:
+            try:
+                validate_file_dataset(request.type, request.params.get("path", ""))
+                return True
+            except Exception as e:
+                logger.error(f"Test file dataset Failure!{str(e)}")
+                raise ValueError(str(e))
         try:
             param = self._create_parameters(request)
             _connector = self.create_connector(param)

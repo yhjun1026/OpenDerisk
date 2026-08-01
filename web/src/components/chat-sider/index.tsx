@@ -132,9 +132,11 @@ const MenuItem: React.FC<{
     >
       <Tooltip title={item.chat_mode}>
         {typeof item.icon === 'string' ? (
-          <img src={item.icon} className='flex-1 w-8 h-9 rounded-lg' />
+          <img src={item.icon} className='w-8 h-8 rounded-lg mr-3 object-contain' />
         ) : (
-          <div className='flex items-center justify-center w-8 h-8 rounded-lg mr-3 bg-white'>{item.icon}</div>
+          <div className='flex items-center justify-center w-8 h-8 rounded-lg mr-3 bg-indigo-50 dark:bg-indigo-900/30 [&_*]:fill-[#4f46e5] dark:[&_*]:fill-indigo-400'>
+            {item.icon}
+          </div>
         )}
       </Tooltip>
       <div className='flex flex-1 line-clamp-1'>

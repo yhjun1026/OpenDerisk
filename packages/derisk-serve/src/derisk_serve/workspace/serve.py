@@ -61,6 +61,7 @@ class Serve(BaseServe):
 
     def on_init(self):
         """Import models so SQLAlchemy registers them."""
+        from .inbox.models import InboxItemEntity  # noqa: F401
         from .models.models import (  # noqa: F401
             WorkspaceEntity,
             WorkspaceMemberEntity,
@@ -72,10 +73,12 @@ class Serve(BaseServe):
             WorkspaceMemberEntity.__tablename__,
             WorkspaceResourceEntity.__tablename__,
             WorkspaceConversationLinkEntity.__tablename__,
+            InboxItemEntity.__tablename__,
         ]))
 
     def before_start(self):
         """Create tables on startup."""
+        from .inbox.models import InboxItemEntity  # noqa: F401
         from .models.models import (  # noqa: F401
             WorkspaceEntity,
             WorkspaceMemberEntity,

@@ -162,3 +162,99 @@ async def test_lint_respects_schema_toggle(vault):
     )
     issues = await vault.doc_lint()
     assert not any(i.rule == "orphan_doc" for i in issues)
+
+
+# ---------------------------------------------------------------------------
+# Schema-drift rules (RFC 003 §5.2/§5.4/§5.5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_unknown_type_rule(vault):
+    """Doc whose type was removed from schema.md Page Types (RFC 003 §5.2)."""
+    await vault.doc_create(
+        path="concepts/orphan-type.md",
+        content=(
+            "---\ntype: concept\ntitle: Orphan Type\n"
+            "created: 2026-07-19\nupdated: 2026-07-19\n---\n\nBody.\n"
+        ),
+    )
+    # Remove the 'concept' row from schema.md Page Types
+    schema_md = await vault.read_schema_md()
+    await vault.write_schema_md(
+        schema_md.replace(
+            "| concept | wiki/concepts/ | 抽象概念、理论、方法 |\n", ""
+        )
+    )
+    issues = await vault.doc_lint()
+    unknown = [
+        i for i in issues
+        if i.rule == "unknown_type" and i.path == "concepts/orphan-type.md"
+    ]
+    assert unknown
+    assert "concept" in unknown[0].message
+
+
+@pytest.mark.asyncio
+async def test_unknown_predicate_rule(vault):
+    """Edge whose predicate was removed from schema.md Relation Types
+    (RFC 003 §5.4)."""
+    await vault.edge_add(
+        Edge(
+            id=new_edge_id(),
+            space_id=vault.space_id,
+            subject="alpha",
+            predicate="links-to",
+            object="beta",
+        )
+    )
+    # Remove 'links-to' from schema.md Relation Types
+    schema_md = await vault.read_schema_md()
+    await vault.write_schema_md(
+        schema_md.replace(
+            "| links-to | linked-by | wikilink 关联 |\n", ""
+        )
+    )
+    issues = await vault.doc_lint()
+    unknown = [i for i in issues if i.rule == "unknown_predicate"]
+    assert unknown
+    assert any("links-to" in i.message for i in unknown)
+
+
+@pytest.mark.asyncio
+async def test_path_mismatch_rule(vault):
+    """Doc whose directory doesn't match its type's declared dir
+    (RFC 003 §5.5)."""
+    # concept type declares dir wiki/concepts/, but we put it in entities/
+    await vault.doc_create(
+        path="entities/misplaced.md",
+        content=(
+            "---\ntype: concept\ntitle: Misplaced\n"
+            "created: 2026-07-19\nupdated: 2026-07-19\n---\n\nBody.\n"
+        ),
+    )
+    issues = await vault.doc_lint()
+    mismatch = [
+        i for i in issues
+        if i.rule == "path_mismatch" and i.path == "entities/misplaced.md"
+    ]
+    assert mismatch
+    assert "entities/" in mismatch[0].message
+    assert "wiki/concepts/" in mismatch[0].message
+
+
+@pytest.mark.asyncio
+async def test_path_mismatch_no_false_positive(vault):
+    """Doc in the correct dir should not trigger path_mismatch."""
+    await vault.doc_create(
+        path="concepts/correct.md",
+        content=(
+            "---\ntype: concept\ntitle: Correct\n"
+            "created: 2026-07-19\nupdated: 2026-07-19\n---\n\nBody.\n"
+        ),
+    )
+    issues = await vault.doc_lint()
+    assert not any(
+        i.rule == "path_mismatch" and i.path == "concepts/correct.md"
+        for i in issues
+    )

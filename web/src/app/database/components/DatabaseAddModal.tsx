@@ -188,6 +188,14 @@ export default function DatabaseAddModal({
     );
   };
 
+  // Excel/CSV datasets upload source files, other file DBs upload db files
+  const uploadAccept =
+    selectedType === 'excel'
+      ? '.xlsx,.xls'
+      : selectedType === 'csv'
+        ? '.csv'
+        : '.db,.sqlite,.sqlite3,.duckdb,.mdb,.accdb';
+
   const handleDbFileUpload = async (file: File, paramName: string) => {
     setUploading(true);
     try {
@@ -238,7 +246,7 @@ export default function DatabaseAddModal({
               />
             </Form.Item>
             <Upload
-              accept=".db,.sqlite,.sqlite3,.duckdb,.mdb,.accdb"
+              accept={uploadAccept}
               showUploadList={false}
               beforeUpload={(file) => {
                 handleDbFileUpload(file as unknown as File, paramName);

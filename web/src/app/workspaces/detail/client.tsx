@@ -12,12 +12,13 @@ import Link from 'next/link';
 import { useCallback, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ThunderboltOutlined,
-  DeliveredProcedureOutlined,
-  WarningOutlined,
+  ScheduleOutlined,
   SettingOutlined,
   BookOutlined,
   AppstoreOutlined,
+  HomeOutlined,
+  DatabaseOutlined,
+  DeploymentUnitOutlined,
 } from '@ant-design/icons';
 import { SceneWorkspaceShell } from './scene-workspace-shell';
 import { ChatContext } from '@/contexts';
@@ -144,7 +145,6 @@ export default function WorkspaceDetailPage() {
   }
 
   const scenario = ws.scenario_type || ws.type || 'scenario';
-  const reviewCount = (interventions || []).length;
 
   return (
     <div className="ws-page" style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
@@ -164,21 +164,23 @@ export default function WorkspaceDetailPage() {
             </div>
           </div>
           <nav className="ws-console-nav" aria-label="Workspace navigation">
-            <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('playbooks')}`}>
-              <BookOutlined />{t('workspaces.playbooks') || 'Playbooks'}
+            <Link href={`/workspaces/detail?id=${workspaceCode}`} className={`ws-console-nav-link${pathname === '/workspaces/detail' ? ' ws-console-nav-link--active' : ''}`}>
+              <HomeOutlined />{t('workspaces.lobby') || '工作台'}
             </Link>
             <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('tasks')}`}>
-              <ThunderboltOutlined />{t('workspaces.tasks') || 'Tasks'}
+              <ScheduleOutlined />{t('workspaces.tasks') || '任务'}
             </Link>
-            <Link href={`/workspaces/detail/deliveries?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('deliveries')}`}>
-              <DeliveredProcedureOutlined />{t('workspaces.deliveries') || 'Delivery Space'}
+            <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('playbooks')}`}>
+              <BookOutlined />{t('workspaces.playbooks') || '剧本'}
             </Link>
-            <Link href={`/workspaces/detail/interventions?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('interventions')}${reviewCount > 0 ? ' ws-console-nav-link--attention' : ''}`}>
-              <WarningOutlined />{t('workspaces.interventions') || 'Interventions'}
-              {reviewCount > 0 && <span style={{ fontWeight: 700 }}>{reviewCount}</span>}
+            <Link href={`/workspaces/detail/assets?id=${workspaceCode}&tab=data`} className={`ws-console-nav-link${navActive('assets')}`}>
+              <DatabaseOutlined />{t('workspaces.assets') || '资产'}
+            </Link>
+            <Link href={`/ecp?workspace=${encodeURIComponent(`ecp_${workspaceCode}`)}`} className="ws-console-nav-link">
+              <DeploymentUnitOutlined />{t('workspaces.semantic_assets') || '语义资产'}
             </Link>
             <Link href={`/workspaces/detail/settings?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('settings')}`}>
-              <SettingOutlined />{t('workspaces.settings') || 'Settings'}
+              <SettingOutlined />{t('workspaces.settings') || '设置'}
             </Link>
           </nav>
         </div>

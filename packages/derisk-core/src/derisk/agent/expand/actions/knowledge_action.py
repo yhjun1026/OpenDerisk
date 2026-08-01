@@ -93,6 +93,23 @@ class KnowledgeSearch(KnowledgeRetrieveAction, FunctionTool):
         return args[0] if args else "knowledge search completed"
 
     async def async_execute(self, *args, **kwargs):
+        # ECP 托管空间降级门禁(可选,serve 层不可用时静默跳过;core 不硬依赖 serve)
+        try:
+            from derisk_serve.ecp.service.asset_gate import (
+                ecp_knowledge_gate_message,
+            )
+
+            tool_input = args[0] if args else kwargs
+            gate = ecp_knowledge_gate_message(
+                kwargs.get("agent"),
+                knowledge_ids=(tool_input.get("knowledge_ids") if isinstance(tool_input, dict) else None),
+            )
+            if gate:
+                return gate
+        except ImportError:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
         # V2 路径: 从 ToolContext 获取 knowledge_retriever
         context = kwargs.get("context")
         if isinstance(context, ToolContext):

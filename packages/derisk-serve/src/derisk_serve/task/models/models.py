@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 from sqlalchemy import (
-    Column, DateTime, Integer, String, Text, Boolean, Index, desc, and_,
+    Column, DateTime, Integer, String, Text, Boolean, Index, desc, and_, or_,
 )
 
 from derisk.storage.metadata import BaseDao, Model
@@ -52,6 +52,7 @@ class TaskEntity(Model):
     playbook_version_id = Column(Integer, nullable=True)
     conv_session_id = Column(String(64), nullable=True, unique=True, index=True, comment="conversation session id bound to this task")
     created_by_user_id = Column(Integer, nullable=True, index=True)
+    assignee_user_id = Column(Integer, nullable=True, index=True, comment="任务负责人(归属,≠待办)")
     assigned_agents_json = Column(Text, nullable=True)
     context_json = Column(Text, nullable=True)
     due_at = Column(DateTime, nullable=True)
@@ -107,6 +108,7 @@ class TaskDao(BaseDao[TaskEntity, TaskRequest, TaskResponse]):
             playbook_version_id=entity.playbook_version_id,
             conv_session_id=entity.conv_session_id,
             created_by_user_id=entity.created_by_user_id,
+            assignee_user_id=entity.assignee_user_id,
             assigned_agents=_load_json(entity.assigned_agents_json) or [],
             context=_load_json(entity.context_json),
             due_at=entity.due_at,
@@ -128,6 +130,7 @@ class TaskDao(BaseDao[TaskEntity, TaskRequest, TaskResponse]):
             playbook_version_id=entity.playbook_version_id,
             conv_session_id=entity.conv_session_id,
             created_by_user_id=entity.created_by_user_id,
+            assignee_user_id=entity.assignee_user_id,
             assigned_agents=_load_json(entity.assigned_agents_json) or [],
             context=_load_json(entity.context_json),
             due_at=entity.due_at.isoformat() if entity.due_at else None,
@@ -149,8 +152,15 @@ class TaskDao(BaseDao[TaskEntity, TaskRequest, TaskResponse]):
                 query = query.filter(TaskEntity.status == f.status)
             if f.type:
                 query = query.filter(TaskEntity.type == f.type)
-            if f.user_id is not None:
+            if getattr(f, "mine", False) and f.user_id is not None:
+                query = query.filter(or_(
+                    TaskEntity.created_by_user_id == f.user_id,
+                    TaskEntity.assignee_user_id == f.user_id,
+                ))
+            elif f.user_id is not None:
                 query = query.filter(TaskEntity.created_by_user_id == f.user_id)
+            if getattr(f, "assignee_user_id", None) is not None:
+                query = query.filter(TaskEntity.assignee_user_id == f.assignee_user_id)
             entities = (
                 query.order_by(desc(TaskEntity.gmt_modified)).limit(f.limit).all()
             )

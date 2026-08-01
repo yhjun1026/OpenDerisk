@@ -184,14 +184,24 @@ def _resolve_db_from_agent(db_name: str, kwargs: Dict, context=None) -> tuple:
         "获取表的详细 schema 信息，包括列定义、类型、注释、索引、样本数据等。"
         "**限制**: 每次最多查询 3 张表，避免输出过大。"
         "如果需要更多表，请分多次调用。"
+        "**参数选择**: 优先使用 datasource_id（整数），如果不知道 ID 则使用 db_name（字符串）。"
     ),
     args={
+        "datasource_id": {
+            "type": "integer",
+            "description": (
+                "数据源 ID（整数），从 <database><datasource_id> 标签中获取。"
+                "这是首选参数，性能更好。"
+            ),
+            "required": False,
+        },
         "db_name": {
             "type": "string",
             "description": (
-                "数据库名称，使用可用数据库列表中的 db_name 字段值。"
+                "数据库名称，从可用数据库列表中的 db_name 字段值获取。"
+                "当不知道 datasource_id 时使用此参数。"
             ),
-            "required": True,
+            "required": False,
         },
         "table_names": {
             "type": "string",
@@ -215,9 +225,10 @@ def _resolve_db_from_agent(db_name: str, kwargs: Dict, context=None) -> tuple:
     category=ToolCategory.UTILITY,
 )
 async def get_table_spec(
-    db_name: str,
     table_names: Optional[str] = None,
     question: Optional[str] = None,
+    datasource_id: Optional[int] = None,
+    db_name: Optional[str] = None,
     context=None,
     **kwargs,
 ) -> str:
@@ -231,31 +242,77 @@ async def get_table_spec(
     Supports two modes:
     - Exact mode: provide table_names directly (comma-separated for multiple tables)
     - Recommend mode: provide question, uses Schema Linking to suggest tables
+
+    Args:
+        table_names: Comma-separated table names (max 3)
+        question: Natural language question for table recommendation
+        datasource_id: Data source ID (integer, preferred)
+        db_name: Database name (string, fallback if datasource_id not known)
+        context: Tool context (injected by system)
+        **kwargs: Additional context (agent, etc.)
     """
+    # Validate: must provide either datasource_id or db_name
+    if not datasource_id and not db_name:
+        return "错误: 必须提供 datasource_id 或 db_name 参数"
+
     try:
         from derisk._private.config import Config
 
         CFG = Config()
 
-        # 优先从 agent 的 resource_map 或 V2 ToolContext 中获取已初始化的 connector
-        agent_connector, agent_ds_id = _resolve_db_from_agent(db_name, kwargs, context=context)
+        # Resolve datasource_id and db_name
+        ds_id = datasource_id
+        resolved_db_name = db_name
 
-        # Resolve datasource
-        ds_id = agent_ds_id
+        # Try to get connector from agent first (preferred path)
+        agent_connector = None
+        agent = kwargs.get("agent")
+
+        if agent:
+            # Try to find DBCapability by datasource_id or db_name
+            cap_pack = getattr(agent, "capability_pack", None)
+            if cap_pack is not None:
+                for c in getattr(cap_pack, "sub_resources", []) or []:
+                    if getattr(c, "capability_id", "").startswith("db:"):
+                        # Match by datasource_id (preferred); str 比较容忍 int/str 不一致
+                        if ds_id and str(getattr(c, "datasource_id", "")) == str(ds_id):
+                            agent_connector = c.get_connector()
+                            if agent_connector:
+                                if not resolved_db_name:
+                                    resolved_db_name = getattr(c, "db_name", None)
+                                logger.info(
+                                    f"[get_table_spec] Found connector by datasource_id={ds_id}"
+                                )
+                                break
+                        # Fallback: match by db_name
+                        elif resolved_db_name and getattr(c, "db_name", None) == resolved_db_name:
+                            agent_connector = c.get_connector()
+                            if agent_connector:
+                                if not ds_id:
+                                    ds_id = getattr(c, "datasource_id", None)
+                                logger.info(
+                                    f"[get_table_spec] Found connector by db_name={resolved_db_name}"
+                                )
+                                break
+
+        # 只有 datasource_id 时补解析 db_name(供 connector/spec 兜底路径使用)
+        if ds_id and not resolved_db_name:
+            try:
+                from derisk_serve.datasource.manages.connect_config_db import (
+                    ConnectConfigDao,
+                )
+
+                entity = ConnectConfigDao().get_one({"id": int(ds_id)})
+                if entity:
+                    resolved_db_name = getattr(entity, "db_name", None)
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"[get_table_spec] resolve db_name by ds_id failed: {e}")
+
+        # Resolve spec_service
         spec_service = None
         try:
-            from derisk_serve.datasource.manages.connect_config_db import (
-                ConnectConfigDao,
-            )
-            from derisk_serve.datasource.service.spec_service import (
-                DbSpecService,
-            )
+            from derisk_serve.datasource.service.spec_service import DbSpecService
 
-            if not ds_id:
-                dao = ConnectConfigDao()
-                entity = dao.get_by_names(db_name)
-                if entity:
-                    ds_id = entity.id
             if ds_id:
                 spec_service = DbSpecService()
         except ImportError:
@@ -265,7 +322,9 @@ async def get_table_spec(
             """获取 connector：优先使用 agent 中已有的，否则新建"""
             if agent_connector:
                 return agent_connector
-            return CFG.local_db_manager.get_connector(db_name)
+            if resolved_db_name:
+                return CFG.local_db_manager.get_connector(resolved_db_name)
+            return None
 
         # Recommend mode: use Schema Linking
         if not table_names and question and ds_id:
@@ -329,6 +388,12 @@ async def get_table_spec(
                 f"ds_id={ds_id}; falling back to live table listing"
             )
             connector = _get_connector()
+            if connector is None:
+                return (
+                    f"Error: Cannot get database connector for "
+                    f"datasource_id={datasource_id}, db_name={db_name}. "
+                    "请确认数据源连接配置可用后重试,或直接指定 table_names 参数。"
+                )
             all_tables = list(connector.get_table_names() or [])
             if not all_tables:
                 return (
@@ -366,6 +431,8 @@ async def get_table_spec(
 
         # Fallback: live introspection
         connector = _get_connector()
+        if connector is None:
+            return f"Error: Cannot get database connector for datasource_id={ds_id}, db_name={resolved_db_name}"
         return connector.get_table_info(names)
 
     except Exception as e:
@@ -495,6 +562,21 @@ async def execute_sql(
                     ds_id = entity.id
             except Exception as e:
                 logger.debug(f"[execute_sql] resolve datasource_id failed: {e}")
+
+        # ECP 托管直连门禁(硬):agent 绑定 ECP 且目标库被其 workspace 托管时,
+        # 拒绝直连并引导走 ECP 语义层工具(降级使用纪律的执行点;prompt 软约束
+        # 已被实测证伪)。fail-open:异常/无 ECP 绑定/库未托管时放行。
+        try:
+            from derisk_serve.ecp.service.asset_gate import ecp_gate_message
+
+            gate_msg = ecp_gate_message(kwargs.get("agent"), ds_id, db_name)
+            if gate_msg:
+                logger.info(
+                    f"[execute_sql] blocked by ECP gate: db={db_name} ds_id={ds_id}"
+                )
+                return gate_msg
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[execute_sql] ecp gate check skipped: {e}")
 
         # Get database type for error messages
         db_type = getattr(connector, 'db_type', 'unknown')

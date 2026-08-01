@@ -1440,7 +1440,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'framework'" },
     { name = "diskcache", marker = "extra == 'agent'", specifier = ">=5.6.3" },
     { name = "duckdb", marker = "extra == 'simple-framework'" },
-    { name = "duckdb-engine", marker = "extra == 'simple-framework'", specifier = "==0.9.1" },
+    { name = "duckdb-engine", marker = "extra == 'simple-framework'", specifier = "==0.17.0" },
     { name = "fastapi", marker = "extra == 'client'", specifier = ">=0.100.0,<0.113.0" },
     { name = "gitpython", marker = "extra == 'framework'" },
     { name = "graphviz", marker = "extra == 'framework'" },
@@ -1691,7 +1691,7 @@ requires-dist = [
     { name = "dingtalk-stream", marker = "extra == 'channel-all'", specifier = ">=0.24.0" },
     { name = "dingtalk-stream", marker = "extra == 'channel-dingtalk'", specifier = ">=0.24.0" },
     { name = "duckdb", marker = "extra == 'datasource-duckdb'" },
-    { name = "duckdb-engine", marker = "extra == 'datasource-duckdb'", specifier = "==0.9.1" },
+    { name = "duckdb-engine", marker = "extra == 'datasource-duckdb'", specifier = "==0.17.0" },
     { name = "elasticsearch", marker = "extra == 'storage-elasticsearch'" },
     { name = "flask", marker = "extra == 'mcp-gateway'", specifier = ">=3.1.0" },
     { name = "flask-cors", marker = "extra == 'mcp-gateway'", specifier = ">=5.0.1" },
@@ -1789,6 +1789,7 @@ dependencies = [
     { name = "apscheduler" },
     { name = "dacite" },
     { name = "derisk-ext" },
+    { name = "sqlglot" },
 ]
 
 [package.optional-dependencies]
@@ -1806,6 +1807,7 @@ requires-dist = [
     { name = "derisk-ext", editable = "packages/derisk-ext" },
     { name = "libro", marker = "extra == 'libro'", specifier = ">=0.1.25" },
     { name = "poetry", marker = "extra == 'derisks'" },
+    { name = "sqlglot", specifier = ">=25.0.0" },
 ]
 provides-extras = ["libro", "derisks"]
 
@@ -1912,15 +1914,16 @@ wheels = [
 
 [[package]]
 name = "duckdb-engine"
-version = "0.9.1"
+version = "0.17.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "duckdb" },
+    { name = "packaging" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/66/055e9e10ea0605016ab188d26ebb75b529e92eddb9d35ad114e48fc16bbd/duckdb_engine-0.9.1.tar.gz", hash = "sha256:e1968620e1c1091be3ce6a5e4cf2ed185dc5cf8b4863ab408d5b625c555947ac", size = 41947, upload-time = "2023-07-14T06:51:55.004Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/d5/c0d8d0a4ca3ffea92266f33d92a375e2794820ad89f9be97cf0c9a9697d0/duckdb_engine-0.17.0.tar.gz", hash = "sha256:396b23869754e536aa80881a92622b8b488015cf711c5a40032d05d2cf08f3cf", size = 48054, upload-time = "2025-03-29T09:49:17.663Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/52/642514b2e12da3b929cb29bd1cd0fc99e33ddea25ac115148f43d608362b/duckdb_engine-0.9.1-py3-none-any.whl", hash = "sha256:6f909fef534c8e580e91578096296d49ac6f835fa200bf509f8f4869127c0ad3", size = 43109, upload-time = "2023-07-14T06:51:53.087Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/a2/e90242f53f7ae41554419b1695b4820b364df87c8350aa420b60b20cab92/duckdb_engine-0.17.0-py3-none-any.whl", hash = "sha256:3aa72085e536b43faab635f487baf77ddc5750069c16a2f8d9c6c3cb6083e979", size = 49676, upload-time = "2025-03-29T09:49:15.564Z" },
 ]
 
 [[package]]

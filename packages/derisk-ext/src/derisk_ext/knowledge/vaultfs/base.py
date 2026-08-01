@@ -1053,10 +1053,17 @@ class BaseVaultFS(ABC):
         - verbat_without_wiki → uncited_sources
         - stale_edge          → stale_edges
         - frontmatter_missing → frontmatter_required
+        - index_drift         → index_drift (index.md ghost/missing entries)
         - contradiction       → contradiction_detection (structural proxy:
           an active `contradicts` edge coexisting with another active
           predicate between the same entity pair; semantic contradiction
           detection needs an LLM and is out of scope for lint)
+        - unknown_type        → unknown_type (RFC 003 §5.2: doc whose type
+          was removed from schema.md Page Types)
+        - unknown_predicate   → unknown_predicate (RFC 003 §5.4: edge whose
+          predicate was removed from schema.md Relation Types)
+        - path_mismatch       → path_mismatch (RFC 003 §5.5: doc whose dir
+          no longer matches its type's declared dir)
         """
         from derisk.knowledge.frontmatter import extract_wikilinks
 
@@ -1224,6 +1231,149 @@ class BaseVaultFS(ABC):
                         )
                     )
 
+        # 7. index_drift: index.md is maintained by the LLM (schema.md ingest
+        # workflow), so it can drift from the real page set in both directions
+        if rules.index_drift:
+            issues.extend(await self._lint_index_drift(docs))
+
+        # 8. unknown_type: docs whose type was removed from schema.md Page
+        # Types (RFC 003 §5.2). The doc still reads/edits fine, but the user
+        # should know it's orphaned relative to the current schema.
+        if rules.unknown_type:
+            page_type_names = set(schema.page_types.keys())
+            for d in docs:
+                if d.type not in page_type_names:
+                    issues.append(
+                        LintIssue(
+                            rule="unknown_type",
+                            severity="warning",
+                            path=d.path,
+                            message=(
+                                f"文档 {d.path} 的 type '{d.type}' "
+                                f"不在 schema.md Page Types 中"
+                            ),
+                        )
+                    )
+
+        # 9. unknown_predicate: edges whose predicate was removed from
+        # schema.md Relation Types (RFC 003 §5.4). The edge still queries
+        # fine, but it's orphaned relative to the current schema.
+        if rules.unknown_predicate:
+            predicate_names = set(schema.relation_types.keys())
+            for e in edges:
+                if e.predicate not in predicate_names:
+                    issues.append(
+                        LintIssue(
+                            rule="unknown_predicate",
+                            severity="warning",
+                            edge_id=e.id,
+                            message=(
+                                f"边 {e.id} ({e.subject} -[{e.predicate}]-> "
+                                f"{e.object}) 的 predicate 不在 schema.md "
+                                f"Relation Types 中"
+                            ),
+                        )
+                    )
+
+        # 10. path_mismatch: docs whose directory doesn't match their
+        # type's declared dir (RFC 003 §5.5). Happens when the user edits
+        # a Page Type's dir but existing docs aren't migrated.
+        if rules.path_mismatch:
+            for d in docs:
+                pt = schema.page_types.get(d.type)
+                if pt is None:
+                    continue  # unknown_type rule already flagged this
+                expected_dir = pt.dir
+                if expected_dir.startswith("wiki/"):
+                    expected_dir = expected_dir[len("wiki/"):]
+                doc_dir = d.path.rsplit("/", 1)[0] + "/" if "/" in d.path else ""
+                if doc_dir != expected_dir:
+                    issues.append(
+                        LintIssue(
+                            rule="path_mismatch",
+                            severity="warning",
+                            path=d.path,
+                            message=(
+                                f"文档 {d.path} 的目录 '{doc_dir}' 与 type "
+                                f"'{d.type}' 声明的 dir '{pt.dir}' 不匹配"
+                            ),
+                        )
+                    )
+
+        # Full-space lint runs are appended to log.md so inspection history is
+        # traceable (single-page lint is skipped to avoid noise).
+        if path is None:
+            try:
+                from datetime import datetime
+
+                counts = {"info": 0, "warning": 0, "error": 0}
+                for i in issues:
+                    counts[i.severity] = counts.get(i.severity, 0) + 1
+                await self.doc_append_log(
+                    f"## [{datetime.now().strftime('%Y-%m-%d %H:%M')}] lint | "
+                    f"{len(issues)} issues "
+                    f"(info={counts['info']}, warning={counts['warning']}, "
+                    f"error={counts['error']})"
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("doc_lint: failed to append log.md entry")
+
+        return issues
+
+    async def _lint_index_drift(self, docs: list) -> list[LintIssue]:
+        """Compare index.md entries against the real page set, both ways."""
+        from derisk.knowledge.frontmatter import extract_wikilinks
+
+        issues: list[LintIssue] = []
+        index_content = await self._wiki_read("index.md")
+        if not index_content:
+            if docs:
+                issues.append(
+                    LintIssue(
+                        rule="index_drift",
+                        severity="info",
+                        path="index.md",
+                        message="index.md 为空或不存在，但空间已有页面",
+                    )
+                )
+            return issues
+
+        doc_paths = {d.path for d in docs}
+        # Ghost entries: pages referenced by index.md that don't exist
+        for link in extract_wikilinks(index_content):
+            target = link.split("|")[0].strip().lstrip("/")
+            if target in ("index", "log", "overview", "schema", "purpose"):
+                continue
+            target_path = target if target.endswith(".md") else f"{target}.md"
+            exists = any(
+                p == target_path or p.endswith(target) for p in doc_paths
+            )
+            if not exists:
+                issues.append(
+                    LintIssue(
+                        rule="index_drift",
+                        severity="info",
+                        path="index.md",
+                        message=(
+                            f"index.md 中的条目 [[{link}]] 指向不存在的页面"
+                            f"（幽灵条目）"
+                        ),
+                    )
+                )
+        # Missing entries: active docs not referenced anywhere in index.md
+        for d in docs:
+            if d.status != "active":
+                continue
+            slug = d.path.rsplit("/", 1)[-1].removesuffix(".md")
+            if d.path not in index_content and slug not in index_content:
+                issues.append(
+                    LintIssue(
+                        rule="index_drift",
+                        severity="info",
+                        path=d.path,
+                        message=f"页面 {d.path} 未被 index.md 收录（漏收条目）",
+                    )
+                )
         return issues
 
     async def doc_append_log(self, entry: str) -> None:

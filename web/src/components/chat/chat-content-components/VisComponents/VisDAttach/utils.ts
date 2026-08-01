@@ -7,6 +7,7 @@ import {
   FileWordOutlined,
   FilePptOutlined,
   FileMarkdownOutlined,
+  VideoCameraOutlined,
   FileOutlined,
 } from '@ant-design/icons';
 import type { ComponentType } from 'react';
@@ -19,7 +20,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export type FilePreviewType = 'text' | 'image' | 'pdf' | 'code' | 'json' | 'csv' | 'archive' | 'unknown';
+export type FilePreviewType = 'text' | 'image' | 'pdf' | 'code' | 'json' | 'csv' | 'archive' | 'video' | 'unknown';
 
 export function getPreviewType(mimeType?: string): FilePreviewType {
   if (!mimeType) return 'unknown';
@@ -35,6 +36,8 @@ export function getPreviewType(mimeType?: string): FilePreviewType {
   if (type === 'application/json') return 'json';
 
   if (type.startsWith('image/')) return 'image';
+
+  if (type.startsWith('video/')) return 'video';
 
   if (type === 'application/pdf') return 'pdf';
 
@@ -76,6 +79,7 @@ export function getFileIcon(
 
   if (type === 'application/pdf') return FilePdfOutlined;
   if (type.startsWith('image/')) return FileImageOutlined;
+  if (type.startsWith('video/')) return VideoCameraOutlined;
   if (type === 'text/markdown' || type === 'text/x-markdown') return FileMarkdownOutlined;
   if (type === 'application/json' || type === 'text/javascript' || type === 'application/typescript') {
     return FileOutlined;
@@ -108,6 +112,12 @@ export function getFileIcon(
       case 'webp':
       case 'svg':
         return FileImageOutlined;
+      case 'mp4':
+      case 'mov':
+      case 'webm':
+      case 'avi':
+      case 'mkv':
+        return VideoCameraOutlined;
       case 'md':
       case 'markdown':
         return FileMarkdownOutlined;

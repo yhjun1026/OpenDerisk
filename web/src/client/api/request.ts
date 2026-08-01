@@ -83,8 +83,11 @@ export const addUser = (data: UserParam) => {
 };
 
 /** Database Page */
-export const getDbList = () => {
-  return GET<null, DbListResponse>('/api/v2/serve/datasources');
+export const getDbList = (params?: { owner_workspace_id?: number }) => {
+  return GET<{ owner_workspace_id?: number }, DbListResponse>(
+    '/api/v2/serve/datasources',
+    params,
+  );
 };
 export const getDbSupportType = () => {
   return GET<null, DbSupportTypeResponse>('/api/v2/serve/datasource-types');

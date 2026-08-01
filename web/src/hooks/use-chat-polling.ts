@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { queryChatStatus, ChatQueryResponse } from '@/client/api/chat';
 
-type ConversationState = 'RUNNING' | 'COMPLETE' | 'FAILED' | 'WAITING' | 'UNKNOWN';
+export type ConversationState = 'RUNNING' | 'COMPLETE' | 'FAILED' | 'WAITING' | 'UNKNOWN';
 
 interface UseChatPollingOptions {
   convId: string | null;
@@ -11,6 +11,8 @@ interface UseChatPollingOptions {
   visRender?: string;
   onComplete?: (response: ChatQueryResponse) => void;
   onError?: (error: Error) => void;
+  /** 每次成功 queryChatStatus(含首次历史拉取与后续轮询)回调,供调用方增量合并 vis_final */
+  onPoll?: (response: ChatQueryResponse) => void;
 }
 
 interface UseChatPollingReturn {
@@ -29,13 +31,17 @@ export function useChatPolling({
   visRender,
   onComplete,
   onError,
+  onPoll,
 }: UseChatPollingOptions): UseChatPollingReturn {
   const [state, setState] = useState<ConversationState>('UNKNOWN');
   const [isPolling, setIsPolling] = useState(false);
   const [data, setData] = useState<ChatQueryResponse | null>(null);
-  
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
+  // onPoll 用 ref 承载,避免它进入 checkStatus 依赖导致频繁重建/重复请求
+  const onPollRef = useRef(onPoll);
+  onPollRef.current = onPoll;
 
   const checkStatus = useCallback(async (): Promise<ChatQueryResponse | null> => {
     if (!convId) return null;
@@ -56,6 +62,9 @@ export function useChatPolling({
           return result;
         });
         setState(result.state as ConversationState);
+        // 每次成功拉取(首次历史 + 后续轮询)都通知调用方增量合并 vis_final;
+        // parseWorkspaceView 按 id 幂等合并,重复推送相同内容无害
+        onPollRef.current?.(result);
       }
       
       return result;
@@ -116,7 +125,8 @@ export function useChatPolling({
     };
   }, [stopPolling]);
 
-  // enabled 变为 false 时主动停止轮询（如 SSE 接管）
+  // enabled 变为 false 时主动停止轮询(如 SSE 接管)。
+  // 恢复由下方 convId effect 负责:其依赖含 enabled,false→true 时会自动 checkStatus + 按需 startPolling。
   useEffect(() => {
     if (!enabled && isPolling) {
       stopPolling();

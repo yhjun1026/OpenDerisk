@@ -10,6 +10,7 @@ import {
   renameConversation,
   createConversation,
   linkConversation,
+  queryChatStatus,
 } from '@/client/api';
 
 export interface ConversationSwitcherProps {
@@ -31,6 +32,23 @@ export function ConversationSwitcher({
     { refreshDeps: [workspaceId] },
   );
   const conversations = listRes?.[1] || [];
+  const [convStates, setConvStates] = useState<Record<string, string>>({});
+
+  // Dropdown 打开时并发查询每个会话的运行状态,供列表项展示运行中/失败徽标
+  const handleOpenChange = async (open: boolean) => {
+    if (!open || conversations.length === 0) return;
+    const entries = await Promise.all(
+      conversations.map(async (c: any) => {
+        try {
+          const r = await queryChatStatus(c.conv_uid, 'scene_agent_workspace');
+          return [c.conv_uid, r?.data?.data?.state ?? 'UNKNOWN'] as [string, string];
+        } catch {
+          return [c.conv_uid, 'UNKNOWN'] as [string, string];
+        }
+      }),
+    );
+    setConvStates(Object.fromEntries(entries));
+  };
 
   const handleNew = async () => {
     const [, newConv] = await apiInterceptors(createConversation({ workspace_id: workspaceId }));
@@ -69,10 +87,21 @@ export function ConversationSwitcher({
           style={{
             display: 'flex',
             justifyContent: 'space-between',
+            alignItems: 'center',
             fontWeight: c.conv_uid === currentConvUid ? 600 : 400,
           }}
         >
-          <span>{c.title || c.conv_uid.slice(0, 8)}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            {convStates[c.conv_uid] === 'RUNNING' && (
+              <span style={{ color: '#52c41a', fontSize: 12, flexShrink: 0 }} title="运行中">● 运行中</span>
+            )}
+            {convStates[c.conv_uid] === 'FAILED' && (
+              <span style={{ color: '#ff4d4f', fontSize: 12, flexShrink: 0 }} title="失败">● 失败</span>
+            )}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {c.title || c.conv_uid.slice(0, 8)}
+            </span>
+          </span>
           <Button
             type="link"
             size="small"
@@ -94,7 +123,7 @@ export function ConversationSwitcher({
 
   return (
     <>
-      <Dropdown menu={{ items }} trigger={['click']}>
+      <Dropdown menu={{ items }} trigger={['click']} onOpenChange={handleOpenChange}>
         <Button size="small">会话切换</Button>
       </Dropdown>
       <Modal

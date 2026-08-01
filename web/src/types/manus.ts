@@ -29,6 +29,7 @@ export type ManusOutputType =
   | 'error'
   | 'html'
   | 'image'
+  | 'video'
   | 'thought'
   | 'sql_query';
 
@@ -133,7 +134,7 @@ export interface ManusDeliverableFile {
   download_url?: string;
   content?: string;
   object_path?: string;
-  render_type: 'iframe' | 'markdown' | 'code' | 'image' | 'pdf' | 'text';
+  render_type: 'iframe' | 'markdown' | 'code' | 'image' | 'pdf' | 'text' | 'video';
 }
 
 export interface ManusStepData {

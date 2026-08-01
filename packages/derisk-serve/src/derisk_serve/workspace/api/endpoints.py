@@ -2,11 +2,13 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, Query, UploadFile
 from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
 
 from derisk.component import SystemApp
 from derisk_serve.core import Result
+
+from ..dataset_service import WorkspaceDatasetService
 
 from .schemas import (
     RenameConversationRequest,
@@ -22,6 +24,13 @@ from .schemas import (
     WorkspaceResponse,
 )
 from ..config import ServeConfig
+from ..inbox import (
+    INBOX_SERVICE_COMPONENT_NAME,
+    InboxListFilter,
+    InboxResolveRequest,
+    InboxStatusUpdateRequest,
+    InboxService,
+)
 from ..service.service import WORKSPACE_SERVICE_COMPONENT_NAME, WorkspaceService as Service
 
 router = APIRouter()
@@ -351,7 +360,134 @@ async def rename_conversation(
         return Result.failed(str(e))
 
 
+# ----------------------- Inbox (个人待办收件箱) -----------------------
+def get_inbox_service() -> InboxService:
+    if global_system_app is None:
+        raise HTTPException(
+            status_code=500,
+            detail={"error": {"message": "System app not initialized", "type": "internal_error"}},
+        )
+    return global_system_app.get_component(INBOX_SERVICE_COMPONENT_NAME, InboxService)
+
+
+@router.get("/workspaces/{workspace_id}/inbox", response_model=Result,
+            dependencies=[Depends(check_api_key)])
+async def list_inbox(
+    workspace_id: int,
+    user_id: Optional[int] = Header(None, alias="X-User-ID"),
+    status: Optional[str] = Query(None, description="unread/doing/done/archived"),
+    source_type: Optional[str] = Query(
+        None, description="task/intervention/ecp_proposal/manual"
+    ),
+    limit: int = Query(100),
+    service: InboxService = Depends(get_inbox_service),
+) -> Result:
+    """拉取当前用户的个人待办(收件箱)。"""
+    try:
+        if user_id is None:
+            return Result.failed("X-User-ID header required")
+        f = InboxListFilter(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            status=status,
+            source_type=source_type,
+            limit=limit,
+        )
+        return Result.succ(service.list_inbox(f))
+    except Exception as e:
+        logger.exception("inbox list exception!")
+        return Result.failed(str(e))
+
+
+@router.post("/workspaces/{workspace_id}/inbox/resolve", response_model=Result,
+             dependencies=[Depends(check_api_key)])
+async def resolve_inbox(
+    workspace_id: int,
+    request: InboxResolveRequest,
+    service: InboxService = Depends(get_inbox_service),
+) -> Result:
+    """标记待办完成(shared 按 source_id 批量消除)。"""
+    try:
+        count = service.resolve(
+            workspace_id=workspace_id,
+            source_type=request.source_type,
+            source_id=request.source_id,
+            user_id=request.user_id,
+        )
+        return Result.succ({"resolved": count})
+    except Exception as e:
+        logger.exception("inbox resolve exception!")
+        return Result.failed(str(e))
+
+
+@router.post("/workspaces/{workspace_id}/inbox/{item_id}/status", response_model=Result,
+             dependencies=[Depends(check_api_key)])
+async def update_inbox_status(
+    workspace_id: int,
+    item_id: int,
+    request: InboxStatusUpdateRequest,
+    user_id: Optional[int] = Header(None, alias="X-User-ID"),
+    service: InboxService = Depends(get_inbox_service),
+) -> Result:
+    """用户手动推进待办状态(接手/完成/归档)。仅限自己的待办。"""
+    try:
+        if user_id is None:
+            return Result.failed("X-User-ID header required")
+        result = service.update_status(item_id, user_id, request.new_status)
+        if not result:
+            return Result.failed("inbox item not found or not owned by user")
+        return Result.succ(result)
+    except Exception as e:
+        logger.exception("inbox status update exception!")
+        return Result.failed(str(e))
+
+
+# ----------------------- Datasets (空间自持数据资产) -----------------------
+def get_dataset_service() -> WorkspaceDatasetService:
+    return WorkspaceDatasetService(system_app=global_system_app)
+
+
+@router.post("/workspaces/{workspace_id}/datasets/upload", response_model=Result,
+             dependencies=[Depends(check_api_key)])
+async def upload_dataset(
+    workspace_id: int,
+    file: UploadFile,
+    display_name: Optional[str] = Form(None),
+    user_id: Optional[str] = Header(None, alias="X-User-ID"),
+    service: WorkspaceDatasetService = Depends(get_dataset_service),
+) -> Result:
+    """上传 Excel/CSV 作为空间自持数据集(物化为 DuckDB + 注册数据源 + 自动绑定)。"""
+    try:
+        content = await file.read()
+        result = service.import_dataset(
+            workspace_id=workspace_id,
+            file_name=file.filename or "dataset",
+            file_content=content,
+            display_name=display_name,
+            user_id=user_id,
+        )
+        return Result.succ(result)
+    except Exception as e:
+        logger.exception("dataset upload exception!")
+        return Result.failed(str(e))
+
+
+@router.get("/workspaces/{workspace_id}/datasets", response_model=Result,
+            dependencies=[Depends(check_api_key)])
+async def list_datasets(
+    workspace_id: int,
+    service: WorkspaceDatasetService = Depends(get_dataset_service),
+) -> Result:
+    """列出空间自持数据集。"""
+    try:
+        return Result.succ(service.list_datasets(workspace_id))
+    except Exception as e:
+        logger.exception("dataset list exception!")
+        return Result.failed(str(e))
+
+
 def init_endpoints(system_app: SystemApp, config: ServeConfig) -> None:
     global global_system_app
     system_app.register(Service, config=config)
+    system_app.register(InboxService, config=config)
     global_system_app = system_app

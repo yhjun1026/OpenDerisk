@@ -158,6 +158,79 @@
   height: 100%;
 }
 
+/* === 待办/任务 视图切换(segmented,字体语言同 .ws-rail-tab) === */
+.ws-rail-view-switch {
+  display: flex;
+  gap: 2px;
+  margin: 10px 12px 6px;
+  padding: 3px;
+  background: var(--ws-bg);
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.ws-rail-view-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ws-ink-2);
+  padding: 5px 0;
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s;
+}
+.ws-rail-view-tab:hover { color: var(--ws-ink); }
+.ws-rail-view-tab--on {
+  background: var(--ws-surface);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow-sm);
+}
+
+/* === 待办(inbox)列表:与 .ws-scene-task-rail__list 同款滚动容器 + 内边距 === */
+.ws-rail-inbox {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 6px 12px 12px;
+}
+.ws-rail-inbox::-webkit-scrollbar { width: 5px; }
+.ws-rail-inbox::-webkit-scrollbar-thumb { background: var(--ws-border); border-radius: 4px; }
+
+/* 待办来源筛选 chips(介入/提案/任务/手动) */
+.ws-rail-inbox-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 10px;
+}
+.ws-rail-inbox-chip {
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--ws-ink-2);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.ws-rail-inbox-chip:hover { color: var(--ws-ink); background: var(--ws-hover, rgba(79, 70, 229, 0.06)); }
+.ws-rail-inbox-chip--on {
+  background: var(--ws-surface);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow-sm);
+}
+
+/* 处理中的待办卡:左侧 accent 色条 + 浅底,区别于普通待办 */
+.ws-rail-card--inbox-doing {
+  border-left: 3px solid var(--ws-accent);
+  background: var(--ws-accent-light);
+}
+
 .ws-scene-space {
   display: flex;
   flex-direction: column;

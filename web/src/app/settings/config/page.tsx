@@ -56,6 +56,7 @@ import AgentAuthorizationConfig from '@/components/config/AgentAuthorizationConf
 import ToolManagementPanel from '@/components/config/ToolManagementPanel';
 import OAuth2ConfigSection from '@/components/config/OAuth2ConfigSection';
 import LLMSettingsSection from '@/components/config/LLMSettingsSection';
+import FeaturePluginsSection from '@/components/config/FeaturePluginsSection';
 import type { AuthorizationConfig } from '@/types/authorization';
 import type { ToolMetadata } from '@/types/tool';
 
@@ -360,7 +361,13 @@ export default function ConfigPage() {
           {
             key: 'oauth2',
             label: <span><LoginOutlined /> OAuth2 登录</span>,
-            children: <OAuth2ConfigSection onChange={loadConfig} />,
+            children: (
+              <>
+                <OAuth2ConfigSection onChange={loadConfig} />
+                <Divider className="!my-6" orientation="left">权限控制</Divider>
+                <FeaturePluginsSection hideAlert onChange={loadConfig} />
+              </>
+            ),
           },
         ]}
       />

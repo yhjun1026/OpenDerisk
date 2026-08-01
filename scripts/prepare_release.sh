@@ -72,26 +72,53 @@ else
     print_warning "build_web_static.sh not found, skipping frontend build"
 fi
 
-print_header "Step 2: Generate MySQL DDL Files"
-print_step "Running generate_mysql_ddl.py..."
+print_header "Step 2: Generate DDL Files (MySQL & PostgreSQL)"
+print_step "Running generate_ddl.py..."
 
-if [ -f "$SCRIPT_DIR/generate_mysql_ddl.py" ]; then
-    PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
-    if [ -z "$PYTHON_CMD" ]; then
-        print_error "Python not found. Please install Python 3."
-        exit 1
-    fi
-    if "$PYTHON_CMD" "$SCRIPT_DIR/generate_mysql_ddl.py"; then
-        print_success "MySQL DDL files generated successfully"
-        print_info "Full DDL: assets/schema/derisk.sql"
-        print_info "Incremental DDL: assets/schema/upgrade_*_to_*.sql (if any changes)"
+if [ -f "$SCRIPT_DIR/generate_ddl.py" ]; then
+    # Use uv run to ensure proper Python environment
+    if command -v uv &> /dev/null; then
+        PYTHON_CMD="uv run python"
     else
-        print_error "Failed to generate MySQL DDL files"
+        PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
+        if [ -z "$PYTHON_CMD" ]; then
+            print_error "Python not found. Please install Python 3."
+            exit 1
+        fi
+    fi
+
+    if $PYTHON_CMD "$SCRIPT_DIR/generate_ddl.py"; then
+        print_success "DDL files generated successfully (full + incremental)"
+        print_info "MySQL Full DDL: assets/schema/mysql/derisk.sql"
+        print_info "MySQL Incremental DDL: assets/schema/mysql/upgrades/"
+        print_info "PostgreSQL Full DDL: assets/schema/postgresql/derisk.sql"
+        print_info "PostgreSQL Incremental DDL: assets/schema/postgresql/upgrades/"
+    else
+        print_error "Failed to generate DDL files"
         exit 1
     fi
 else
-    print_error "generate_mysql_ddl.py not found"
-    exit 1
+    print_error "generate_ddl.py not found"
+    print_warning "Falling back to legacy generate_mysql_ddl.py..."
+
+    # Fallback to old script if new one doesn't exist
+    if [ -f "$SCRIPT_DIR/generate_mysql_ddl.py" ]; then
+        PYTHON_CMD=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
+        if [ -z "$PYTHON_CMD" ]; then
+            print_error "Python not found. Please install Python 3."
+            exit 1
+        fi
+        if "$PYTHON_CMD" "$SCRIPT_DIR/generate_mysql_ddl.py"; then
+            print_success "MySQL DDL files generated successfully (legacy)"
+            print_warning "PostgreSQL DDL not generated - please install new DDL generator"
+        else
+            print_error "Failed to generate MySQL DDL files"
+            exit 1
+        fi
+    else
+        print_error "No DDL generator found"
+        exit 1
+    fi
 fi
 
 print_header "Step 3: Update Dependencies with uv"
@@ -130,8 +157,9 @@ fi
 
 print_header "Summary"
 print_info "1. Frontend static files: packages/derisk-app/src/derisk_app/static/web/"
-print_info "2. Full DDL: assets/schema/derisk.sql"
-print_info "3. Incremental DDL (if version changed): assets/schema/upgrade_<old>_to_<new>.sql"
-print_info "4. Dependencies: uv.lock updated"
+print_info "2. MySQL DDL: assets/schema/mysql/derisk.sql"
+print_info "3. PostgreSQL DDL: assets/schema/postgresql/derisk.sql"
+print_info "4. Incremental DDL: assets/schema/*/upgrades/ (Phase 2 feature)"
+print_info "5. Dependencies: uv.lock updated"
 
 print_header "End of Release Preparation"

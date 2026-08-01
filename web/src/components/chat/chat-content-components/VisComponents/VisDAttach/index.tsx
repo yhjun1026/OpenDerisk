@@ -109,6 +109,28 @@ const VisDAttach: FC<IProps> = ({ data }) => {
     return formatFileSize(size);
   };
 
+  const isVideoFile = (item: AttachItem): boolean => {
+    // Check mime_type first
+    if (item.mime_type?.toLowerCase().startsWith('video/')) return true;
+    // Check file extension
+    const fileName = item.file_name ?? item.name ?? item.ref_name ?? '';
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    return ['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(ext);
+  };
+
+  const resolveVideoUrl = (item: AttachItem): string | null => {
+    // Use derisk-fs:// preview endpoint for inline playback
+    if (item.oss_url?.startsWith('derisk-fs://')) {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      return `${apiBaseUrl}/api/v2/serve/file/files/preview?uri=${encodeURIComponent(item.oss_url)}`;
+    }
+    // Try object_path via legacy API
+    const apiPreviewUrl = buildPreviewUrl(item);
+    if (apiPreviewUrl) return apiPreviewUrl;
+    // Fall back to direct URLs
+    return item.preview_url ?? item.oss_url ?? item.url ?? item.link ?? item.ref_link ?? null;
+  };
+
   return (
     <AttachWrap>
       <Space wrap style={{ width: '100%' }}>
@@ -120,8 +142,47 @@ const VisDAttach: FC<IProps> = ({ data }) => {
           const sizeDisplay = getFileSizeDisplay(item.file_size);
           const canShowPreview = hasPreviewUrl(item);
           const canShowDownload = hasDownloadUrl(item);
+          const isVideo = isVideoFile(item);
+          const videoUrl = isVideo ? resolveVideoUrl(item) : null;
 
           if (item.file_size !== undefined || item.download_url || item.preview_url || item.oss_url || item.object_path) {
+            if (isVideo && videoUrl) {
+              return (
+                <AttachItemWrap
+                  key={index}
+                  style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: 'stretch', padding: 8 }}
+                >
+                  <video
+                    src={videoUrl}
+                    controls
+                    autoPlay
+                    style={{ width: '100%', borderRadius: '8px', maxHeight: '400px' }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                    <div className="attachItemContent">
+                      <Icon className="attachIcon" />
+                      <Text className="attachName" ellipsis={{ tooltip: fileName }}>
+                        {fileName}
+                      </Text>
+                      {sizeDisplay && (
+                        <Text type="secondary" className="attachSize">
+                          {sizeDisplay}
+                        </Text>
+                      )}
+                    </div>
+                    <div className="attachActions">
+                      {canShowDownload && (
+                        <Tooltip title="Download">
+                          <span className="attachAction downloadAction" onClick={() => handleDownload(item)}>
+                            <DownloadOutlined />
+                          </span>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+                </AttachItemWrap>
+              );
+            }
             return (
               <AttachItemWrap key={index}>
                 <div className="attachItemContent">

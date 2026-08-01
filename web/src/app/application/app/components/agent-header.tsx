@@ -23,9 +23,8 @@ const tabs = [
   { key: 'tools', labelKey: 'builder_tab_tools' },
   { key: 'skills', labelKey: 'builder_tab_skills' },
   { key: 'sub-agents', labelKey: 'builder_tab_sub_agents' },
-  { key: 'knowledge', labelKey: 'builder_tab_knowledge' },
   { key: 'memory', labelKey: 'builder_tab_memory' },
-  { key: 'database', labelKey: 'builder_tab_database' },
+  { key: 'assets', labelKey: 'builder_tab_assets' },
   { key: 'distributed', labelKey: 'builder_tab_distributed' },
   { key: 'hooks', labelKey: 'builder_tab_hooks' },
 ];

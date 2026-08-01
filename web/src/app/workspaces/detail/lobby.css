@@ -253,3 +253,100 @@
   font-size: 13px;
   color: var(--ws-ink-2);
 }
+
+/* === 空间导览卡 .ws-guide === */
+.ws-guide {
+  border: 1px solid var(--ws-border-subtle);
+  border-radius: var(--ws-radius, 12px);
+  background: var(--ws-surface);
+  overflow: hidden;
+  animation: rise-in 0.5s var(--ease-expo, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.ws-guide__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ws-guide__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-ink);
+}
+
+.ws-guide__desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ws-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-guide__toggle {
+  font-size: 11px;
+  color: var(--ws-ink-3, var(--ws-ink-2));
+}
+
+.ws-guide__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 14px 12px;
+}
+
+.ws-guide__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.ws-guide__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ws-ink-2);
+}
+
+.ws-guide__stat b {
+  color: var(--ws-ink);
+  font-weight: 700;
+}
+
+.ws-guide__stat em {
+  font-style: normal;
+  color: var(--ws-ink-2);
+}
+
+.ws-guide__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ws-guide__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--ws-hover, rgba(79, 70, 229, 0.06));
+  color: var(--ws-brand, #4f46e5);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.ws-guide__action:hover {
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--ws-brand, #4f46e5);
+}

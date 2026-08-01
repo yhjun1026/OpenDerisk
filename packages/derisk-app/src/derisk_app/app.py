@@ -698,6 +698,20 @@ def initialize_app(param: ApplicationConfig, app: FastAPI, system_app: SystemApp
     from derisk_serve.trigger.models.models import TriggerSourceEntity  # noqa: F401
     from derisk_serve.usage.models.models import LLMUsageEntity  # noqa: F401
     from derisk_serve.intervention.models.models import InterventionEntity  # noqa: F401
+    from derisk_serve.task.models.models import TaskEntity  # noqa: F401
+    from derisk_serve.workspace.inbox.models import InboxItemEntity  # noqa: F401
+    from derisk_serve.datasource.manages.connect_config_db import (  # noqa: F401
+        ConnectConfigEntity,
+    )
+    from derisk_serve.ecp.models.models import (  # noqa: F401
+        EcpAssetRefEntity,
+        EcpConfirmerEntity,
+        EcpOpLogEntity,
+        EcpResolutionCacheEntity,
+        EcpSemanticEdgeEntity,
+        EcpSemanticObjectEntity,
+        EcpWorkspaceConfigEntity,
+    )
 
     _migration_db_storage(
         param.service.web.database, web_config.disable_alembic_upgrade

@@ -223,6 +223,8 @@ WORKSPACE_EVENT_TYPES = frozenset(
         "artifact_produced",
         "delivery_sent",
         "asset_referenced",
+        "inbox_created",
+        "inbox_resolved",
     }
 )
 
@@ -643,16 +645,18 @@ class AgentChat(BaseComponent, ABC):
         )
         system_sandbox_enabled = bool(sandbox_config and sandbox_config.type)
 
+        # Safely access context.extra (may be None for non-chat contexts like ECP)
+        extra_dict = context.extra or {}
+        dynamic_resources = extra_dict.get("dynamic_resources", [])
+
         if not (
             (need_sandbox and (use_sandbox_flag or system_sandbox_enabled))
-            or await self._have_agent_skill(
-                app, context.extra.get("dynamic_resources", [])
-            )
+            or await self._have_agent_skill(app, dynamic_resources)
         ):
             logger.debug(
                 f"[Sandbox] Skip sandbox creation: need_sandbox={need_sandbox}, "
                 f"use_sandbox_flag={use_sandbox_flag}, system_sandbox_enabled={system_sandbox_enabled}, "
-                f"has_agent_skill={await self._have_agent_skill(app, context.extra.get('dynamic_resources', []))}"
+                f"has_agent_skill={await self._have_agent_skill(app, dynamic_resources)}"
             )
             return None
 
@@ -1610,11 +1614,17 @@ class AgentChat(BaseComponent, ABC):
             f"rm_id={id(resource_manager)}, "
             f"type_to_resources_keys={list(resource_manager._type_to_resources.keys())}"
         )
+
+        # Create scheduler for the agent
+        cache = await self.memory.cache(context.conv_id)
+        scheduler: Scheduler = LocalScheduler(cache=cache)
+
         return await self._build_agent_by_gpts(
             context=context,
             agent_memory=agent_memory,
             rm=resource_manager,
             app=gpts_app,
+            scheduler=scheduler,
             **kwargs,
         )
 
@@ -1657,8 +1667,9 @@ class AgentChat(BaseComponent, ABC):
             f"_build_agent_by_gpts:{app.app_code},{app.app_name}, start:{datetime.now()}"
         )
         try:
-            ## 检测动态资源
-            real_all_resources = kwargs.get("dynamic_resources", [])
+            ## 检测动态资源 - prefer context.extra, fall back to kwargs
+            extra_dict = context.extra or {}
+            real_all_resources = extra_dict.get("dynamic_resources", []) or kwargs.get("dynamic_resources", [])
 
             # 使用全局缓存获取或创建 sandbox_manager，避免并行创建重复的沙箱
             sandbox_manager = await self._get_or_create_sandbox_manager(
@@ -2460,6 +2471,24 @@ class AgentChat(BaseComponent, ABC):
                 unique_resources.append(resource)
         return unique_resources
 
+    @staticmethod
+    def _preserve_scene_resources(
+        scene_resources: List[AgentResource],
+        rebuilt_resources: Optional[List[AgentResource]],
+    ) -> List[AgentResource]:
+        """保留场景装配器预注入的资源,不被 chat_in_params 重建覆盖。
+
+        chat_in_params_to_resource 从空重建且只读 extraTools,不携带已有
+        ``ext_info["dynamic_resources"]``(场景资源 workspace_scene/ecp 由 api_v1
+        _assemble_scene_resources / playbook runtime 预注入)。直接用重建结果覆盖
+        会丢掉场景 ECP 能力。契约:preserved/extended, never overwritten(见
+        playbook/runtime.py)。场景资源置前;最终去重由下游 add_duplicate_allow_tools/
+        build_pack 处理。
+        """
+        if not scene_resources:
+            return rebuilt_resources or []
+        return list(scene_resources) + (rebuilt_resources or [])
+
     def _extract_default_datasources(
         self, gpts_app: GptsApp
     ) -> List[AgentResource]:
@@ -3022,8 +3051,16 @@ class AgentChat(BaseComponent, ABC):
                 chat_in_params, gpts_app
             )
             ### 获取Agent对话资源
+            # 先保留场景装配器预注入的资源(workspace_scene/ecp 等,见 api_v1
+            # _assemble_scene_resources / playbook runtime)。chat_in_params_to_resource
+            # 从空重建且只读 extraTools,不携带已有 dynamic_resources;若直接覆盖会丢掉
+            # 场景 ECP 能力(契约:preserved/extended, never overwritten,见 runtime.py)。
+            scene_resources = ext_info.get("dynamic_resources") or []
             dynamic_resources = await self.chat_in_params_to_resource(
                 chat_in_params, ext_info
+            )
+            dynamic_resources = self._preserve_scene_resources(
+                scene_resources, dynamic_resources
             )
 
             ### 提取应用配置中默认绑定的数据库资源，走和动态资源相同的加载路径

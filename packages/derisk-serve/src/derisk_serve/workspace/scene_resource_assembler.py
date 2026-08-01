@@ -9,7 +9,12 @@ agent 代码不感知;由 chat_completions 端点预处理层调用。产出 Lis
 - workbench 无 playbook_id -> []
 - 缺 workspace / 缺 task / 缺 playbook -> []
 - 任何异常 -> [](装配器永不把异常抛入 chat 路径)
+
+两分支均追加 ecp AgentResource(派生 ECP workspace,见 ecp_derive):使场景
+agent 的 ECP 工具/目录/asset_gate 硬门禁自动落在本空间专属 ECP workspace,
+语意资产按空间隔离;default 仅作全局共享库。
 """
+import json
 import logging
 from typing import List, Optional
 
@@ -17,6 +22,7 @@ from derisk.agent.resource.base import AgentResource
 from derisk_serve.playbook.resource.playbook_resource import (
     PlaybookConfig, PlaybookResource,
 )
+from derisk_serve.workspace.ecp_derive import derived_ecp_workspace_id
 from derisk_serve.workspace.scene_resource import (
     WorkspaceSceneConfig, WorkspaceSceneResource,
 )
@@ -72,6 +78,22 @@ class SceneResourceAssembler:
             return []
 
     @staticmethod
+    def _ecp_resource(ws) -> AgentResource:
+        """派生 ECP workspace 的 AgentResource(type="ecp")。
+
+        由 CapabilityFactory build_pack 还原为 ECPCapability(目录注入 +
+        6 工具闭包绑定 workspace_id + asset_gate 硬门禁)。纯计算无写库。
+        """
+        return AgentResource(
+            type="ecp",
+            name="ecp",
+            value=json.dumps(
+                {"workspace_id": derived_ecp_workspace_id(ws.workspace_code)},
+                ensure_ascii=False,
+            ),
+        )
+
+    @staticmethod
     def _assemble_lobby(system_app, workspace_id, conv_uid):
         # Coerce workspace_name to str defensively; production Workspace.name
         # is already str, so this is a no-op there and protects the JSON
@@ -84,7 +106,10 @@ class SceneResourceAssembler:
             workspace_id=workspace_id, conv_uid=conv_uid,
             workspace_name=str(getattr(ws, "name", "") or ""),
         )
-        return [WorkspaceSceneResource.to_agent_resource(config)]
+        return [
+            WorkspaceSceneResource.to_agent_resource(config),
+            SceneResourceAssembler._ecp_resource(ws),
+        ]
 
     @staticmethod
     def _assemble_workbench(system_app, workspace_id, task_id):
@@ -98,6 +123,12 @@ class SceneResourceAssembler:
             return []
         config = PlaybookConfig.from_playbook_response(pb)
         resources = [PlaybookResource.to_agent_resource(config)]
+        # 派生 ECP workspace 资源(同 lobby);取不到 workspace 则不注入,降级为
+        # 无 ECP 能力,不阻塞任务链路。
+        ws_service = _workspace_service(system_app)
+        ws = ws_service.get_by_id(workspace_id) if ws_service else None
+        if ws:
+            resources.append(SceneResourceAssembler._ecp_resource(ws))
         # 物化剧本 declaration 的 skills/resources 成 agent 可调用的工具
         # (agent_skill/datasource/mcp/knowledge)。否则剧本 skill 只停留在 system prompt
         # 的名字(剧本技能:...),agent 看到却没真实工具可调。复用 workspace 物化分派。

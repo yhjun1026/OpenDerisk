@@ -195,3 +195,56 @@ class TaskService(BaseService[TaskEntity, TaskRequest, TaskResponse]):
         finally:
             session.close()
         return child
+
+    def reassign(self, task_id: int, new_assignee_user_id: int) -> TaskResponse:
+        """转交任务:改 assignee + 给新负责人写待办(personal)+ 原 assignee 待办消除。
+
+        Task.assignee 是任务归属(可能自动完成不需要干预),待办是阻塞产物--
+        转交这里同时写一条 personal 待办给新负责人,让他知道有活要接。
+        """
+        session = self._dao.get_raw_session()
+        try:
+            entity = session.query(TaskEntity).filter(
+                TaskEntity.id == task_id
+            ).first()
+            if not entity:
+                raise ValueError(f"task {task_id} not found")
+            old_assignee = entity.assignee_user_id or entity.created_by_user_id
+            entity.assignee_user_id = new_assignee_user_id
+            session.commit()
+            session.refresh(entity)
+            response = self._dao.to_response(entity)
+        finally:
+            session.close()
+        # 同步待办收件箱(失败不阻塞转交本身)
+        try:
+            from derisk_serve.workspace.inbox import (
+                INBOX_SERVICE_COMPONENT_NAME,
+                SOURCE_TASK,
+                VIS_PERSONAL,
+                InboxService,
+            )
+            inbox: InboxService = self._system_app.get_component(
+                INBOX_SERVICE_COMPONENT_NAME, InboxService
+            )
+            inbox.create_item(
+                workspace_id=response.workspace_id,
+                user_id=new_assignee_user_id,
+                source_type=SOURCE_TASK,
+                source_id=str(task_id),
+                title=f"转交任务: {response.title}",
+                summary=(
+                    response.description[:200] if response.description else None
+                ),
+                visibility=VIS_PERSONAL,
+            )
+            if old_assignee is not None and old_assignee != new_assignee_user_id:
+                inbox.resolve(
+                    workspace_id=response.workspace_id,
+                    source_type=SOURCE_TASK,
+                    source_id=str(task_id),
+                    user_id=old_assignee,
+                )
+        except Exception as e:
+            logger.warning(f"reassign inbox sync failed for task {task_id}: {e}")
+        return response

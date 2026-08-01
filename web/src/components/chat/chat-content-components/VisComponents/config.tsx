@@ -46,6 +46,9 @@ import VisManusLeftPanel from './VisManusLeftPanel';
 import VisManusRightPanel from './VisManusRightPanel';
 import VisCard from './VisCard';
 import VisSqlQuery from './VisSqlQuery';
+import VisEcpSearch from './VisEcpSearch';
+import VisEcpMetric from './VisEcpMetric';
+import VisEcpObject from './VisEcpObject';
 import VisDeliverable from './VisDeliverable';
 import { ee, EVENTS } from '@/utils/event-emitter';
 import {
@@ -759,6 +762,45 @@ export const visComponentsRender: { [key: string]: (props: { children: React.Rea
       );
     } catch (e) {
       return <VisParseError content={content} error={e} componentName="d-sql-query" />;
+    }
+  },
+  'd-ecp-search': ({ children }) => {
+    const content = String(children);
+    try {
+      const data = parseFirstJson(content);
+      return (
+        <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-ecp-search" />}>
+          <VisEcpSearch data={data} />
+        </ErrorBoundary>
+      );
+    } catch (e) {
+      return <VisParseError content={content} error={e} componentName="d-ecp-search" />;
+    }
+  },
+  'd-ecp-metric': ({ children }) => {
+    const content = String(children);
+    try {
+      const data = parseFirstJson(content);
+      return (
+        <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-ecp-metric" />}>
+          <VisEcpMetric data={data} />
+        </ErrorBoundary>
+      );
+    } catch (e) {
+      return <VisParseError content={content} error={e} componentName="d-ecp-metric" />;
+    }
+  },
+  'd-ecp-object': ({ children }) => {
+    const content = String(children);
+    try {
+      const data = parseFirstJson(content);
+      return (
+        <ErrorBoundary resetKeys={[content]} fallbackRender={({ error }) => <VisParseError content={content} error={error} componentName="d-ecp-object" />}>
+          <VisEcpObject data={data} />
+        </ErrorBoundary>
+      );
+    } catch (e) {
+      return <VisParseError content={content} error={e} componentName="d-ecp-object" />;
     }
   },
   'd-error': ({ children }) => {

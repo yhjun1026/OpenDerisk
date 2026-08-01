@@ -48,6 +48,7 @@ def scan_serve_configs():
         "derisk_serve.version",
         "derisk_serve.channel",
         "derisk_serve.usage",
+        "derisk_serve.ecp",
     ]
 
     scanner = ModelScanner[BaseServeConfig]()
@@ -593,6 +594,20 @@ def register_serve_apps(
         ),
     )
     # ################################ Usage Serve Register End   ################
+
+    # ################################ ECP Serve Register Begin ################
+    from derisk_serve.ecp.serve import Serve as EcpServe
+
+    system_app.register(
+        EcpServe,
+        config=get_config(
+            serve_configs,
+            EcpServe.name,
+            derisk_serve.ecp.serve.ServeConfig,
+            api_keys=global_api_keys,
+        ),
+    )
+    # ################################ ECP Serve Register End   ################
 
     # ################################ Channel Serve Register Begin ################
     from derisk_serve.channel.serve import Serve as ChannelServe

@@ -32,6 +32,7 @@ from ..api.schemas import (
     DatasourceServeResponse,
 )
 from ..config import SERVE_SERVICE_COMPONENT_NAME, ServeConfig
+from .file_dataset import rewrite_file_dataset_state
 from .learning_service import SchemaLearningService
 from .spec_service import DbSpecService
 
@@ -198,6 +199,12 @@ class Service(
                 persisted_state["ext_config"], ensure_ascii=False
             )
         persisted_state["comment"] = desc
+        try:
+            # Excel/CSV datasets: materialize the uploaded file into DuckDB
+            # and point db_path at the materialized file.
+            rewrite_file_dataset_state(str_db_type, persisted_state)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         db_name = persisted_state.get("db_name")
         datasource = self._dao.get_by_names(db_name)
         if datasource:
@@ -257,6 +264,11 @@ class Service(
                 persisted_state["ext_config"], ensure_ascii=False
             )
         persisted_state["comment"] = desc
+        try:
+            # Excel/CSV datasets: re-upload means re-materialize into DuckDB.
+            rewrite_file_dataset_state(str_db_type, persisted_state)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         db_name = persisted_state.get("db_name")
         if not db_name:
             raise HTTPException(status_code=400, detail="datasource name is required")
@@ -294,8 +306,23 @@ class Service(
             self._dao.delete({"id": datasource_id})
         return db_config
 
-    def get_list(self, db_type: Optional[str] = None) -> List[DatasourceQueryResponse]:
-        """List the Datasource entities."""
+    def get_list(
+        self,
+        db_type: Optional[str] = None,
+        owner_workspace_id: Optional[int] = None,
+    ) -> List[DatasourceQueryResponse]:
+        """List the Datasource entities.
+
+        owner_workspace_id 为 None 时不过滤(全量,向后兼容);提供时返回
+        "该空间自持 + 全局(owner_workspace_id IS NULL)"的并集。
+        """
+        if owner_workspace_id is not None:
+            entities = self._dao.list_accessible_by_workspace(
+                owner_workspace_id, db_type=db_type
+            )
+            return [
+                self._to_query_response(self._dao.to_response(e)) for e in entities
+            ]
         query_request = {}
         if db_type:
             query_request["db_type"] = db_type

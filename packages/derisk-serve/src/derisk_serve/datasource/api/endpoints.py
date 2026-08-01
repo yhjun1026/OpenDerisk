@@ -221,6 +221,11 @@ async def query_page(
     db_type: Optional[str] = Query(
         None, description="Database type, e.g. sqlite, mysql, etc."
     ),
+    owner_workspace_id: Optional[int] = Query(
+        None,
+        description="Filter to datasources owned by this workspace plus global "
+        "(owner_workspace_id IS NULL) ones. Omit for the full list.",
+    ),
     service: Service = Depends(get_service),
 ) -> Result[List[DatasourceQueryResponse]]:
     """Query Space entities
@@ -230,7 +235,7 @@ async def query_page(
     Returns:
         ServerResponse: The response
     """
-    res = service.get_list(db_type=db_type)
+    res = service.get_list(db_type=db_type, owner_workspace_id=owner_workspace_id)
     return Result.succ(res)
 
 
