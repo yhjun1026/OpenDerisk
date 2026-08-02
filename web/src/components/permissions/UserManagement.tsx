@@ -15,7 +15,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
   Spin,
 } from 'antd';
 import {
@@ -31,6 +31,7 @@ import {
   type UserInfo,
   type UserDetail,
   type Role,
+  type MyPermissions,
 } from '@/services/permissions';
 import { usersService, type User } from '@/services/users';
 import { authService } from '@/services/auth';
@@ -51,6 +52,7 @@ interface UnifiedUserRow extends UserInfo {
 
 export default function UserManagement({ roles: externalRoles }: UserManagementProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UnifiedUserRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -62,6 +64,7 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
   const [detailLoading, setDetailLoading] = useState(false);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [myRbac, setMyRbac] = useState<MyPermissions | null>(null);
   const [groups, setGroups] = useState<UserGroupRow[]>([]);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<number, Set<number>>>({});
   const [groupAssignOpen, setGroupAssignOpen] = useState(false);
@@ -171,9 +174,18 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
 
   useEffect(() => {
     authService.getCurrentUser().then(setCurrentUser).catch(() => setCurrentUser(null));
+    permissionsService.getMyPermissions().then(setMyRbac).catch(() => setMyRbac(null));
     loadRoles();
     loadGroups();
   }, [loadRoles, loadGroups]);
+
+  // admin 判断：兼容 legacy role=admin 和 RBAC 角色/权限
+  const isCurrentUserAdmin = (() => {
+    if (currentUser?.role === 'admin') return true;
+    if (myRbac?.roles?.some((r) => r === 'admin' || r === 'superadmin')) return true;
+    if (myRbac?.permissions && Array.isArray(myRbac.permissions['system']) && myRbac.permissions['system'].includes('admin')) return true;
+    return false;
+  })();
 
   useEffect(() => {
     loadUsers({ silent: false });
@@ -419,7 +431,7 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
             <Button type="link" size="small" onClick={() => handleToggleRole(record)}>
               {record.legacy_role === 'admin' ? t('permissions_unset_admin') : t('permissions_set_admin')}
             </Button>
-            {currentUser?.role === 'admin' && currentUser?.id !== record.id && (
+            {isCurrentUserAdmin && currentUser?.id !== record.id && (
               <Popconfirm
                 title={t('permissions_delete_user_confirm')}
                 onConfirm={() => handleDelete(record)}
@@ -444,7 +456,7 @@ export default function UserManagement({ roles: externalRoles }: UserManagementP
           </Text>
         </Space>
         <Space>
-          {currentUser?.role === 'admin' && (
+          {isCurrentUserAdmin && (
             <Button
               type="primary"
               icon={<UserAddOutlined />}
@@ -637,6 +649,7 @@ interface UserRolePanelProps {
 
 function UserRolePanel({ user, allRoles, onSuccess }: UserRolePanelProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [targetKeys, setTargetKeys] = useState<React.Key[]>([]);
   const [saving, setSaving] = useState(false);
 

@@ -321,6 +321,7 @@ class RecallTracker:
                 "average_score": s.average_score,
                 "unique_queries": s.unique_queries,
                 "recall_days": len(s.recall_days),
+                "last_recalled": s.last_recalled,
                 "score": round(total, 4),
             })
 

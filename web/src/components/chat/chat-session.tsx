@@ -10,7 +10,7 @@ import ChatContentContainer from '@/components/chat/chat-content-container';
 import { appendErrorToContext } from '@/components/chat/chat-content-components/VisComponents/VisError';
 import { getInitMessage, transformFileMarkDown, transformFileUrl } from '@/utils';
 import { STORAGE_INIT_MESSAGE_KET } from '@/utils/constants/storage';
-import { Flex, Layout, message } from 'antd';
+import { Flex, Layout, App } from 'antd';
 import ChatPageSkeleton from '@/components/chat/content/chat-page-skeleton';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ChatContext, ChatContentContext, SelectedSkill, ContextMetricsProvider } from '@/contexts';
@@ -66,6 +66,7 @@ export interface ChatSessionHandle {
 
 const ChatSession = forwardRef<ChatSessionHandle, ChatSessionProps>(function ChatSession(props, ref) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
 
   const searchParams = useSearchParams();
   const chatId = props.convUid ?? (searchParams?.get('conv_uid') || searchParams?.get('chatId')) ?? '';

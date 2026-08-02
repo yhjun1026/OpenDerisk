@@ -3,7 +3,7 @@
 import React, { useContext, useState, useEffect, useCallback } from 'react';
 import { AppContext } from '@/contexts';
 import {
-  Button, Tabs, Empty, Tooltip, App, Modal, InputNumber, Switch, Collapse, Divider,
+  Button, Tabs, Empty, Tooltip, App, InputNumber, Switch, Collapse, Divider,
   Typography, Badge, Card, Space, Alert
 } from 'antd';
 import { 
@@ -27,7 +27,7 @@ const { Panel } = Collapse;
 export default function TabRuntime() {
   const { t } = useTranslation();
   const { appInfo, fetchUpdateApp } = useContext(AppContext);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   
   const [config, setConfig] = useState<AgentRuntimeConfig>(DEFAULT_AGENT_RUNTIME_CONFIG);
   const [hasChanges, setHasChanges] = useState(false);
@@ -71,7 +71,7 @@ export default function TabRuntime() {
   };
 
   const handleReset = () => {
-    Modal.confirm({
+    modal.confirm({
       title: t('runtime_reset_title', '重置配置'),
       content: t('runtime_reset_content', '确定要重置为默认配置吗？'),
       okText: t('confirm', '确认'),

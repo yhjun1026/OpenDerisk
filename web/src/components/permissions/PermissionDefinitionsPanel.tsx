@@ -14,7 +14,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
   Divider,
 } from 'antd';
 import {
@@ -90,6 +90,7 @@ interface PermissionDefinitionsPanelProps {
 
 export default function PermissionDefinitionsPanel({ onDefinitionCreated }: PermissionDefinitionsPanelProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [definitions, setDefinitions] = useState<PermissionDefinition[]>([]);
   const [createOpen, setCreateOpen] = useState(false);

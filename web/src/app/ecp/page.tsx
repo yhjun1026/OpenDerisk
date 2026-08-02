@@ -9,41 +9,8 @@ import { Select } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 
-import AssetsTab from './components/AssetsTab';
-import GraphTab from './components/GraphTab';
-import InboxTab from './components/InboxTab';
-import LintTab from './components/LintTab';
-import MissTab from './components/MissTab';
-import OverviewTab from './components/OverviewTab';
-import SemanticsTab from './components/SemanticsTab';
-import SettingsTab from './components/SettingsTab';
-import WikiTab from './components/WikiTab';
+import { EcpConsole, VALID_TABS, type TabKey } from './components/ecp-console';
 import './ecp.css';
-
-const VALID_TABS = [
-  'overview',
-  'inbox',
-  'assets',
-  'semantics',
-  'wiki',
-  'graph',
-  'miss',
-  'lint',
-  'settings',
-] as const;
-type TabKey = (typeof VALID_TABS)[number];
-
-const TAB_LABELS: Record<TabKey, string> = {
-  overview: '总览',
-  inbox: '收件箱',
-  assets: '资产层',
-  semantics: '硬语义',
-  wiki: '软知识',
-  graph: '血缘图',
-  miss: 'miss',
-  lint: '巡检',
-  settings: '设置',
-};
 
 /** 全局共享语义库的 ECP workspace id(后端缺省值)。 */
 const DEFAULT_WORKSPACE = 'default';
@@ -178,35 +145,7 @@ export default function EcpPage() {
         </div>
       </div>
 
-      <nav className="ecp-nav">
-        {VALID_TABS.map(key => (
-          <span
-            key={key}
-            className={`ecp-nav__pill ${tab === key ? 'ecp-nav__pill--active' : ''}`}
-            onClick={() => setTab(key)}
-          >
-            {TAB_LABELS[key]}
-            {key === 'inbox' && pendingCount > 0 && (
-              <span className="ecp-nav__count">{pendingCount}</span>
-            )}
-          </span>
-        ))}
-      </nav>
-
-      {/* 滚动区域：tab 内容 */}
-      <div className="ecp-tab-content">
-        {tab === 'overview' && (
-          <OverviewTab onGoInbox={() => setTab('inbox')} workspaceId={workspaceId} />
-        )}
-        {tab === 'inbox' && <InboxTab workspaceId={workspaceId} />}
-        {tab === 'assets' && <AssetsTab workspaceId={workspaceId} />}
-        {tab === 'semantics' && <SemanticsTab workspaceId={workspaceId} />}
-        {tab === 'wiki' && <WikiTab workspaceId={workspaceId} />}
-        {tab === 'graph' && <GraphTab workspaceId={workspaceId} />}
-        {tab === 'miss' && <MissTab workspaceId={workspaceId} />}
-        {tab === 'lint' && <LintTab workspaceId={workspaceId} />}
-        {tab === 'settings' && <SettingsTab workspaceId={workspaceId} />}
-      </div>
+      <EcpConsole workspaceId={workspaceId} tab={tab} onTabChange={setTab} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ export interface AssetRequired {
   query: string;
 }
 
-export type ResourceType = 'datasource' | 'mcp' | 'knowledge' | 'app' | 'llm_model';
+export type ResourceType = 'datasource' | 'mcp' | 'knowledge' | 'app' | 'llm_model' | 'ecp';
 
 export interface Resource {
   type: ResourceType;

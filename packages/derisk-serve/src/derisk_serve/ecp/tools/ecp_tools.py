@@ -673,41 +673,53 @@ async def propose_semantic(
     workspace_id: Optional[str] = None,
     **kwargs,
 ) -> str:
-    from ..config import OBJECT_TYPES
-    from ..service.contracts import validate_payload
+    from ..config import OBJECT_TYPES, STATUS_PROPOSED
+    from ..service.contracts import normalize_payload, validate_payload
 
     ws = _ws(workspace_id)
     if obj_type not in OBJECT_TYPES:
         return json.dumps(
             {"error": f"obj_type 必须是 {OBJECT_TYPES} 之一"}, ensure_ascii=False
         )
+    # 入库前归一 + 可执行级契约校验(与 confirm 晋升门禁同标准):不满足则拒绝入库,
+    # 避免不可确认的"死提案"堆积进收件箱。agent 拿到 contract_gaps 后补全重提即可。
+    normalized = normalize_payload(obj_type, payload)
+    problems = validate_payload(obj_type, normalized, level="executable")
+    if problems:
+        return json.dumps(
+            {
+                "error": "提案不满足可执行契约,未入库;请补全后重提",
+                "contract_gaps": problems,
+            },
+            ensure_ascii=False,
+        )
     vo = SemanticObjectDao().create_proposal(
         object_id,
         obj_type,
-        payload,
+        normalized,
         workspace_id=ws,
         confidence=confidence,
         created_by="llm",
         source="agent:propose_semantic",
     )
-    OpLogDao().append(
-        "propose", ws,
-        {"id": object_id, "version": vo.version, "type": obj_type,
-         "source": "agent:propose_semantic"},
-    )
-    resp = {
-        "proposal_id": f"{vo.id}@v{vo.version}",
-        "status": vo.status,
-        "note": "提案已进入确认收件箱，确认前不影响任何查询",
-    }
-    # 契约校验提示(非阻塞):确认需过可执行级校验,提前告知缺口供自我纠正
-    problems = validate_payload(obj_type, vo.payload or {}, level="executable")
-    if problems:
-        resp["contract_gaps"] = problems
-        resp["note"] = (
-            "提案已进入确认收件箱，但确认前需补全: " + "; ".join(problems)
+    if vo.status == STATUS_PROPOSED:
+        OpLogDao().append(
+            "propose", ws,
+            {"id": object_id, "version": vo.version, "type": obj_type,
+             "source": "agent:propose_semantic"},
         )
-    return json.dumps(resp, ensure_ascii=False)
+        note = "提案已进入确认收件箱，确认前不影响任何查询"
+    else:
+        # 去重命中:返回已有 confirmed VO,未产生新提案
+        note = "已存在相同的已确认版本,未重复提案"
+    return json.dumps(
+        {
+            "proposal_id": f"{vo.id}@v{vo.version}",
+            "status": vo.status,
+            "note": note,
+        },
+        ensure_ascii=False,
+    )
 
 
 def build_ecp_agent_tools(workspace_id: Optional[str] = None) -> List[FunctionTool]:

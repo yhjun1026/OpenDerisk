@@ -4,7 +4,7 @@
 turn 结束触发 HookManager.turn_complete，conversation 结束触发 conversation_complete。
 """
 import dataclasses
-from typing import Any, AsyncGenerator, Callable, Optional
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from derisk.agent.core.v2.runtime import run_step
 from derisk.agent.core.v2.state_store import StateStore
@@ -58,6 +58,7 @@ async def run_loop(
     step_count = 0
     last_had_tool_calls = True
     turn_complete_fired = False
+    conversation_history: List[Dict[str, str]] = []
 
     while step_count < max_steps and last_had_tool_calls:
         last_had_tool_calls = False
@@ -125,6 +126,15 @@ async def run_loop(
                         step_count=turn_ctx.step_count,
                     ),
                 )
+            conversation_history.append(
+                {"role": "user", "content": turn_ctx.user_prompt or ""}
+            )
+            conversation_history.append(
+                {
+                    "role": "assistant",
+                    "content": turn_ctx.final_answer or "",
+                }
+            )
             turn_complete_fired = True
             break  # turn 结束，退出 loop
 
@@ -150,6 +160,18 @@ async def run_loop(
                 ),
             )
 
+    # Conversation lifecycle end: trigger tier 3 memory curation.
+    # Note: awaiting/failed states return early above, so we only reach here
+    # on a completed (or max-steps-completed) turn.
+    await trigger_conversation_complete(
+        hook_manager,
+        conv_id=conv_id,
+        agent_id=agent_id,
+        user_id=user_id,
+        total_rounds=turn_ctx.round,
+        conversation_history=conversation_history,
+    )
+
 
 async def trigger_conversation_complete(
     hook_manager: Any,
@@ -158,6 +180,7 @@ async def trigger_conversation_complete(
     agent_id: str,
     user_id: Optional[str],
     total_rounds: int,
+    conversation_history: Optional[List[Dict[str, str]]] = None,
 ) -> None:
     """run_loop 调用方在 conversation 结束时调。"""
     if hook_manager is None:
@@ -168,7 +191,10 @@ async def trigger_conversation_complete(
     await hook_manager.trigger(
         "conversation_complete",
         build_conversation_complete_context(
-            conv_id=conv_id, agent_id=agent_id, user_id=user_id,
+            conv_id=conv_id,
+            agent_id=agent_id,
+            user_id=user_id,
             total_rounds=total_rounds,
+            conversation_history=conversation_history,
         ),
     )

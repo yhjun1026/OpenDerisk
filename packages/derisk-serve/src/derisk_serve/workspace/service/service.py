@@ -217,6 +217,48 @@ class WorkspaceService(BaseService[WorkspaceEntity, WorkspaceRequest, WorkspaceR
             )
         )
 
+    # ---------------- Home workspace(首页默认空间) ----------------
+    def get_or_create_home(self, user_id: int) -> WorkspaceResponse:
+        """用户首页默认空间(幂等 get-or-create)。
+
+        解析顺序:
+        1. 成员可见空间中带 settings.is_home 标记的 -> 返回
+        2. 无标记 -> 取最早创建(id 最小)的补标记后返回(兼容存量用户,零迁移)
+        3. 一个空间都没有 -> 新建"我的工作台"(create 的派生钩子全部生效:
+        owner 成员/默认 agent/ECP workspace 供给)
+        归档的空间不参与选择;用户归档首页空间后,下次访问自动选下一个或新建。
+        """
+        spaces = self.list_workspaces(user_id)
+        if spaces:
+            home = next(
+                (s for s in spaces if (s.settings or {}).get("is_home")), None
+            )
+            if home:
+                return home
+            home = min(spaces, key=lambda s: s.id)
+            self._mark_home(home)
+            return home
+        return self.create(
+            WorkspaceRequest(
+                name="我的工作台",
+                owner_user_id=user_id,
+                settings={"is_home": True},
+            )
+        )
+
+    def _mark_home(self, ws: WorkspaceResponse) -> None:
+        """给空间打 is_home 标记(合并现有 settings,不覆盖其他键)。"""
+        try:
+            settings = dict(ws.settings or {})
+            settings["is_home"] = True
+            self._dao.update(
+                {"workspace_code": ws.workspace_code},
+                {"settings_json": json.dumps(settings, ensure_ascii=False)},
+                force_update=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"mark home workspace failed: {e}")
+
     # ---------------- Member management ----------------
     def list_members(self, workspace_id: int) -> List[WorkspaceMemberResponse]:
         entities = self._member_dao.list_by_workspace(workspace_id)

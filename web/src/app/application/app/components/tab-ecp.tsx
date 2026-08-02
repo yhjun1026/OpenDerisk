@@ -6,13 +6,14 @@ import { AppContext } from '@/contexts';
 import { getUserId } from '@/utils/storage';
 import { CheckCircleFilled, DatabaseOutlined, SafetyCertificateOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { Spin, Tag, Tooltip, message } from 'antd';
+import { Spin, Tag, Tooltip, App } from 'antd';
 import { useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export default function TabEcp() {
   const { t } = useTranslation();
   const { appInfo, fetchUpdateApp } = useContext(AppContext);
+  const { message } = App.useApp();
   const [linkedResources, setLinkedResources] = useState<EcpLinkedResource[]>([]);
 
   // 可绑定的 ECP workspace 全集:全局共享库(default) + 各场景空间派生(ecp_<code>)

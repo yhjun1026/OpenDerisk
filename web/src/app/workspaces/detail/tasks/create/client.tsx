@@ -5,7 +5,7 @@ import {
   getTriggerInfo, createTrigger, updateTrigger, startTask,
 } from '@/client/api';
 import {
-  Button, Card, Form, Input, Select, Spin, Switch, Typography, Tag, message,
+  App, Button, Card, Form, Input, Select, Spin, Switch, Typography, Tag,
 } from 'antd';
 import { useRequest } from 'ahooks';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -110,6 +110,7 @@ export default function TaskCreatePage() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [selectedPlaybookId, setSelectedPlaybookId] = useState<number | null>(null);
+  const { message } = App.useApp();
 
   const rawType = searchParams?.get('type') as TriggerType | null;
   const initialType: TriggerType = rawType && TYPE_CONFIG[rawType] ? rawType : 'adhoc';

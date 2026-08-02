@@ -1,6 +1,6 @@
-### OpenDeRisk
+### OpenDerisk
 
-OpenDeRisk AI 原生风险智能系统 —— 7×24 小时应用系统 AI 数字运维助手 (AI-SRE)。我们的愿景是为每个应用系统提供一个 7×24 小时的 AI 系统数字管家，能够与真人协同工作，7×24 小时处理业务问题，构建深度护航与防护网。
+OpenDerisk 是一个 AI 原生的 **Multi-Agent（多智能体）开发与运行框架**。它让你能够构建、调试并运行协同工作的智能体，将一个 Query 转化为可交付的结果，并将达成路径完整地展示给人。我们的愿景是为每一个生产系统提供一个 7×24 小时协同工作的 AI 队友，处理复杂任务并守护系统的稳定性。
 
 <div align="center">
   <p>
@@ -27,37 +27,50 @@ OpenDeRisk AI 原生风险智能系统 —— 7×24 小时应用系统 AI 数字
 [**English**](README.md) | [**简体中文**](README.zh.md) | [**日本語**](README.ja.md) | [**视频教程**](https://www.youtube.com/watch?v=1qDIu-Jwdf0)
 </div>
 
+<p align="center">
+  <img src="./assets/platform_hero.jpg" width="100%" />
+</p>
 
 ### 最新动态
-- [2025/10] 🔥 我们发布了 OpenDerisk V0.2 版本。[OpenDerisk V0.2 ReleaseNote](./docs/docs/OpenDerisk_v0.2.md) 
+- [2026/07] 🔥 工作空间运行态与 ECP 语义层上线；`ReActMasterAgent` 2.3 韧性执行能力。详见 [OpenDerisk V0.2 ReleaseNote](./docs/docs/OpenDerisk_v0.2.md)
+- [2025/10] 发布 OpenDerisk V0.2 —— 面向未来的 Multi-Agent 开发与运行产品框架。
 
 ### 核心特性
-<p align="left">
-  <img src="./assets/feature_zh.png" width="100%" />
+
+<p align="center">
+  <img src="./assets/features.svg" width="100%" />
 </p>
 
-1. **DeepResearch RCA**: 通过深度分析日志、Trace、代码进行问题根因的快速定位。
-2. **可视化证据链**: 诊断过程与证据链全部可视化展示，诊断过程一目了然，可快速判断定位准确性。
-3. **多智能体协同**: SRE-Agent、Code-Agent、ReportAgent、Vis-Agent、Data-Agent 协同工作。
-4. **开源开放架构**: OpenDerisk 采用完全开源、开放的方式构建，相关框架、代码在开源项目中可开箱即用。
+1. **多智能体构建框架** — 三栏编辑器中完成智能体构建：系统/用户提示词、上下文资源编排、模型与参数调优、技能/MCP 绑定、知识、记忆，以及实时调试预览。
+2. **工作空间（场景空间）** — AI 原生首页。围绕价值交付设计，展示达成路径（规划 → 执行 → 结果），包含任务、产物、交付物、剧本与触发器。
+3. **ReActMasterAgent** — 长程任务推理引擎：死循环检测、上下文压缩、工具输出截断、历史裁剪、分阶段提示词管理、工作日志、报告生成与看板任务规划。
+4. **ECP 语义层** — 可信的 text2SQL 与数据分析。AI 提议语义（实体/指标/关系），人工通过权限门确认，数字只能来自已确认指标。
+5. **知识库** — 完整 RAG 流程，覆盖向量（Chroma、Milvus、PGVector 等）、图（Neo4j、TuGraph）与全文检索，支持 S3/OSS 文件存储。
+6. **工具 · 技能 · MCP** — 内置工具（文件系统、Shell、沙箱、调度、待办）、可复用技能包，以及 MCP 协议接入外部服务。
+7. **媒体生成** — 图像与视频生成作为一等公民智能体工具（OpenAI、通义万相、Google Banana、Seedance、Sora），以产物形式在工作空间交付。
+8. **内置场景** — AI-SRE（OpenRCA 根因诊断）、DataExpert、火焰图助手，开箱即用且可扩展。
 
-### 架构方案 
-<p align="left">
-  <img src="./assets/arch_zh.png" width="100%" />
+### 架构方案
+
+<p align="center">
+  <img src="./assets/architecture.svg" width="100%" />
 </p>
 
-#### 项目介绍
-系统采用多 Agent 架构，目前代码主要实现了高亮部分。告警感知基于微软开源的 [OpenRCA 数据集](https://github.com/microsoft/OpenRCA)，数据集解压后约 26GB。在该数据集上，我们通过多 Agent 协同实现根因分析诊断，Code-Agent 动态编写代码进行最终分析。
+OpenDerisk 分为五层：
 
-#### 技术实现
-1. **数据层**: 从 GitHub 拉取大规模 OpenRCA 数据集 (20GB)，本地解压处理分析。
-2. **逻辑层**: Multi-Agent 架构，通过 SRE-Agent、Code-Agent、ReportAgent、VisAgent、Data-Agent 协同合作，进行深度的 DeepResearch RCA (Root Cause Analysis) 根因分析。
-3. **可视化层**: 采用 Vis 协议动态渲染整个处理流程与证据链，以及多角色协同切换的过程。
+- **交互与产品层** — 工作空间（首页）、应用/智能体构建器、对话/助手（vis_manus 双面板布局）、场景配置与内置场景。
+- **智能体运行层** — 以 `ReActMasterAgent` 为核心，可插拔推理引擎（ReACT、基于 Summary、RAG 深度检索、上下文工程），子智能体与韧性执行控制。
+- **能力层** — 工具、技能、MCP、知识库、记忆与媒体生成。
+- **数据与集成层** — 15+ 数据源、ECP 语义层、渠道（钉钉/飞书）与沙箱（本地/Docker/浏览器）。
+- **基础层** — 模型管理（LLM/Embedding/Reranker）、存储与向量库、权限/RBAC、审计与可观测性。
 
-OpenDeRisk 中的数字员工 (Agent)
-<p align="left">
-  <img src="./assets/ai-agent.png" width="100%" />
-</p>
+这里智能体的本质是**价值交付**：从一个 Query 到可交付的结果，并带有可视、可信的达成路径。
+
+### 技术思考与分享
+
+我们在构建 OpenDerisk 的过程中沉淀了一些技术思考，作为项目的设计积累持续维护。
+
+- [三层 Loop 工程时代：OpenDerisk 的技术思考与实践](./docs/Three_Layer_Loop_Engineering.md) — 从 Prompt 到 Loop，AI 产品正从"一次性回答"走向"持续参与"。本文梳理 AI 工程的五个演进时代，拆解 OpenDerisk 如何通过 L1 LLM Loop / L2 Agent Loop / L3 业务场景 Loop 三层嵌套循环，配合业务数据自主飞轮进化，构建一个"团队原生、越用越强"的 AI 产品。
 
 ### 安装（推荐）
 
@@ -143,12 +156,6 @@ uv run derisk quickstart -p 8888
 
 在 `derisk-proxy-aliyun.toml` 中配置 API_KEY，然后运行：
 
-> 注意：默认使用 OpenRCA 的 Telecom 数据集。通过以下链接或命令下载：
-> `gdown https://drive.google.com/uc?id=1cyOKpqyAP4fy-QiJ6a_cKuwR7D46zyVe`
-
-下载后，将数据集移动到 `pilot/datasets/` 目录。
-
-运行启动命令：
 ```bash
 # 使用配置文件启动
 uv run derisk quickstart -c configs/derisk-proxy-aliyun.toml
@@ -161,29 +168,35 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 
 打开浏览器访问 [`http://localhost:7777`](http://localhost:7777)
 
-##### 2. 内置场景快速使用
-* **AI-SRE (OpenRCA 根因定位)**
-  - 注意: 默认使用 OpenRCA 数据集中的 [Bank 数据集](https://drive.usercontent.google.com/download?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R&export=download&confirm=t&uuid=42621058-41af-45bf-88a6-64c00bfd2f2e)
-  - 下载命令: `gdown https://drive.google.com/uc?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R`
+### 使用说明
+
+#### 基础模块
+位于【配置管理】菜单下：
+- **模型管理** — 新增/编辑/删除 LLM、Embedding、Reranker 模型（OpenAI、阿里云、智谱、本地等）。支持多模型优先级策略。
+- **知识库** — 基于内置 RAG 检索流程管理知识。
+- **MCP** — 管理与调试 MCP 服务（增删改查 + 工具测试）。
+- **提示词** — 统一的系统/用户提示词编写与管理界面。
+
+#### 构建智能体
+打开【应用管理】→ 创建或打开智能体。三栏编辑器可配置推理引擎、模型、技能/MCP、知识与子智能体，并通过实时预览调试。
+
+#### 内置场景
+* **AI-SRE（OpenRCA 根因定位）**
+  - 注意：默认使用 OpenRCA 数据集中的 [Bank 数据集](https://drive.usercontent.google.com/download?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R&export=download&confirm=t&uuid=42621058-41af-45bf-88a6-64c00bfd2f2e)
+  - 下载命令：`gdown https://drive.google.com/uc?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R`
   - 下载后解压到 `${derisk项目}/pilot/datasets`
-* **火焰图助手**
-  - 上传本地应用服务进程的火焰图 (Java/Python) 进行分析
-* **DataExpert**
-  - 上传指标、日志、Trace 等各种 Excel 表格数据进行对话分析
+* **火焰图助手** — 上传本地应用服务进程的火焰图（Java/Python）进行分析
+* **DataExpert** — 上传指标、日志、Trace 等 Excel 表格数据进行对话分析
 
-##### 3. 快速开发
-* **Agent 开发**
-  - 参考 `derisk-ext.agent.agents` 下的实现逻辑
-* **工具开发**
-  - Skills 
-  - MCP (Model Context Protocol)
-* **DeRisk-Skills 开发**
-  - [derisk-skills](https://github.com/derisk-ai/derisk_skills)
+### 开发
+* **智能体开发** — 参考 `packages/derisk-core/src/derisk/agent/expand/`（如 `react_master_agent`）与 `packages/derisk-ext/src/derisk_ext/agent/agents/`
+* **工具开发** — 技能（`skills/`）与 MCP（Model Context Protocol）
+* **DeRisk-Skills 开发** — [derisk-skills](https://github.com/derisk-ai/derisk_skills)
 
-#### 运行效果
-多智能体协同处理复杂运维诊断任务场景:
-<p align="left">
-  <img src="./assets/scene_demo.png" width="100%" />
+### 场景演示
+多智能体协同处理复杂任务 —— 从一个 Query 到可交付的结果，达成路径全程可见：
+<p align="center">
+  <img src="./assets/scene_demo_new.jpg" width="100%" />
 </p>
 
 ### 引用
@@ -206,7 +219,7 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 - [MetaGPT](https://github.com/FoundationAgents/MetaGPT)
 - [OpenRCA](https://github.com/microsoft/OpenRCA)
 
-OpenDeRisk-AI 社区致力于构建 AI 原生的风险智能系统。🛡️ 我们希望社区能够为您提供更好的服务，同时也期待您的加入，共同创造更美好的未来。🤝
+OpenDerisk 社区致力于构建 AI 原生的多智能体系统。🛡️ 我们希望社区能够为您提供更好的服务，同时也期待您的加入，共同创造更美好的未来。🤝
 
 
 [![Star History Chart](https://api.star-history.com/svg?repos=derisk-ai/OpenDerisk&type=Date)](https://star-history.com/#derisk-ai/OpenDerisk)
@@ -216,5 +229,5 @@ OpenDeRisk-AI 社区致力于构建 AI 原生的风险智能系统。🛡️ 我
 加入钉钉群，与我们一起交流讨论:
 
 <div align="center" style="display: flex; gap: 20px;">
-    <img src="assets/derisk-ai.jpg" alt="OpenDeRisk-AI 交流群" width="300" />
+    <img src="assets/derisk-ai.jpg" alt="OpenDerisk 交流群" width="300" />
 </div>

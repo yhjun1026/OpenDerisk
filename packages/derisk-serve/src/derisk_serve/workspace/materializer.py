@@ -109,6 +109,21 @@ def _materialize_llm_model(
     return None
 
 
+def _materialize_ecp(
+    physical_ref: str, config: Dict[str, Any]
+) -> Optional[AgentResource]:
+    """type=ecp → AgentResource(type=ecp)。"""
+    return AgentResource.from_dict(
+        {
+            "type": "ecp",
+            "name": physical_ref or "ecp",
+            "value": {
+                "workspace_id": physical_ref or config.get("workspace_id", "default"),
+            },
+        }
+    )
+
+
 # type → 物化函数名分派表（字符串，便于运行时通过 globals 解析并支持 patch）
 _MATERIALIZE_DISPATCH = {
     "mcp": "_materialize_mcp",
@@ -119,6 +134,7 @@ _MATERIALIZE_DISPATCH = {
     "knowledge_space": "_materialize_knowledge_space",
     "app": "_materialize_app_as_extra_agent",
     "llm_model": "_materialize_llm_model",
+    "ecp": "_materialize_ecp",
 }
 
 

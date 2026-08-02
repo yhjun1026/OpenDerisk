@@ -9,7 +9,7 @@ import {
   getSkillList,
 } from '@/client/api';
 import {
-  Button, Empty, Input, Modal, Select, Spin, Switch, Tag, message,
+  App, Button, Empty, Input, Modal, Select, Spin, Switch, Tag,
 } from 'antd';
 import {
   ToolOutlined,
@@ -17,6 +17,7 @@ import {
   AppstoreOutlined,
   CloudServerOutlined,
   PlusOutlined,
+  DeploymentUnitOutlined,
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { useMemo, useState } from 'react';
@@ -29,6 +30,7 @@ const TYPE_META: Record<string, { label: string; color: string; icon: React.Reac
   llm_model: { label: '模型', color: 'cyan', icon: <CloudServerOutlined /> },
   environment: { label: '环境', color: 'default', icon: <CloudServerOutlined /> },
   app: { label: '智能体', color: 'blue', icon: <AppstoreOutlined /> },
+  ecp: { label: 'ECP语义层', color: 'volcano', icon: <DeploymentUnitOutlined /> },
 };
 
 /** 排序:启用在前,最近更新在前。 */
@@ -41,12 +43,16 @@ function sortCaps(rows: any[]) {
 
 /** 能力:空间里的 Agent 会"干"什么 —— skill / MCP / 模型 / 智能体。 */
 export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
+  // 静态 Modal/message 在本应用(React 19 静态渲染路径)下会静默失效,必须用 App.useApp() 上下文实例
+  const { modal, message } = App.useApp();
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [addType, setAddType] = useState<'skill' | 'mcp'>('skill');
+  const [addType, setAddType] = useState<'skill' | 'mcp' | 'ecp'>('skill');
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [mcpName, setMcpName] = useState('');
   const [mcpRef, setMcpRef] = useState('');
+  const [ecpName, setEcpName] = useState('');
+  const [ecpRef, setEcpRef] = useState('');
 
   const { data: resources, loading, refresh } = useRequest(async () => {
     const [err, res] = await apiInterceptors(listResources({ workspace_id: workspaceId }));
@@ -66,6 +72,7 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
     return [
       { key: 'skill', title: '技能', items: sortCaps(rows.filter((r: any) => r.type === 'skill')) },
       { key: 'mcp', title: 'MCP 服务', items: sortCaps(rows.filter((r: any) => r.type === 'mcp')) },
+      { key: 'ecp', title: 'ECP 语义层', items: sortCaps(rows.filter((r: any) => r.type === 'ecp')) },
       {
         key: 'other',
         title: '模型与智能体',
@@ -105,13 +112,25 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
         is_active: true,
         config: {},
       }));
-    } else {
+    } else if (addType === 'mcp') {
       if (!mcpName.trim()) { setSaving(false); message.warning('请填写 MCP 名称'); return; }
       [err] = await apiInterceptors(addResource({
         workspace_id: workspaceId,
         type: 'mcp',
         name: mcpName.trim(),
         physical_ref: mcpRef.trim() || undefined,
+        category: 'scenario_bound',
+        access_mode: 'read',
+        is_active: true,
+        config: {},
+      }));
+    } else if (addType === 'ecp') {
+      if (!ecpName.trim()) { setSaving(false); message.warning('请填写 ECP 语义层名称'); return; }
+      [err] = await apiInterceptors(addResource({
+        workspace_id: workspaceId,
+        type: 'ecp',
+        name: ecpName.trim(),
+        physical_ref: ecpRef.trim() || undefined,
         category: 'scenario_bound',
         access_mode: 'read',
         is_active: true,
@@ -125,6 +144,8 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
     setSelectedSkill(null);
     setMcpName('');
     setMcpRef('');
+    setEcpName('');
+    setEcpRef('');
     refresh();
   };
 
@@ -147,7 +168,7 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
   };
 
   const handleRemove = (r: any) => {
-    Modal.confirm({
+    modal.confirm({
       title: `移除能力「${r.name}」?`,
       content: '移除后空间内的 Agent 将无法使用该能力。',
       okText: '移除',
@@ -228,10 +249,11 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
           <Select
             style={{ width: '100%' }}
             value={addType}
-            onChange={(v) => setAddType(v)}
+            onChange={(v) => setAddType(v as any)}
             options={[
               { value: 'skill', label: '技能(skill)— 指导 Agent 做事的方法' },
               { value: 'mcp', label: 'MCP — 扩展 Agent 工具能力的服务' },
+              { value: 'ecp', label: 'ECP 语义层 — 注入已确认语义目录与查询工具' },
             ]}
           />
         </div>
@@ -251,7 +273,7 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
               }))}
             />
           </div>
-        ) : (
+        ) : addType === 'mcp' ? (
           <div>
             <div className="text-sm text-gray-500 mb-2">MCP 名称</div>
             <Input
@@ -265,6 +287,22 @@ export function CapabilityTab({ workspaceId }: { workspaceId: number }) {
               placeholder="MCP server 编码 / 地址;若它包裹业务数据,注明数据来源"
               value={mcpRef}
               onChange={(e) => setMcpRef(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div>
+            <div className="text-sm text-gray-500 mb-2">ECP 语义层名称</div>
+            <Input
+              className="mb-3"
+              placeholder="例如:ECP 语义层"
+              value={ecpName}
+              onChange={(e) => setEcpName(e.target.value)}
+            />
+            <div className="text-sm text-gray-500 mb-2">ECP workspace id</div>
+            <Input
+              placeholder="填写 ECP workspace id, 例如 ecp_<workspace_code> 或 default"
+              value={ecpRef}
+              onChange={(e) => setEcpRef(e.target.value)}
             />
           </div>
         )}

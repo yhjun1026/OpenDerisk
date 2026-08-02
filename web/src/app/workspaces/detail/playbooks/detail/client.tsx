@@ -216,6 +216,7 @@ export default function PlaybookEditorPage() {
                   onMetaTaskTypeChange={setMetaTaskType}
                   invalidJson={!!invalidJsonInfo}
                   invalidJsonMessage={invalidJsonInfo || undefined}
+                  workspaceId={ws?.id}
                 />
               </Card>
             ),

@@ -1193,13 +1193,15 @@ class IngestOrchestrator:
             model: str,
             prompt: str,
             images: Optional[List[Path]] = None,
+            videos: Optional[List[Path]] = None,
         ) -> str:
-            # Build a multimodal user message if images are provided
+            # Build a multimodal user message if images/videos are provided
             return await self._call_llm(
                 model=model,
                 system_prompt=None,
                 user_prompt=prompt,
                 image_paths=images,
+                video_paths=videos,
                 vault=vault,
                 job_id=job_id,
                 task_name="extract",
@@ -1213,6 +1215,7 @@ class IngestOrchestrator:
         system_prompt: Optional[str],
         user_prompt: str,
         image_paths: Optional[List[Path]] = None,
+        video_paths: Optional[List[Path]] = None,
         vault: Any = None,
         job_id: Optional[str] = None,
         task_name: str = "extract",
@@ -1255,10 +1258,10 @@ class IngestOrchestrator:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
-        # Multimodal: build content array with text + image_url (base64)
-        if image_paths:
+        # Multimodal: build content array with text + image_url / video_url (base64)
+        if image_paths or video_paths:
             content: List[Dict[str, Any]] = [{"type": "text", "text": user_prompt}]
-            for img_path in image_paths:
+            for img_path in image_paths or []:
                 try:
                     b64 = base64.b64encode(Path(img_path).read_bytes()).decode("ascii")
                     mime = mimetypes.guess_type(str(img_path))[0] or "image/png"
@@ -1270,6 +1273,18 @@ class IngestOrchestrator:
                     )
                 except Exception as e:
                     logger.warning("Could not encode image %s: %s", img_path, e)
+            for vid_path in video_paths or []:
+                try:
+                    b64 = base64.b64encode(Path(vid_path).read_bytes()).decode("ascii")
+                    mime = mimetypes.guess_type(str(vid_path))[0] or "video/mp4"
+                    content.append(
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": f"data:{mime};base64,{b64}"},
+                        }
+                    )
+                except Exception as e:
+                    logger.warning("Could not encode video %s: %s", vid_path, e)
             messages.append({"role": "user", "content": content})
         else:
             messages.append({"role": "user", "content": user_prompt})
@@ -1350,6 +1365,11 @@ class IngestOrchestrator:
             ".wav": "audio/wav",
             ".ogg": "audio/ogg",
             ".flac": "audio/flac",
+            ".mp4": "video/mp4",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+            ".mkv": "video/x-matroska",
+            ".avi": "video/x-msvideo",
         }
         return mapping.get(ext)
 

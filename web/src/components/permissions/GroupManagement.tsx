@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  App,
   Button,
   Divider,
   Drawer,
@@ -16,7 +17,6 @@ import {
   Tag,
   Tabs,
   Typography,
-  message,
   Alert,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined, TeamOutlined, UserAddOutlined } from '@ant-design/icons';
@@ -37,6 +37,7 @@ interface GroupManagementProps {
 
 export default function GroupManagement({ roles }: GroupManagementProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [groups, setGroups] = useState<UserGroupRow[]>([]);
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(true);

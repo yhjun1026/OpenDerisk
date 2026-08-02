@@ -55,6 +55,14 @@ class LongTermMemoryConfig:
     recall_tracking_enabled: bool = True
     # Tier 2 reflection cadence: run cross-turn consolidation every N turns.
     reflection_interval: int = 10
+    # Whether user-scoped memory is enabled (wing may be derived from user_id).
+    enable_user_memory: bool = False
+    # Whether to collect/write long-term memories automatically.
+    # Mirrors MemoryParameters.enable_collect_long_term.
+    enable_collect_long_term: bool = False
+    # Whether retrieved long-term memories should be injected into the prompt.
+    # Mirrors MemoryParameters.enable_long_term_use.
+    enable_long_term_use: bool = False
 
     @classmethod
     def from_resource_value(cls, value: Any) -> Optional["LongTermMemoryConfig"]:
@@ -81,15 +89,38 @@ class LongTermMemoryConfig:
         else:
             return None
 
+        # Long-term memory switches from MemoryParameters.
+        # For backwards compatibility: if neither new switch is present in the
+        # raw value, default to enabled (legacy behaviour).  If present, respect
+        # the user's choice.
+        has_new_switches = (
+            "enable_collect_long_term" in parsed or "enable_long_term_use" in parsed
+        )
+        enable_collect_long_term = parsed.get(
+            "enable_collect_long_term", True if not has_new_switches else False
+        )
+        enable_long_term_use = parsed.get(
+            "enable_long_term_use", True if not has_new_switches else False
+        )
+
+        # If the legacy auto_memory flag is present, keep it; otherwise derive
+        # collect behaviour from enable_collect_long_term.
+        auto_memory = parsed.get("auto_memory")
+        if auto_memory is None:
+            auto_memory = enable_collect_long_term
+
         return cls(
             memories=parsed.get("memories", []),
-            auto_memory=parsed.get("auto_memory", True),
+            auto_memory=bool(auto_memory),
             enable_kg=parsed.get("enable_kg", False),
             top_k=parsed.get("top_k", 5),
             max_distance=parsed.get("max_distance", 0.4),
             min_content_length=parsed.get("min_content_length", 50),
             wing=parsed.get("wing", "default"),
             reflection_interval=parsed.get("reflection_interval", 10),
+            enable_user_memory=parsed.get("enable_user_memory", False),
+            enable_collect_long_term=enable_collect_long_term,
+            enable_long_term_use=enable_long_term_use,
         )
 
 

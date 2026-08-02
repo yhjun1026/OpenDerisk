@@ -3,7 +3,7 @@
 import { useContext, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRequest } from 'ahooks';
-import { Input, Spin, Tag, Tooltip, Dropdown, Collapse, Badge, Empty, message } from 'antd';
+import { Input, Spin, Tag, Tooltip, Dropdown, Collapse, Badge, Empty, App } from 'antd';
 import {
   SearchOutlined,
   ReloadOutlined,
@@ -80,6 +80,7 @@ const SOURCE_TAGS: Record<string, { label: string; color: string }> = {
 export default function TabTools() {
   const { t } = useTranslation();
   const { appInfo, fetchUpdateApp } = useContext(AppContext);
+  const { message } = App.useApp();
   const [searchValue, setSearchValue] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [togglingTools, setTogglingTools] = useState<Set<string>>(new Set());

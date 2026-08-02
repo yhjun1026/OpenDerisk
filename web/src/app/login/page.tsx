@@ -62,6 +62,21 @@ export default function LoginPage() {
       const status = await authService.getOAuthStatus();
       setOauthEnabled(status.enabled);
       setProviders(status.providers || []);
+
+      // 自动登录检测：如果配置了 sso_auto_login_provider 且当前无 session
+      // 自动跳转到主系统 OAuth（用户无感知）
+      if (status.enabled && status.sso_auto_login_provider && !searchParams?.get('error')) {
+        const hasSession = document.cookie.includes('derisk_session');
+        if (!hasSession) {
+          // 检查是否是从 OAuth callback 返回（避免无限循环）
+          const isCallback = window.location.hash.includes('token=');
+          if (!isCallback) {
+            handleOAuthLogin(status.sso_auto_login_provider);
+            return; // 不设置 loading=false，保持加载状态
+          }
+        }
+      }
+
       const nonLocal = (status.providers || []).filter(p => p.type !== 'local');
       if (status.enabled && nonLocal.length === 0) {
         setIsLocalMode(true);

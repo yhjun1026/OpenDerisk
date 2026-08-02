@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `oauth2_config` (
   `providers_json` TEXT NULL COMMENT 'OAuth2 providers configuration (JSON array)',
   `admin_users_json` TEXT NULL COMMENT 'Admin users list (JSON array)',
   `default_role` VARCHAR(32) NULL DEFAULT 'viewer' COMMENT 'Default RBAC role for new OAuth2 users',
+  `sso_auto_login_provider` VARCHAR(64) NULL COMMENT 'Provider ID for automatic SSO login redirect',
   `gmt_create` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time',
   `gmt_modify` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Modify time',
   PRIMARY KEY (`id`),

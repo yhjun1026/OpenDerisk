@@ -248,6 +248,21 @@ class SemanticObjectDao(BaseDao[EcpSemanticObjectEntity, Any, Any]):
 
         payload = normalize_payload(obj_type, payload)
         with self.session() as session:
+            # 硬去重:该对象已有 confirmed 版本且其 payload(归一后)与新提案完全相同
+            # -> 跳过建 proposed,直接返回已确认 VO。避免对已确认的相同概念因重新生产/
+            # miss 学习反复再确认(新 proposed 版本会盖住旧 confirmed 的统计/目录)。
+            existing_confirmed = (
+                session.query(EcpSemanticObjectEntity)
+                .filter(
+                    EcpSemanticObjectEntity.id == object_id,
+                    EcpSemanticObjectEntity.workspace_id == workspace_id,
+                    EcpSemanticObjectEntity.status == STATUS_CONFIRMED,
+                )
+                .order_by(desc(EcpSemanticObjectEntity.version))
+                .first()
+            )
+            if existing_confirmed and (existing_confirmed.payload or {}) == payload:
+                return to_object_vo(existing_confirmed)
             max_ver = (
                 session.query(func.max(EcpSemanticObjectEntity.version))
                 .filter(
@@ -443,6 +458,26 @@ class SemanticObjectDao(BaseDao[EcpSemanticObjectEntity, Any, Any]):
             .subquery()
         )
 
+    def _latest_confirmed_version_subquery(self, session, workspace_id: str):
+        """每个对象最新 confirmed 版本(即"存在 confirmed 版本的对象"集合)。
+
+        与 _latest_version_subquery 区别:只在 status=confirmed 行里取 max(version)。
+        用于 confirmed 列表/计数/目录:某对象有 confirmed v1 + proposed v2 时,仍按
+        v1(confirmed)计入已确认(与执行用 get_confirmed 同口径),不被 v2 盖掉、不误显为"没确认"。
+        """
+        return (
+            session.query(
+                EcpSemanticObjectEntity.id.label("id"),
+                func.max(EcpSemanticObjectEntity.version).label("max_version"),
+            )
+            .filter(
+                EcpSemanticObjectEntity.workspace_id == workspace_id,
+                EcpSemanticObjectEntity.status == STATUS_CONFIRMED,
+            )
+            .group_by(EcpSemanticObjectEntity.id)
+            .subquery()
+        )
+
     def list_latest(
         self,
         workspace_id: str = DEFAULT_WORKSPACE_ID,
@@ -454,7 +489,12 @@ class SemanticObjectDao(BaseDao[EcpSemanticObjectEntity, Any, Any]):
     ) -> SemanticObjectListVO:
         """List the latest version of each object with filters."""
         with self.session(commit=False) as session:
-            sub = self._latest_version_subquery(session, workspace_id)
+            # confirmed 用"存在 confirmed 版本"口径(每对象最新 confirmed),与执行
+            # (get_confirmed)一致;避免 confirmed v1 + proposed v2 时被 v2 盖掉误显为未确认。
+            if status == STATUS_CONFIRMED:
+                sub = self._latest_confirmed_version_subquery(session, workspace_id)
+            else:
+                sub = self._latest_version_subquery(session, workspace_id)
             query = session.query(EcpSemanticObjectEntity).join(
                 sub,
                 (EcpSemanticObjectEntity.id == sub.c.id)
@@ -494,7 +534,7 @@ class SemanticObjectDao(BaseDao[EcpSemanticObjectEntity, Any, Any]):
         across SQLite/MySQL JSON semantics.
         """
         with self.session(commit=False) as session:
-            sub = self._latest_version_subquery(session, workspace_id)
+            sub = self._latest_confirmed_version_subquery(session, workspace_id)
             rows = (
                 session.query(EcpSemanticObjectEntity)
                 .join(
@@ -502,7 +542,6 @@ class SemanticObjectDao(BaseDao[EcpSemanticObjectEntity, Any, Any]):
                     (EcpSemanticObjectEntity.id == sub.c.id)
                     & (EcpSemanticObjectEntity.version == sub.c.max_version),
                 )
-                .filter(EcpSemanticObjectEntity.status == STATUS_CONFIRMED)
                 .order_by(EcpSemanticObjectEntity.id)
                 .all()
             )

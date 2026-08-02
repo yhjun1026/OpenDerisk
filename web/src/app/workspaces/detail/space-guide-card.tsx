@@ -1,6 +1,7 @@
 'use client';
 
 import { apiInterceptors, listResources, listPlaybooks, listTriggers, getWorkspaceInfo } from '@/client/api';
+import { listEcpObjects } from '@/client/api/ecp';
 import {
   DatabaseOutlined,
   ToolOutlined,
@@ -8,6 +9,7 @@ import {
   MessageOutlined,
   PlayCircleOutlined,
   ScheduleOutlined,
+  DeploymentUnitOutlined,
   DownOutlined,
   RightOutlined,
 } from '@ant-design/icons';
@@ -21,7 +23,7 @@ interface SpaceGuideCardProps {
 }
 
 const DATA_TYPES = ['data_source', 'knowledge_space'];
-const CAPABILITY_TYPES = ['skill', 'mcp', 'llm_model', 'environment', 'app'];
+const CAPABILITY_TYPES = ['skill', 'mcp', 'llm_model', 'environment', 'app', 'ecp'];
 
 /** 空间导览卡:回答新人三个问题 —— 这空间是干嘛的、有什么数据、Agent 会干什么、有哪些现成剧本。 */
 export function SpaceGuideCard({ workspaceId, workspaceCode }: SpaceGuideCardProps) {
@@ -53,6 +55,21 @@ export function SpaceGuideCard({ workspaceId, workspaceCode }: SpaceGuideCardPro
     return err ? [] : res || [];
   }, { refreshDeps: [workspaceId] });
 
+  // ECP 语义资产计数(派生 ECP workspace 下已确认语义对象)
+  const ecpWsId = workspaceCode ? `ecp_${workspaceCode}` : null;
+  const { data: semanticRes } = useRequest(
+    async () => {
+      if (!ecpWsId) return null;
+      const [err, res] = await apiInterceptors(
+        listEcpObjects({ workspace_id: ecpWsId, status: 'confirmed', page_size: 1 }),
+      );
+      if (err) return null;
+      return res;
+    },
+    { ready: !!ecpWsId, refreshDeps: [ecpWsId] },
+  );
+  const semanticCount = semanticRes?.total_count ?? 0;
+
   const stats = useMemo(() => {
     const dataCount = (resources || []).filter((r: any) => DATA_TYPES.includes(r.type)).length;
     const capCount = (resources || []).filter((r: any) => CAPABILITY_TYPES.includes(r.type)).length;
@@ -60,8 +77,8 @@ export function SpaceGuideCard({ workspaceId, workspaceCode }: SpaceGuideCardPro
     const triggeredPb = new Set(
       (triggers || []).filter((t: any) => t.is_active !== false).map((t: any) => t.playbook_id),
     ).size;
-    return { dataCount, capCount, pbCount, triggeredPb };
-  }, [resources, playbooks, triggers]);
+    return { dataCount, capCount, pbCount, triggeredPb, semanticCount };
+  }, [resources, playbooks, triggers, semanticCount]);
 
   const toggle = () => {
     const next = !collapsed;
@@ -100,6 +117,10 @@ export function SpaceGuideCard({ workspaceId, workspaceCode }: SpaceGuideCardPro
             <span className="ws-guide__stat">
               <ToolOutlined />
               能力 <b>{stats.capCount}</b>
+            </span>
+            <span className="ws-guide__stat">
+              <DeploymentUnitOutlined />
+              语义资产 <b>{stats.semanticCount}</b>
             </span>
             <span className="ws-guide__stat">
               <BookOutlined />

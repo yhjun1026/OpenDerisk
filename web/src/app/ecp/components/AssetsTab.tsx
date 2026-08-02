@@ -56,16 +56,54 @@ function ReadinessList({ readiness }: { readiness: EcpReadiness }) {
   );
 }
 
+function resolveAssetTitle(
+  asset: EcpAssetRef,
+  dbList?: any[],
+  spaceList?: any[],
+): { title: string; subtitle: string } {
+  const meta = KIND_META[asset.kind] ?? { icon: null, label: asset.kind };
+  const refMeta = asset.ref_meta || {};
+
+  if (asset.kind === 'db') {
+    const db = dbList?.find(d => String(d.id) === asset.ref_id);
+    const dbName = refMeta.name || refMeta.db_name || db?.name || db?.db_name || asset.ref_id;
+    const dbType = refMeta.db_type || db?.db_type || '';
+    return {
+      title: dbName,
+      subtitle: dbType ? `${meta.label} · ${dbType}` : meta.label,
+    };
+  }
+
+  if (asset.kind === 'space') {
+    const space = spaceList?.find(s => s.slug === asset.ref_id);
+    const name = refMeta.name || space?.name || asset.ref_id;
+    return { title: name, subtitle: meta.label };
+  }
+
+  if (asset.kind === 'document') {
+    return {
+      title: refMeta.name || asset.ref_id,
+      subtitle: meta.label,
+    };
+  }
+
+  return { title: refMeta.name || meta.label, subtitle: asset.ref_id };
+}
+
 function AssetCard({
   asset,
   onGenerate,
   generating,
   index,
+  dbList,
+  spaceList,
 }: {
   asset: EcpAssetRef;
   onGenerate: (a: EcpAssetRef) => void;
   generating: boolean;
   index: number;
+  dbList?: any[];
+  spaceList?: any[];
 }) {
   const [readiness, setReadiness] = useState<EcpReadiness | null>(null);
   const { run: check, loading: checking } = useRequest(
@@ -80,6 +118,7 @@ function AssetCard({
   );
 
   const meta = KIND_META[asset.kind] ?? { icon: null, label: asset.kind };
+  const { title, subtitle } = resolveAssetTitle(asset, dbList, spaceList);
   return (
     <div className={`ecp-card ecp-rise ecp-rise--${(index % 4) + 1}`} style={{ marginTop: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -100,9 +139,9 @@ function AssetCard({
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>
-            {meta.label}
+            {title}
           </div>
-          <code style={{ fontSize: 12, color: 'var(--ink-400)' }}>{asset.ref_id}</code>
+          <code style={{ fontSize: 12, color: 'var(--ink-400)' }}>{subtitle}</code>
         </div>
         <span className="ecp-status">
           <Dot kind={asset.status === 'active' ? 'ecp-dot--success' : 'ecp-dot--neutral'} />
@@ -179,8 +218,29 @@ export default function AssetsTab({ workspaceId }: { workspaceId: string }) {
   const { run: doRegister, loading: registering } = useRequest(
     async () => {
       if (!refId) return;
+      let refMeta: Record<string, any> | undefined;
+      if (kind === 'db') {
+        const db = dbList?.find(d => String(d.id) === refId);
+        if (db) {
+          refMeta = {
+            name: db.name || db.db_name,
+            db_name: db.db_name,
+            db_type: db.db_type,
+          };
+        }
+      } else if (kind === 'space') {
+        const space = spaceList?.find(s => s.slug === refId);
+        if (space) {
+          refMeta = { name: space.name || space.slug };
+        }
+      }
       const [err] = await apiInterceptors(
-        registerEcpAsset({ kind, ref_id: refId, workspace_id: workspaceId }),
+        registerEcpAsset({
+          kind,
+          ref_id: refId,
+          workspace_id: workspaceId,
+          ref_meta: refMeta,
+        }),
       );
       if (err) throw err;
       message.success('资产已登记（只建立引用，不复制数据）');
@@ -320,6 +380,8 @@ export default function AssetsTab({ workspaceId }: { workspaceId: string }) {
               index={i}
               generating={checking}
               onGenerate={asset => openGenerate(asset)}
+              dbList={dbList}
+              spaceList={spaceList}
             />
           ))}
         </div>

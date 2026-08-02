@@ -60,6 +60,12 @@ class WorkspaceListFilter(BaseModel):
     include_archived: bool = False
 
 
+class HomeWorkspaceRequest(BaseModel):
+    """Get-or-create the user's home (landing) workspace."""
+
+    user_id: int
+
+
 # ------------------------ Workspace Member ------------------------
 class WorkspaceMemberRequest(BaseModel):
     workspace_id: int
@@ -87,7 +93,7 @@ class WorkspaceMemberListRequest(BaseModel):
 class WorkspaceResourceRequest(BaseModel):
     workspace_id: int
     type: str = Field(
-        ..., description="data_source/knowledge_space/environment/mcp/skill/llm_model"
+        ..., description="data_source/knowledge_space/environment/mcp/skill/llm_model/ecp"
     )
     name: str = Field(..., max_length=128, description="display name in workspace")
     category: str = Field(

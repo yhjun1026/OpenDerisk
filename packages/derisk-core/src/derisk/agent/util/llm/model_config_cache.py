@@ -4,6 +4,19 @@ from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
+# 媒体生成协议（= API 形状 = 一个 provider 类）。图/视频编码在后缀。
+# model_config_cache 用它过滤媒体模型（防聊天污染）；media_gen 用它路由+列可用模型。
+MEDIA_PROTOCOLS = {
+    "dashscope_video",   # 百炼视频 (HappyHorse t2v/i2v/r2v)
+    "dashscope_image",   # 百炼图像 (qwen-image / wan2.x / wanx)
+    "volcengine_video",  # 火山视频 (Seedance)
+    "openai_image",      # OpenAI 图像 (DALL-E)
+    "openai_video",      # OpenAI 视频 (Sora)
+    "google_image",      # Google 图像 (Nano Banana)
+}
+IMAGE_PROTOCOLS = {"dashscope_image", "openai_image", "google_image"}
+VIDEO_PROTOCOLS = {"dashscope_video", "volcengine_video", "openai_video"}
+
 # 接入协议推断映射：provider 名称 -> 协议
 def infer_protocol(provider_name: str) -> str:
     """根据 provider 来源名称推断接入协议"""
@@ -94,9 +107,48 @@ class ModelConfigCache:
         return False
 
     @classmethod
-    def get_all_models(cls) -> List[str]:
-        """获取所有模型名（去重）"""
-        return list(cls._model_providers.keys())
+    def get_all_models(cls, include_media_gen: bool = False) -> List[str]:
+        """获取所有模型名（去重）。
+
+        Args:
+            include_media_gen: 是否包含媒体生成模型 (protocol == "media_gen")。
+                默认 False，排除生成模型，避免聊天/embedding/rerank 的
+                ``all_models[0]`` 兜底误选到图像/视频生成模型。展示/同步类
+                调用方应传 True 以查看全量。
+        """
+        if include_media_gen:
+            return list(cls._model_providers.keys())
+        return [
+            m for m in cls._model_providers.keys()
+            if not cls._is_media_model(m)
+        ]
+
+    @classmethod
+    def _is_media_model(cls, model_key: str) -> bool:
+        """该模型是否为媒体生成模型 (protocol 属于 MEDIA_PROTOCOLS)。"""
+        config = cls.get_config(model_key)
+        return bool(config and config.get("protocol") in MEDIA_PROTOCOLS)
+
+    @classmethod
+    def get_media_models(cls) -> List[Dict[str, Any]]:
+        """返回所有媒体生成模型的配置（protocol 属于 MEDIA_PROTOCOLS）。
+
+        供 media_gen 工具的可用性展示与凭据解析使用。
+        每项: {"model", "protocol", "api_key", "base_url", "provider"}
+        """
+        result: List[Dict[str, Any]] = []
+        for model_name in cls._model_providers.keys():
+            if not cls._is_media_model(model_name):
+                continue
+            config = cls.get_config(model_name) or {}
+            result.append({
+                "model": model_name,
+                "protocol": config.get("protocol"),
+                "api_key": config.get("api_key", ""),
+                "base_url": config.get("base_url") or config.get("api_base", ""),
+                "provider": config.get("provider", ""),
+            })
+        return result
 
     @classmethod
     def get_all_model_keys(cls) -> List[str]:

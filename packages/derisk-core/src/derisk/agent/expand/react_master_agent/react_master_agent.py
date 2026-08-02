@@ -1620,6 +1620,7 @@ class ReActMasterAgent(ConversableAgent):
                         hasattr(self, "_memory_bundle")
                         and self._memory_bundle
                         and self.not_null_agent_context
+                        and self._memory_bundle.config.enable_long_term_use
                     ):
                         pipeline = self.memory.gpts_memory.get_memory_pipeline(
                             self.not_null_agent_context.conv_id
@@ -1721,7 +1722,11 @@ class ReActMasterAgent(ConversableAgent):
                 # Static layer (room=profile/preference) is injected into
                 # system_prompt separately, not here.
                 memory_context = None
-                if hasattr(self, "_memory_bundle") and self._memory_bundle:
+                if (
+                    hasattr(self, "_memory_bundle")
+                    and self._memory_bundle
+                    and self._memory_bundle.config.enable_long_term_use
+                ):
                     try:
                         bundle = self._memory_bundle
                         conv_id = self.not_null_agent_context.conv_id

@@ -13,6 +13,7 @@ import { AgentWorkspaceRenderer } from './agent-workspace-renderer';
 import { parseWorkspaceView } from './parse-workspace-view';
 import { parseSceneAgentWorkspaceString } from './parse-scene-agent-workspace-string';
 import { statusLabel, triggerLabel } from './scene-task-rail';
+import { EcpProposalDetail } from './ecp-proposal-detail';
 import type { WorkspaceView } from './agent-workspace-types';
 import type { DetailContext } from './agent-types';
 
@@ -26,6 +27,7 @@ export interface SceneSpaceProps {
   onBack: () => void;
   onSelectTask?: (taskId: number) => void;
   onSelectArtifact?: (artifact: any) => void;
+  onProposalResolved?: () => void;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -361,6 +363,7 @@ export function SceneSpace({
   onBack,
   onSelectTask,
   onSelectArtifact,
+  onProposalResolved,
 }: SceneSpaceProps) {
   const taskId = context === 'task-detail' && previewItem?.id ? previewItem.id : undefined;
   // 点击任务卡片走 handlePreview(不进任务对话),activeTask 不会被填充;
@@ -417,6 +420,7 @@ export function SceneSpace({
     'file-preview': '文件预览',
     'tool-result': '步骤详情',
     'entity-card': '实体信息',
+    'ecp-proposal': '提案确认',
   };
 
   return (
@@ -441,6 +445,13 @@ export function SceneSpace({
             />
           )}
         </div>
+      )}
+      {context === 'ecp-proposal' && previewItem?.source_id && (
+        <EcpProposalDetail
+          sourceId={previewItem.source_id}
+          onResolved={onProposalResolved || (() => {})}
+          onBack={onBack}
+        />
       )}
       {context === 'tool-result' && (
         <div className="ws-scene-space__body">

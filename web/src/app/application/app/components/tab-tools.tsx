@@ -10,7 +10,7 @@ import {
   Tooltip,
   Badge,
   Empty,
-  message,
+  App,
   Switch,
   Collapse,
   Button,
@@ -146,6 +146,7 @@ function getParamsFromSchema(inputSchema: { properties?: Record<string, unknown>
 export default function TabToolsManagement() {
   const { t } = useTranslation();
   const { appInfo, fetchUpdateApp } = useContext(AppContext);
+  const { message } = App.useApp();
   const [searchValue, setSearchValue] = useState('');
   const [togglingTools, setTogglingTools] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);

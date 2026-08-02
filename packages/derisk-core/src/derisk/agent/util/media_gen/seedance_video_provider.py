@@ -18,13 +18,8 @@ from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegist
 
 logger = logging.getLogger(__name__)
 
-# All supported Seedance models
-_SUPPORTED_MODELS = {
-    "doubao-seedance-2-0-250428",
-    "doubao-seedance-1-5-pro-251215",
-    "doubao-seedance-1-0-pro-250428",
-    "doubao-seedance-1-0-pro-fast-250428",
-}
+# Model names are free-form (protocol-based routing); passed through to the
+# Ark API. New Seedance model versions work without code changes.
 
 # Default API endpoints
 _DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
@@ -38,19 +33,20 @@ _SUPPORTED_RESOLUTIONS = {"480p", "720p", "1080p", "4k"}
 _SUPPORTED_RATIOS = {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"}
 
 
-@MediaGenProviderRegistry.register(name="seedance", env_key="ARK_API_KEY")
+@MediaGenProviderRegistry.register(protocol="volcengine_video", env_key="ARK_API_KEY")
 class SeedanceVideoProvider(MediaGenProvider):
     """Volcano Engine Seedance (豆包) video generation provider.
 
     Uses the Ark API with async task pattern: submit -> poll -> download.
-    Supports text-to-video and image-to-video generation.
+    Supports text-to-video and image-to-video generation. Model name is
+    free-form (passed through to the Ark API).
     """
 
     def supported_image_models(self) -> List[str]:
         return []
 
     def supported_video_models(self) -> List[str]:
-        return sorted(_SUPPORTED_MODELS)
+        return []
 
     async def generate_image(
         self,

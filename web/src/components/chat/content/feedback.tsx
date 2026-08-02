@@ -129,7 +129,7 @@ const Feedback: React.FC<{ content: Record<string, any> }> = ({ content }) => {
       onSuccess: data => {
         const [, res] = data;
         setStatus(res?.feedback_type);
-        message.success('反馈成功');
+        messageApi.success('反馈成功');
         setFeedbackOpen(false);
       },
     },
@@ -156,7 +156,7 @@ const Feedback: React.FC<{ content: Record<string, any> }> = ({ content }) => {
         const [, res] = data;
         if (res) {
           setStatus('none');
-          message.success('操作成功');
+          messageApi.success('操作成功');
         }
       },
     },

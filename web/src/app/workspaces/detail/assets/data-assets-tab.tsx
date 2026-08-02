@@ -9,14 +9,20 @@ import {
   getDbList,
 } from '@/client/api';
 import { listDatasets, uploadDataset } from '@/client/api/workspace';
-import { listEcpAssets, listEcpObjects } from '@/client/api/ecp';
-import { listSpaces } from '@/client/api/knowledge-vault';
+import { listEcpAssets } from '@/client/api/ecp';
 import {
-  Button, Empty, Input, Modal, Select, Spin, Switch, Tag, Upload, message,
+  listSpaces,
+  createSpace,
+  getRawTree,
+  uploadFile as uploadKnowledgeFile,
+} from '@/client/api/knowledge-vault';
+import {
+  App, Button, Empty, Input, Modal, Select, Spin, Switch, Tag, Upload,
 } from 'antd';
 import {
   DatabaseOutlined,
   FileExcelOutlined,
+  FileTextOutlined,
   CloudUploadOutlined,
   BookOutlined,
   InboxOutlined,
@@ -48,6 +54,13 @@ function sortAssets(rows: any[]) {
   });
 }
 
+function fmtSize(bytes?: number | null): string {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
 /** 数据资产:空间里能"碰"的东西 —— 数据库 / 自持数据集 / 知识库。 */
 export function DataAssetsTab({
   workspaceId,
@@ -56,6 +69,8 @@ export function DataAssetsTab({
   workspaceId: number;
   workspaceCode?: string;
 }) {
+  // 静态 Modal/message 在本应用(React 19 静态渲染路径)下会静默失效,必须用 App.useApp() 上下文实例
+  const { modal, message } = App.useApp();
   const [connectOpen, setConnectOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
@@ -64,6 +79,8 @@ export function DataAssetsTab({
   const [selectedSpace, setSelectedSpace] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState('');
+  const [fileOpen, setFileOpen] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
 
   const { data: resources, loading, refresh } = useRequest(async () => {
     const [err, res] = await apiInterceptors(listResources({ workspace_id: workspaceId }));
@@ -78,7 +95,7 @@ export function DataAssetsTab({
     return err ? [] : res || [];
   }, { refreshDeps: [workspaceId] });
 
-  // 派生 ECP workspace(语义资产)概览:登记资产数 + 已确认口径数
+  // 派生 ECP workspace 已入驻资产(语义层登记的数据源引用)
   const ecpWsId = workspaceCode ? `ecp_${workspaceCode}` : null;
   const { data: ecpAssets } = useRequest(
     async () => {
@@ -89,17 +106,8 @@ export function DataAssetsTab({
     },
     { ready: !!ecpWsId, refreshDeps: [ecpWsId] },
   );
-  const { data: ecpConfirmed } = useRequest(
-    async () => {
-      const [err, res] = await apiInterceptors(
-        listEcpObjects({ status: 'confirmed', page_size: 1, workspace_id: ecpWsId! }),
-      );
-      return err ? null : res;
-    },
-    { ready: !!ecpWsId, refreshDeps: [ecpWsId] },
-  );
 
-  const { data: spaces } = useRequest(async () => {
+  const { data: spaces, refresh: refreshSpaces } = useRequest(async () => {
     const [err, res] = await apiInterceptors(listSpaces());
     return err ? [] : (res as any) || [];
   });
@@ -171,6 +179,34 @@ export function DataAssetsTab({
     [dbs, boundDbIds],
   );
 
+  // ECP 已入驻但尚未绑定到本空间的 db 资产:入驻只建 ECP 侧引用,
+  // 场景空间资源绑定由空间侧完成(ECP 模块单向依赖,不反向写空间资源)。
+  const ecpUnbound = useMemo(
+    () => (ecpAssets || []).filter(
+      (a: any) => a.kind === 'db' && !boundDbIds.has(String(a.ref_id)),
+    ),
+    [ecpAssets, boundDbIds],
+  );
+
+  const handleBindEcpAsset = async (asset: any) => {
+    const db = dbById.get(String(asset.ref_id));
+    setSaving(true);
+    const [err] = await apiInterceptors(addResource({
+      workspace_id: workspaceId,
+      type: 'data_source',
+      name: db?.db_name || `db_${asset.ref_id}`,
+      physical_ref: String(asset.ref_id),
+      category: 'scenario_bound',
+      access_mode: 'read',
+      is_active: true,
+      config: {},
+    }));
+    setSaving(false);
+    if (err) { message.error(err.message); return; }
+    message.success('已接入空间');
+    refreshAll();
+  };
+
   const handleConnectDb = async () => {
     if (!selectedDbId) return;
     const db = dbById.get(selectedDbId);
@@ -222,6 +258,80 @@ export function DataAssetsTab({
     [spaces, boundSpaces],
   );
 
+  // ---------------- 上传文件(文档/图片/音频 → 空间自持知识空间) ----------------
+  // 与 ECP 软空间 slug 约定(ecp-<ws>)同族:docs-<workspace_code>。
+  // 视频暂不支持:extractor registry 只有 text/pdf/docx/pptx/image/audio,无 video。
+  const docSpaceSlug = workspaceCode ? `docs-${workspaceCode}` : null;
+  const docSpaceBound = !!docSpaceSlug && boundSpaces.has(docSpaceSlug);
+
+  // 已上传文件(raw 目录,上传即可见,不等异步抽取完成)
+  const { data: docFiles, refresh: refreshDocFiles } = useRequest(
+    async () => {
+      if (!docSpaceSlug || !docSpaceBound) return [];
+      const [err, res] = await apiInterceptors(getRawTree(docSpaceSlug));
+      if (err) return [];
+      const files: { path: string; name: string; size?: number | null }[] = [];
+      const walk = (nodes: any[]) => {
+        (nodes || []).forEach((n: any) => {
+          if (n.is_dir) walk(n.children || []);
+          else files.push({ path: n.path, name: n.name, size: n.size });
+        });
+      };
+      walk((res as any) || []);
+      return files;
+    },
+    { refreshDeps: [docSpaceSlug, docSpaceBound] },
+  );
+
+  const handleUploadFiles = async () => {
+    if (!uploadFiles.length || !docSpaceSlug) return;
+    setSaving(true);
+    // 1. 确保空间自持知识空间存在(首次上传惰性创建)
+    if (!(spaces || []).some((s: any) => s.slug === docSpaceSlug)) {
+      const [err] = await apiInterceptors(createSpace({ slug: docSpaceSlug }));
+      if (err) {
+        setSaving(false);
+        message.error(`创建知识空间失败:${err.message}`);
+        return;
+      }
+    }
+    // 2. 确保绑定为空间资源(绑定后 Agent 才能检索)
+    if (!boundSpaces.has(docSpaceSlug)) {
+      const [err] = await apiInterceptors(addResource({
+        workspace_id: workspaceId,
+        type: 'knowledge_space',
+        name: docSpaceSlug,
+        physical_ref: docSpaceSlug,
+        category: 'scenario_bound',
+        access_mode: 'read',
+        is_active: true,
+        config: {},
+      }));
+      if (err) {
+        setSaving(false);
+        message.error(err.message);
+        return;
+      }
+    }
+    // 3. 逐个上传(后端单文件接口),异步抽取 verbats + 生成 wiki
+    let failed = 0;
+    for (const f of uploadFiles) {
+      const [err] = await apiInterceptors(uploadKnowledgeFile({ slug: docSpaceSlug, file: f }));
+      if (err) failed++;
+    }
+    setSaving(false);
+    if (failed) {
+      message.warning(`${uploadFiles.length - failed} 个上传成功,${failed} 个失败`);
+    } else {
+      message.success('已上传,正在抽取内容(稍后即可被 Agent 检索)');
+    }
+    setFileOpen(false);
+    setUploadFiles([]);
+    refreshAll();
+    refreshSpaces();
+    refreshDocFiles();
+  };
+
   const handleMountKnowledge = async () => {
     if (!selectedSpace) return;
     setSaving(true);
@@ -263,7 +373,7 @@ export function DataAssetsTab({
   };
 
   const handleRemove = (r: any) => {
-    Modal.confirm({
+    modal.confirm({
       title: `移除「${r.name}」?`,
       content: '只会解除与空间的绑定,不会删除数据本身。',
       okText: '移除',
@@ -320,6 +430,7 @@ export function DataAssetsTab({
       <div className="flex justify-end gap-2 mb-4">
         <Button icon={<DatabaseOutlined />} onClick={() => setConnectOpen(true)}>连接数据库</Button>
         <Button icon={<CloudUploadOutlined />} onClick={() => setUploadOpen(true)}>上传数据集</Button>
+        <Button icon={<FileTextOutlined />} onClick={() => setFileOpen(true)}>上传文件</Button>
         <Button icon={<BookOutlined />} onClick={() => setKnowledgeOpen(true)}>挂载知识库</Button>
       </div>
 
@@ -345,24 +456,66 @@ export function DataAssetsTab({
         ))
       )}
 
-      {ecpWsId && (
+      {docFiles && docFiles.length > 0 && (
+        <div className="ws-asset-section">
+          <div className="ws-asset-section__head">
+            <span className="ws-asset-section__icon"><FileTextOutlined /></span>
+            <span className="ws-asset-section__title">文档</span>
+            <span className="ws-asset-section__count">{docFiles.length}</span>
+          </div>
+          <div className="ws-asset-grid">
+            {docFiles.map((f) => (
+              <div key={f.path} className="ws-asset-card">
+                <div className="ws-asset-card__top">
+                  <FileTextOutlined className="ws-asset-card__icon" style={{ color: '#9333ea' }} />
+                  <span className="ws-asset-card__name" title={f.path}>{f.name}</span>
+                </div>
+                <div className="ws-asset-card__tags">
+                  <Tag color="purple">文档</Tag>
+                  <Tag>{docSpaceSlug}</Tag>
+                </div>
+                <div className="ws-asset-card__source" title={f.path}>{f.path}</div>
+                <div className="ws-asset-card__foot">
+                  <span className="ws-asset-card__time">{fmtSize(f.size)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ecpUnbound.length > 0 && (
         <div className="ws-asset-section">
           <div className="ws-asset-section__head">
             <span className="ws-asset-section__icon"><DeploymentUnitOutlined /></span>
-            <span className="ws-asset-section__title">语义资产</span>
-            <span className="ws-asset-section__count">{ecpConfirmed?.total_count ?? 0}</span>
-            <span style={{ flex: 1 }} />
-            <Button
-              size="small"
-              type="link"
-              href={`/ecp?workspace=${encodeURIComponent(ecpWsId)}`}
-            >
-              进入语义工作台 →
-            </Button>
+            <span className="ws-asset-section__title">ECP 已入驻(待接入)</span>
+            <span className="ws-asset-section__count">{ecpUnbound.length}</span>
           </div>
-          <div style={{ padding: '4px 8px 8px', fontSize: 12, color: 'var(--ink-400, #8a92a6)' }}>
-            本空间专属语义库：已确认口径 {ecpConfirmed?.total_count ?? 0} 条，登记资产{' '}
-            {ecpAssets?.length ?? 0} 项。Agent 在本空间对话时自动使用这套口径。
+          <div className="ws-asset-grid">
+            {ecpUnbound.map((a: any) => {
+              const db = dbById.get(String(a.ref_id));
+              const name = db?.db_name || `db_${a.ref_id}`;
+              const source = db ? `${db.db_name}${db.db_host ? ` · ${db.db_host}` : ''}` : `#${a.ref_id}`;
+              return (
+                <div key={a.ref_id} className="ws-asset-card">
+                  <div className="ws-asset-card__top">
+                    <DatabaseOutlined className="ws-asset-card__icon" style={{ color: 'var(--ws-brand, #4f46e5)' }} />
+                    <span className="ws-asset-card__name" title={name}>{name}</span>
+                  </div>
+                  <div className="ws-asset-card__tags">
+                    <Tag color={DB_TYPE_COLOR[db?.db_type] || 'blue'}>{db?.db_type || '数据库'}</Tag>
+                    <Tag color="purple">ECP 入驻</Tag>
+                  </div>
+                  <div className="ws-asset-card__source" title={source}>{source}</div>
+                  <div className="ws-asset-card__foot">
+                    <span className="ws-asset-card__time" />
+                    <span className="ws-asset-card__ops">
+                      <Button size="small" type="link" loading={saving} onClick={() => handleBindEcpAsset(a)}>接入空间</Button>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -419,6 +572,33 @@ export function DataAssetsTab({
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
           <p className="ant-upload-text">点击或拖拽文件到此上传</p>
           <p className="ant-upload-hint">支持 .xlsx / .xls / .csv</p>
+        </Upload.Dragger>
+      </Modal>
+
+      <Modal
+        open={fileOpen}
+        onCancel={() => setFileOpen(false)}
+        onOk={handleUploadFiles}
+        confirmLoading={saving}
+        okButtonProps={{ disabled: uploadFiles.length === 0 }}
+        title="上传文件"
+        okText="上传"
+      >
+        <p className="text-sm text-gray-500 mb-3">
+          文档 / 图片 / 音频 / 视频会进入空间专属知识库({docSpaceSlug || 'docs-<workspace_code>'}),
+          自动抽取内容后 Agent 可检索引用(视频走抽帧+音轨理解,原生视频模型自动直连)。
+          Excel / CSV 请用「上传数据集」。
+        </p>
+        <Upload.Dragger
+          accept=".pdf,.doc,.docx,.ppt,.pptx,.md,.markdown,.txt,.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.ogg,.flac,.mp4,.mov,.webm,.mkv,.avi"
+          multiple
+          fileList={uploadFiles.map((f, i) => ({ uid: String(i), name: f.name, size: f.size })) as any}
+          beforeUpload={(file, fileList) => { setUploadFiles(fileList); return false; }}
+          onRemove={(file) => { setUploadFiles((prev) => prev.filter((f) => f.name !== file.name)); }}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽文件到此上传,可多选</p>
+          <p className="ant-upload-hint">支持 PDF / Word / PPT / Markdown / TXT / 图片 / 音频 / 视频</p>
         </Upload.Dragger>
       </Modal>
 

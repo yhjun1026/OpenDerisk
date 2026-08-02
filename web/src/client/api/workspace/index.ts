@@ -1,6 +1,8 @@
 import { POST, GET, PATCH } from '..';
 
 export const createWorkspace = (data: any) => POST('/api/v1/serve_workspace_service/workspaces/create', data);
+export const getOrCreateHomeWorkspace = (data: { user_id: number }) =>
+  POST('/api/v1/serve_workspace_service/workspaces/default-or-create', data);
 export const listWorkspaces = (data: any) => POST('/api/v1/serve_workspace_service/workspaces/list', data);
 export const getWorkspaceInfo = (workspace_code: string) => GET(`/api/v1/serve_workspace_service/workspaces/info?workspace_code=${encodeURIComponent(workspace_code)}`);
 export const updateWorkspace = (data: any) => POST('/api/v1/serve_workspace_service/workspaces/update', data);

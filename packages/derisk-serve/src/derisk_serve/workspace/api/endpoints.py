@@ -11,6 +11,7 @@ from derisk_serve.core import Result
 from ..dataset_service import WorkspaceDatasetService
 
 from .schemas import (
+    HomeWorkspaceRequest,
     RenameConversationRequest,
     SetCurrentConversationRequest,
     WorkspaceListFilter,
@@ -77,6 +78,21 @@ async def create_workspace(
         return Result.succ(service.create(request))
     except Exception as e:
         logger.exception("workspace create exception!")
+        return Result.failed(str(e))
+
+
+@router.post("/workspaces/default-or-create",
+             response_model=Result[WorkspaceResponse],
+             dependencies=[Depends(check_api_key)])
+async def default_or_create_workspace(
+    request: HomeWorkspaceRequest, service: Service = Depends(get_service),
+) -> Result[WorkspaceResponse]:
+    """用户首页默认空间(幂等):有标记的返回,无标记取最早创建的补标记,
+    没有任何空间则新建"我的工作台"。"""
+    try:
+        return Result.succ(service.get_or_create_home(request.user_id))
+    except Exception as e:
+        logger.exception("workspace default-or-create exception!")
         return Result.failed(str(e))
 
 

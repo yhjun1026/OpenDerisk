@@ -2,7 +2,7 @@
 
 import { apiInterceptors, listWorkspaces, createWorkspace } from '@/client/api';
 import { getUserId } from '@/utils/storage';
-import { Button, Form, Input, Modal, Select, Spin, message } from 'antd';
+import { Button, Form, Input, Modal, Select, Spin, App } from 'antd';
 import {
   PlusOutlined,
   AppstoreOutlined,
@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import './workspaces.css';
 
 export default function WorkspacesPage() {
+  const { message } = App.useApp();
   const router = useRouter();
   const { t } = useTranslation();
   const [form] = Form.useForm();

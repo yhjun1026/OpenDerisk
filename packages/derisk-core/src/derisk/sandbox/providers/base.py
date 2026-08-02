@@ -54,6 +54,9 @@ class SessionConfig:
     working_dir: str = "/workspace"
     environment_vars: Dict[str, str] = None
     network_disabled: bool = False  # 是否禁用网络
+    # 宿主机绝对工作目录:设置后 session 直接使用该真实路径作为工作目录
+    # (不再嵌套进 /tmp session 目录),供场景空间级持久沙箱目录使用。
+    host_working_dir: Optional[str] = None
 
     def __post_init__(self):
         if self.environment_vars is None:

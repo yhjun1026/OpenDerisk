@@ -13,12 +13,12 @@ from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegist
 logger = logging.getLogger(__name__)
 
 
-@MediaGenProviderRegistry.register(name="openai", env_key="OPENAI_API_KEY")
+@MediaGenProviderRegistry.register(protocol="openai_image", env_key="OPENAI_API_KEY")
 class OpenAIImageProvider(MediaGenProvider):
-    """DALL-E image generation provider."""
+    """DALL-E image generation provider. Model name is free-form."""
 
     def supported_image_models(self) -> List[str]:
-        return ["dall-e-3", "dall-e-2", "gpt-image-1"]
+        return []
 
     def supported_video_models(self) -> List[str]:
         return []

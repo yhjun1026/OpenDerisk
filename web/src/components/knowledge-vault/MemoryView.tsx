@@ -3,7 +3,7 @@
 import { apiInterceptors } from '@/client/api';
 import { getCurateReport, listDocs, listVerbats } from '@/client/api/knowledge-vault';
 import type { CurateReport, DocMeta, VerbatOut } from '@/types/knowledge-vault';
-import { Empty, Spin, Tag, Tooltip, message } from 'antd';
+import { Empty, Spin, Tag, Tooltip, App } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -36,6 +36,7 @@ function metaStr(v: VerbatOut, key: string): string {
  */
 export default function MemoryView({ slug }: { slug: string }) {
   const { refreshKey, openDoc } = useSpace();
+  const { message } = App.useApp();
   const [verbats, setVerbats] = useState<VerbatOut[]>([]);
   const [docs, setDocs] = useState<DocMeta[]>([]);
   const [report, setReport] = useState<CurateReport | null>(null);

@@ -3,7 +3,7 @@ import { apiInterceptors, delDialogue } from '@/client/api';
 import { IChatDialogueSchema } from '@/types/chat';
 import { CaretLeftOutlined, CaretRightOutlined, DeleteOutlined, ShareAltOutlined, SyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, LoadingOutlined, BarChartOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
-import {App, Flex, Layout, Spin, Tooltip, Typography, message, Badge } from 'antd';
+import {App, Flex, Layout, Spin, Tooltip, Typography, Badge } from 'antd';
 import copy from 'copy-to-clipboard';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -74,7 +74,7 @@ const MenuItem: React.FC<{
   const searchParams = useSearchParams();
   const chatId = searchParams?.get('id') ?? '';
   const scene = searchParams?.get('scene') ?? '';
-  const { modal } = App.useApp();
+  const { modal, message } = App.useApp();
 
   const { setCurrentDialogInfo } = useContext(ChatContext);
 

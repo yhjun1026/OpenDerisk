@@ -3,6 +3,7 @@
 Provides pluggable providers for image/video generation:
 - OpenAI DALL-E (image) and Sora (video)
 - Alibaba Cloud Wanxiang / 通义万相 (image)
+- Alibaba Cloud HappyHorse (video: text-to-video / image-to-video / reference-to-video)
 - Volcano Engine Seedance / 豆包 (video)
 - Google Nano Banana / Gemini 2.5 Flash Image (image)
 """
@@ -15,6 +16,7 @@ from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegist
 from derisk.agent.util.media_gen import openai_image_provider  # noqa: F401
 from derisk.agent.util.media_gen import openai_video_provider  # noqa: F401
 from derisk.agent.util.media_gen import wanxiang_image_provider  # noqa: F401
+from derisk.agent.util.media_gen import happyhorse_video_provider  # noqa: F401
 from derisk.agent.util.media_gen import seedance_video_provider  # noqa: F401
 from derisk.agent.util.media_gen import google_banana_provider  # noqa: F401
 

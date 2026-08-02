@@ -12,10 +12,13 @@ are missing — the extractor just raises a clear error at extract time.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import mimetypes
 import os
+import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -297,3 +300,187 @@ class AudioExtractor(Extractor):
                 meta={"mime": mime, "model": model},
             )
         ]
+
+
+# ---------------------------------------------------------------------------
+# Video
+# ---------------------------------------------------------------------------
+
+
+async def _run_cmd(cmd: List[str]) -> int:
+    """Run a subprocess quietly; returns the exit code."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    return await proc.wait()
+
+
+@extractor("video", ["video/*"])
+class VideoExtractor(Extractor):
+    """Video → 双策略:原生视频模型直连,不支持/失败则降级 ffmpeg 抽帧管线。
+
+    - 原生直连:model 命中 NATIVE_MODEL_PATTERN(gemini / qwen-vl / qwen-omni)
+      且文件 ≤ MAX_NATIVE_BYTES 时,经 model_caller(videos=[path]) 直接理解;
+    - 抽帧管线:ffmpeg 按间隔抽帧(cap MAX_FRAMES)→ 分批走 image 通道逐批
+      描述;音轨抽出转写(best-effort);合并为带片段结构的 verbatim。
+
+    环境依赖:抽帧管线需要 ffmpeg 在 PATH 上。
+    """
+
+    NATIVE_MODEL_PATTERN = re.compile(r"gemini|qwen.*(vl|omni)", re.IGNORECASE)
+    MAX_NATIVE_BYTES = 20 * 1024 * 1024
+    MAX_FRAMES = 24
+    FRAME_BATCH = 8
+    FRAME_INTERVAL_SEC = 5
+
+    PROMPT_NATIVE = (
+        "请详细描述这个视频的内容:场景、事件发展过程、可见的文字、"
+        "以及任何对知识库有用的关键信息。输出纯文本,不要 markdown 标题。"
+    )
+    PROMPT_FRAMES = (
+        "这是同一个视频按时间顺序抽取的一组帧。请描述这组帧里发生的事情、"
+        "场景变化、可见的文字与关键信息。输出纯文本,不要 markdown 标题。"
+    )
+    PROMPT_AUDIO = "请转录这段音频的内容。保留原文,不要总结。如果有多人对话,标注说话人。"
+
+    async def extract(
+        self,
+        path: Path,
+        mime: str,
+        model: Optional[str],
+        model_caller: Optional[ModelCaller],
+    ) -> List[VerbatimSpec]:
+        if not model or not model_caller:
+            raise RuntimeError(
+                f"Video extraction for {path.name} requires a multimodal model. "
+                "Configure a multimodal_model on the space or pass a model_override."
+            )
+        date_iso, mtime = _file_mtime_iso(path)
+
+        # 1. 原生视频模型直连(限小文件;失败/空输出降级抽帧)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        if self.NATIVE_MODEL_PATTERN.search(model) and size <= self.MAX_NATIVE_BYTES:
+            try:
+                text = await model_caller(model, self.PROMPT_NATIVE, videos=[path])
+                if text and text.strip():
+                    content = (
+                        f"[Video: {path.name}]\n\n"
+                        f"**MIME**: {mime}\n\n"
+                        f"**Content**:\n{text}"
+                    )
+                    return [
+                        VerbatimSpec(
+                            content=content,
+                            source_file=path.name,
+                            extract_mode=ExtractMode.UPLOAD,
+                            content_date=date_iso,
+                            source_mtime=mtime,
+                            meta={"mime": mime, "model": model, "strategy": "native"},
+                        )
+                    ]
+                logger.warning(
+                    "VideoExtractor: native call returned empty for %s; "
+                    "falling back to frame pipeline",
+                    path.name,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "VideoExtractor: native call failed for %s (%s); "
+                    "falling back to frame pipeline",
+                    path.name,
+                    e,
+                )
+
+        # 2. ffmpeg 抽帧 + 音轨管线
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError(
+                "Video extraction requires ffmpeg (not found on PATH), "
+                "or a native video model (gemini / qwen-vl)."
+            )
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="ks_video_") as tmp:
+            tmp_dir = Path(tmp)
+            frames = await self._extract_frames(path, tmp_dir)
+            segments: List[str] = []
+            for i in range(0, len(frames), self.FRAME_BATCH):
+                batch = frames[i : i + self.FRAME_BATCH]
+                desc = await model_caller(model, self.PROMPT_FRAMES, images=batch)
+                segments.append(f"[片段 {i // self.FRAME_BATCH + 1}]\n{desc}")
+
+            transcript = ""
+            audio_path = await self._extract_audio(path, tmp_dir)
+            if audio_path is not None:
+                try:
+                    transcript = await model_caller(
+                        model, self.PROMPT_AUDIO, images=[audio_path]
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "VideoExtractor: audio transcription failed for %s: %s",
+                        path.name,
+                        e,
+                    )
+
+            if not segments and not transcript.strip():
+                raise RuntimeError(
+                    f"Video extraction for {path.name} produced no content "
+                    "(no frames, no audio track)"
+                )
+            parts = [f"[Video: {path.name}]\n\n**MIME**: {mime}"]
+            if segments:
+                parts.append("**画面**:\n" + "\n\n".join(segments))
+            if transcript.strip():
+                parts.append("**音轨转写**:\n" + transcript)
+            return [
+                VerbatimSpec(
+                    content="\n\n".join(parts),
+                    source_file=path.name,
+                    extract_mode=ExtractMode.UPLOAD,
+                    content_date=date_iso,
+                    source_mtime=mtime,
+                    meta={
+                        "mime": mime,
+                        "model": model,
+                        "strategy": "frames",
+                        "frames": len(frames),
+                        "audio": bool(transcript.strip()),
+                    },
+                )
+            ]
+
+    async def _extract_frames(self, path: Path, out_dir: Path) -> List[Path]:
+        """ffmpeg 按固定间隔抽帧(缩放至宽 768),上限 MAX_FRAMES。"""
+        pattern = out_dir / "frame_%03d.jpg"
+        rc = await _run_cmd(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(path),
+                "-vf",
+                f"fps=1/{self.FRAME_INTERVAL_SEC},scale=768:-2",
+                "-frames:v",
+                str(self.MAX_FRAMES),
+                str(pattern),
+            ]
+        )
+        if rc != 0:
+            logger.warning("VideoExtractor: ffmpeg frame extraction failed for %s", path.name)
+            return []
+        return sorted(out_dir.glob("frame_*.jpg"))
+
+    async def _extract_audio(self, path: Path, out_dir: Path) -> Optional[Path]:
+        """ffmpeg 抽出音轨为 16k 单声道 wav;无音轨返回 None。"""
+        out = out_dir / "audio.wav"
+        rc = await _run_cmd(
+            ["ffmpeg", "-y", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", str(out)]
+        )
+        if rc != 0 or not out.exists() or out.stat().st_size == 0:
+            return None
+        return out

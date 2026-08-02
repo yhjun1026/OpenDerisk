@@ -15,7 +15,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
 } from 'antd';
 import { PlusOutlined, TeamOutlined, UserAddOutlined } from '@ant-design/icons';
 import axios from 'axios';
@@ -35,6 +35,7 @@ type Props = {
 };
 
 export default function UserGroupsPluginPanel({ catalogEnabled }: Props) {
+  const { message } = App.useApp();
   const { t } = useTranslation();
   /** Full-table Spin blocks clicks (same List/Table issue as plugin market). */
   const [tableBlocking, setTableBlocking] = useState(() => catalogEnabled);

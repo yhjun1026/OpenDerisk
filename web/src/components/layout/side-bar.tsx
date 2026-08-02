@@ -7,11 +7,11 @@ import Icon, {
   ApiOutlined,
   BookOutlined,
   ClockCircleOutlined,
-  ConsoleSqlOutlined,
   DashboardOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   DesktopOutlined,
+  FileTextOutlined,
   GlobalOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -24,6 +24,7 @@ import Icon, {
   SafetyOutlined,
   TeamOutlined,
   ThunderboltOutlined,
+  ToolOutlined,
   MoonOutlined,
   SunOutlined,
   RightOutlined,
@@ -265,7 +266,7 @@ function SideBar() {
             (dialogue: Dialogue): DialogueListItem => ({
               key: dialogue?.conv_uid,
               name: dialogue.user_input || dialogue.select_param,
-              path: '/',
+              path: '/assistant',
               dialogue: dialogue,
             }),
           );
@@ -396,7 +397,7 @@ function SideBar() {
         (dialogue: Dialogue): DialogueListItem => ({
           key: dialogue?.conv_uid,
           name: extractUserText(dialogue.user_input) || dialogue.select_param,
-          path: '/',
+          path: '/assistant',
           dialogue: dialogue,
         }),
       );
@@ -411,7 +412,7 @@ function SideBar() {
   );
 
   const navSections = useMemo(() => {
-    // ── 一级:智能体空间 / 场景空间 ──
+    // ── 核心入口:智能体空间(场景空间为主业,不再单独入口) ──
     const mainItems: RouteItem[] = [
       ...(hasResourceRead('agent') ? [{
         key: 'explore',
@@ -420,17 +421,10 @@ function SideBar() {
         icon: navIcon(<CompassOutlined />),
         path: '/application/explore',
       }] : []),
-      {
-        key: 'workspaces',
-        name: t('workspaces') || 'Workspaces',
-        icon: navIcon(<TeamOutlined />),
-        path: '/workspaces',
-        isActive: pathname.startsWith('/workspaces'),
-      },
     ];
 
-    // ── 资源(Agent 配置运行相关,默认折叠) ──
-    const resourceItems: RouteItem[] = [
+    // ── 能力:Agent / Skill / MCP / 定时任务 / 任务引擎 / 消息渠道 ──
+    const capabilityItems: RouteItem[] = [
       ...(hasResourceRead('agent') ? [{
         key: 'agents',
         name: t('Agents'),
@@ -449,9 +443,34 @@ function SideBar() {
         key: 'MCP',
         name: 'MCP',
         isActive: pathname.startsWith('/mcp'),
-        icon: navIcon(<ConsoleSqlOutlined />),
+        icon: navIcon(<ApiOutlined />),
         path: '/mcp',
       }] : []),
+      ...(hasResourceRead('cron') || hasPermission('system', 'admin') ? [{
+        key: 'cron',
+        name: t('cron_page_title'),
+        isActive: pathname.startsWith('/cron'),
+        icon: navIcon(<ClockCircleOutlined />),
+        path: '/cron',
+      }] : []),
+      ...(hasResourceRead('tool') ? [{
+        key: 'jobs',
+        name: '任务引擎',
+        isActive: pathname.startsWith('/jobs'),
+        icon: navIcon(<ThunderboltOutlined />),
+        path: '/jobs',
+      }] : []),
+      ...(hasResourceRead('channel') || hasPermission('system', 'admin') ? [{
+        key: 'channel',
+        name: t('channel_page_title'),
+        isActive: pathname.startsWith('/channel'),
+        icon: navIcon(<MessageOutlined />),
+        path: '/channel',
+      }] : []),
+    ];
+
+    // ── 资产:知识库 / 语义资产 / 数据库 / 模型管理 ──
+    const assetItems: RouteItem[] = [
       ...(hasResourceRead('knowledge') ? [{
         key: 'knowledge',
         name: t('knowledge_base'),
@@ -473,10 +492,6 @@ function SideBar() {
         icon: navIcon(<DatabaseOutlined />),
         path: '/database',
       }] : []),
-    ];
-
-    // ── 设置(管理后台类,默认收起) ──
-    const adminItems: RouteItem[] = [
       ...(hasResourceRead('model') ? [{
         key: 'models',
         name: t('model_manage'),
@@ -484,27 +499,10 @@ function SideBar() {
         icon: navIcon(<Icon component={ModelSvg} />),
         path: '/models',
       }] : []),
-      ...(hasResourceRead('cron') || hasPermission('system', 'admin') ? [{
-        key: 'cron',
-        name: t('cron_page_title'),
-        isActive: pathname.startsWith('/cron'),
-        icon: navIcon(<ClockCircleOutlined />),
-        path: '/cron',
-      }] : []),
-      ...(hasResourceRead('channel') || hasPermission('system', 'admin') ? [{
-        key: 'channel',
-        name: t('channel_page_title'),
-        isActive: pathname.startsWith('/channel'),
-        icon: navIcon(<ApiOutlined />),
-        path: '/channel',
-      }] : []),
-      ...(hasResourceRead('tool') ? [{
-        key: 'jobs',
-        name: '任务引擎',
-        isActive: pathname.startsWith('/jobs'),
-        icon: navIcon(<ThunderboltOutlined />),
-        path: '/jobs',
-      }] : []),
+    ];
+
+    // ── 设置:监控 / 用量 / 系统配置 / 权限 / 审计日志 / GUI ──
+    const settingItems: RouteItem[] = [
       ...(hasPermission('system', 'admin') ? [{
         key: 'monitoring',
         name: t('monitoring_page_title'),
@@ -537,7 +535,7 @@ function SideBar() {
         key: 'audit_logs',
         name: t('audit_logs_title'),
         isActive: pathname.startsWith('/audit-logs'),
-        icon: navIcon(<SafetyOutlined />),
+        icon: navIcon(<FileTextOutlined />),
         path: '/audit-logs',
       }] : []),
       ...(hasPermission('system', 'admin') ? [{
@@ -551,8 +549,9 @@ function SideBar() {
 
     return [
       { key: 'main', label: '', icon: null, items: mainItems, defaultOpen: true, flat: true },
-      { key: 'resources', label: t('resource_management'), icon: navIcon(<DeploymentUnitOutlined />), items: resourceItems, defaultOpen: false },
-      { key: 'admin', label: t('configuration_management'), icon: navIcon(<SettingOutlined />), items: adminItems, defaultOpen: false },
+      { key: 'capability', label: t('capability'), icon: navIcon(<ThunderboltOutlined />), items: capabilityItems, defaultOpen: false },
+      { key: 'assets', label: t('assets'), icon: navIcon(<DatabaseOutlined />), items: assetItems, defaultOpen: false },
+      { key: 'settings', label: t('settings_group'), icon: navIcon(<SettingOutlined />), items: settingItems, defaultOpen: false },
     ].filter(s => s.items.length > 0);
   }, [t, pathname, hasResourceRead, hasPermission]);
 
@@ -576,7 +575,7 @@ function SideBar() {
           (dialogue: Dialogue): DialogueListItem => ({
             key: dialogue?.conv_uid,
             name: extractUserText(dialogue.user_input) || dialogue.select_param,
-            path: '/',
+            path: '/assistant',
             dialogue: dialogue,
           }),
         );
@@ -739,10 +738,39 @@ function SideBar() {
                   </Tooltip>
                 ));
               }
-              // 分组(资源/设置):单个组图标,点击展开侧边栏并打开该组
+              // 分组: hover 显示子菜单(带图标),点击展开侧边栏
               const anyActive = section.items.some(i => i.isActive);
               return (
-                <Tooltip key={section.key} title={section.label} placement='right'>
+                <Popover
+                  key={section.key}
+                  placement='right'
+                  trigger='hover'
+                  overlayInnerStyle={{ padding: 4 }}
+                  content={
+                    <div className='flex flex-col gap-0.5 min-w-[168px]'>
+                      <div className='px-2.5 py-1.5 text-xs font-medium text-gray-400 dark:text-gray-500'>
+                        {section.label}
+                      </div>
+                      {section.items.map(item => (
+                        <Link
+                          key={item.key}
+                          href={item.path ?? '/'}
+                          className={cls(
+                            'flex items-center h-8 px-2.5 rounded-md transition-colors text-[13px]',
+                            item.isActive
+                              ? 'bg-[#f2f4f8] dark:bg-gray-700 text-[#14161c] dark:text-white font-medium'
+                              : 'text-[#3b4154] dark:text-gray-300 hover:bg-[#f2f4f8] dark:hover:bg-gray-800'
+                          )}
+                        >
+                          <span className='mr-2.5 flex items-center justify-center flex-shrink-0 text-[#5d6577] dark:text-gray-400'>
+                            {item.icon}
+                          </span>
+                          <span className='truncate'>{item.name}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  }
+                >
                   <div
                     className={cls(
                       'h-10 w-10 flex items-center justify-center rounded-xl cursor-pointer transition-colors text-[#8a92a6] hover:bg-[#f2f4f8] hover:text-[#3b4154] dark:hover:bg-gray-800',
@@ -755,7 +783,7 @@ function SideBar() {
                   >
                     {(section as any).icon}
                   </div>
-                </Tooltip>
+                </Popover>
               );
             })}
           </div>
@@ -841,11 +869,12 @@ function SideBar() {
                     open && 'rotate-90'
                   )} />
                 </div>
-                {/* 子项:引导线缩进 */}
+                {/* 子项:带图标与引导线缩进 */}
                 {open && (
                   <div className='flex flex-col gap-0.5 ml-[21px] pl-2.5 mt-0.5 mb-1 border-l border-[#eff1f6] dark:border-gray-800'>
                     {section.items.map(item => (
-                      <Link href={item.path ?? '/'} className={linkCls(item.isActive)} key={item.key}>
+                      <Link href={item.path ?? '/'} className={cls(linkCls(item.isActive), 'h-9 px-3')} key={item.key}>
+                        <span className={iconCls(item.isActive)}>{item.icon}</span>
                         <span className='text-[13px] truncate'>{item.name}</span>
                       </Link>
                     ))}

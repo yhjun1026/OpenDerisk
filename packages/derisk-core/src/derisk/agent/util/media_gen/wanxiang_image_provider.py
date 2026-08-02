@@ -10,40 +10,33 @@ Implements image generation via the DashScope API, supporting:
 API docs: https://help.aliyun.com/zh/model-studio/text-to-image-v2-api-reference
 """
 
-import asyncio
 import logging
 from typing import Any, List, Optional
 
+from derisk.agent.util.media_gen._dashscope_common import (
+    build_headers,
+    poll_dashscope_task,
+    raise_for_error,
+)
 from derisk.agent.util.media_gen.base import MediaGenProvider, MediaGenResult
 from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegistry
 
 logger = logging.getLogger(__name__)
 
-# Models that use the new sync/async multimodal-generation API (wan2.6+)
-_NEW_API_MODELS = {"wan2.6-t2i"}
-
-# Models that use the legacy text2image/image-synthesis async API
-_LEGACY_API_MODELS = {
-    "wan2.5-t2i-preview",
-    "wan2.2-t2i-flash",
-    "wan2.2-t2i-plus",
-    "wanx2.1-t2i-turbo",
-    "wanx2.1-t2i-plus",
-    "wanx2.0-t2i-turbo",
-    "wanx-v1",
-}
-
-# All supported models
-_ALL_MODELS = _NEW_API_MODELS | _LEGACY_API_MODELS
+# Model names are free-form (protocol-based routing). The image API shape is
+# selected by model-name prefix (stable families, so new versions need no code
+# change):
+#   qwen-image* -> sync multimodal-generation (qwen-image-3.0-pro, future qwen-image-*)
+#   wan2.*      -> async image-generation (wan2.6-t2i, future wan2.*)
+#   else        -> legacy async text2image (wanx*)
 
 # Default base URLs
 _DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com"
 
 # API endpoints
-_SYNC_ENDPOINT = "/api/v1/services/aigc/multimodal-generation/generation"
+_QWEN_SYNC_ENDPOINT = "/api/v1/services/aigc/multimodal-generation/generation"
 _ASYNC_CREATE_ENDPOINT = "/api/v1/services/aigc/image-generation/generation"
 _LEGACY_ASYNC_ENDPOINT = "/api/v1/services/aigc/text2image/image-synthesis"
-_TASK_QUERY_ENDPOINT = "/api/v1/tasks/{task_id}"
 
 # Style mappings for legacy models (wanx-v1)
 _STYLE_MAP = {
@@ -68,16 +61,41 @@ _SIZE_MAP = {
 }
 
 
-@MediaGenProviderRegistry.register(name="wanxiang", env_key="DASHSCOPE_API_KEY")
-class WanxiangImageProvider(MediaGenProvider):
-    """Alibaba Cloud Wanxiang (通义万相) image generation provider.
+def _extract_new_api_image(data: dict) -> str:
+    """Extract image URL from a SUCCEEDED new-API (wan2.6) task response."""
+    output = data.get("output", {})
+    choices = output.get("choices", [])
+    if choices:
+        content = choices[0].get("message", {}).get("content", [])
+        for item in content:
+            if item.get("type") == "image" and item.get("image"):
+                return item["image"]
+    raise ValueError(f"Task succeeded but no image URL found in response: {data}")
 
-    Supports both the new V2 API (wan2.6 sync/async) and the legacy V1 API.
-    Uses the DashScope API with async task polling for older models.
+
+def _extract_legacy_image(data: dict) -> str:
+    """Extract image URL from a SUCCEEDED legacy-API task response."""
+    output = data.get("output", {})
+    results = output.get("results", [])
+    if results:
+        url = results[0].get("url")
+        if url:
+            return url
+    raise ValueError(f"Task succeeded but no image URL found in results: {data}")
+
+
+@MediaGenProviderRegistry.register(protocol="dashscope_image", env_key="DASHSCOPE_API_KEY")
+class WanxiangImageProvider(MediaGenProvider):
+    """Alibaba Cloud Wanxiang / Qwen-Image (通义万相 / 千问图像) provider.
+
+    Routes by model-name prefix (free-form model names):
+    - qwen-image* -> sync multimodal-generation endpoint (T2I + I2I 1-3 imgs)
+    - wan2.*      -> async image-generation endpoint (task polling)
+    - else        -> legacy async text2image endpoint (task polling)
     """
 
     def supported_image_models(self) -> List[str]:
-        return sorted(_ALL_MODELS)
+        return []
 
     def supported_video_models(self) -> List[str]:
         return []
@@ -113,8 +131,12 @@ class WanxiangImageProvider(MediaGenProvider):
         timeout = kwargs.get("timeout", 180)
         base_url = self.base_url or _DEFAULT_BASE_URL
 
-        # Route to appropriate API based on model
-        if model in _NEW_API_MODELS:
+        # Route to appropriate API based on model-name prefix (free-form)
+        if model.startswith("qwen-image"):
+            return await self._generate_via_qwen_sync(
+                httpx, prompt, model, base_url, timeout, **kwargs
+            )
+        elif model.startswith("wan2."):
             return await self._generate_via_new_api(
                 httpx, prompt, model, base_url, timeout, **kwargs
             )
@@ -188,8 +210,11 @@ class WanxiangImageProvider(MediaGenProvider):
             logger.info(f"[WanxiangImageProvider] Task created: {task_id}")
 
             # Step 2: Poll for completion
-            image_url = await self._poll_task(
-                client, base_url, task_id, timeout, is_new_api=True
+            image_url = await poll_dashscope_task(
+                client, base_url, task_id, self.api_key, timeout,
+                extract_url=_extract_new_api_image,
+                poll_interval=5,
+                provider="wanxiang",
             )
 
             # Step 3: Download image
@@ -281,8 +306,11 @@ class WanxiangImageProvider(MediaGenProvider):
             logger.info(f"[WanxiangImageProvider] Task created: {task_id}")
 
             # Step 2: Poll for completion
-            image_url = await self._poll_task(
-                client, base_url, task_id, timeout, is_new_api=False
+            image_url = await poll_dashscope_task(
+                client, base_url, task_id, self.api_key, timeout,
+                extract_url=_extract_legacy_image,
+                poll_interval=5,
+                provider="wanxiang",
             )
 
             # Step 3: Download image
@@ -312,92 +340,135 @@ class WanxiangImageProvider(MediaGenProvider):
                 metadata=metadata,
             )
 
-    def _build_headers(self, sync_mode: bool = False) -> dict[str, str]:
-        """Build HTTP headers for DashScope API."""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        if sync_mode:
-            # Legacy API requires X-DashScope-Async: enable
-            headers["X-DashScope-Async"] = "enable"
-        return headers
-
-    async def _poll_task(
+    async def _generate_via_qwen_sync(
         self,
-        client: Any,
+        httpx_module: Any,
+        prompt: str,
+        model: str,
         base_url: str,
-        task_id: str,
         timeout: int,
-        is_new_api: bool = True,
-    ) -> str:
-        """Poll DashScope task until completion, return image URL.
+        **kwargs: Any,
+    ) -> MediaGenResult:
+        """Generate image via the sync multimodal-generation endpoint.
 
-        Args:
-            client: httpx.AsyncClient instance.
-            base_url: DashScope base URL.
-            task_id: Task ID to poll.
-            timeout: Maximum wait time in seconds.
-            is_new_api: If True, parse new API response format (choices.message.content.image).
-                        If False, parse legacy format (results[].url).
+        Used by qwen-image-3.0-pro. Supports:
+        - T2I (text only)
+        - I2I / image editing (1-3 reference images + text)
 
-        Returns:
-            Image URL string.
+        This endpoint is synchronous: the image URL is returned directly in
+        the response (no task polling).
         """
-        query_url = f"{base_url}{_TASK_QUERY_ENDPOINT.format(task_id=task_id)}"
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+        headers = build_headers(self.api_key, async_mode=False)
 
-        poll_interval = 5  # seconds
-        elapsed = 0
+        size = kwargs.get("size")
+        n = kwargs.get("n", 1)
+        negative_prompt = kwargs.get("negative_prompt", "")
+        seed = kwargs.get("seed")
+        watermark = kwargs.get("watermark", False)
+        prompt_extend = kwargs.get("prompt_extend", True)
+        image_url = kwargs.get("image_url")
+        reference_images = kwargs.get("reference_images")
 
-        while elapsed < timeout:
-            await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
-
-            resp = await client.get(query_url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-
-            output = data.get("output", {})
-            status = output.get("task_status", "")
-
-            if status == "SUCCEEDED":
-                if is_new_api:
-                    # New API: output.choices[0].message.content[0].image
-                    choices = output.get("choices", [])
-                    if choices:
-                        content = choices[0].get("message", {}).get("content", [])
-                        for item in content:
-                            if item.get("type") == "image" and item.get("image"):
-                                return item["image"]
-                    raise ValueError(
-                        f"Task succeeded but no image URL found in response: {data}"
-                    )
-                else:
-                    # Legacy API: output.results[0].url
-                    results = output.get("results", [])
-                    if results:
-                        url = results[0].get("url")
-                        if url:
-                            return url
-                    raise ValueError(
-                        f"Task succeeded but no image URL found in results: {data}"
-                    )
-
-            elif status in ("FAILED", "CANCELED", "UNKNOWN"):
-                error_msg = output.get("message", "") or data.get("message", "")
-                raise RuntimeError(
-                    f"Wanxiang image generation failed (status={status}): {error_msg}"
-                )
-
-            logger.debug(
-                f"[WanxiangImageProvider] Task {task_id} status: {status} "
-                f"({elapsed}s elapsed)"
+        # Collect input images for I2I (1-3); reference_images takes precedence
+        images: list[str] = []
+        if reference_images:
+            if not isinstance(reference_images, (list, tuple)):
+                raise ValueError("reference_images must be a list of URL strings")
+            images = [u for u in reference_images if u]
+        elif image_url:
+            images = [image_url]
+        if len(images) > 3:
+            raise ValueError(
+                f"qwen-image-3.0 I2I supports at most 3 reference images, "
+                f"got {len(images)}"
             )
 
-        raise TimeoutError(
-            f"Wanxiang image generation timed out after {timeout}s (task_id={task_id})"
+        # Build content: images first, then a single text (per API spec)
+        content: list[dict[str, Any]] = [{"image": u} for u in images]
+        content.append({"text": prompt})
+
+        parameters: dict[str, Any] = {
+            "prompt_extend": prompt_extend,
+            "watermark": watermark,
+        }
+        if size:
+            parameters["size"] = self._normalize_size(size)
+        if n and n != 1:
+            parameters["n"] = n
+        if negative_prompt:
+            parameters["negative_prompt"] = negative_prompt
+        if seed is not None:
+            parameters["seed"] = seed
+
+        body = {
+            "model": model,
+            "input": {"messages": [{"role": "user", "content": content}]},
+            "parameters": parameters,
+        }
+
+        logger.info(
+            f"[WanxiangImageProvider] Generating via qwen-image sync: "
+            f"model={model}, images={len(images)}, "
+            f"size={parameters.get('size', 'auto')}"
         )
+
+        async with httpx_module.AsyncClient(timeout=timeout) as client:
+            create_url = f"{base_url}{_QWEN_SYNC_ENDPOINT}"
+            resp = await client.post(create_url, headers=headers, json=body)
+            resp.raise_for_status()
+            result = resp.json()
+
+            # Top-level error (code/message)
+            raise_for_error(result, provider="qwen-image")
+
+            # Sync response: output.choices[*].message.content[*].image
+            image_url_out = None
+            for choice in result.get("output", {}).get("choices", []):
+                for item in choice.get("message", {}).get("content", []):
+                    if item.get("image"):
+                        image_url_out = item["image"]
+                        break
+                if image_url_out:
+                    break
+            if not image_url_out:
+                raise ValueError(
+                    f"qwen-image sync response has no image: {result}"
+                )
+
+            # Download image
+            logger.info(
+                f"[WanxiangImageProvider] Downloading image from {image_url_out}"
+            )
+            dl_resp = await client.get(image_url_out)
+            dl_resp.raise_for_status()
+
+            width, height = self._parse_dimensions(parameters.get("size") or "")
+            usage = result.get("usage", {})
+
+            return MediaGenResult(
+                data=dl_resp.content,
+                format="png",
+                mime_type="image/png",
+                width=width or usage.get("width"),
+                height=height or usage.get("height"),
+                metadata={
+                    "model": model,
+                    "size": parameters.get("size"),
+                    "n": n,
+                    "provider": "wanxiang",
+                    "image_url": image_url_out,
+                    "scenario": "i2i" if images else "t2i",
+                    "input_image_count": len(images),
+                },
+            )
+
+    def _build_headers(self, sync_mode: bool = False) -> dict[str, str]:
+        """Build HTTP headers for DashScope API.
+
+        sync_mode=True adds X-DashScope-Async (required by the legacy
+        text2image/image-synthesis endpoint).
+        """
+        return build_headers(self.api_key, async_mode=sync_mode)
 
     def _normalize_size(self, size: str) -> str:
         """Normalize size format to DashScope format (width*height)."""

@@ -41,7 +41,9 @@ from derisk.agent.core.schema import Status
 from derisk.agent.resource import get_resource_manager, ResourceManager
 from derisk.agent.resource.agent_skills import AgentSkillResource
 from derisk.agent.resource.base import FILE_RESOURCES, AgentResource
+from derisk.agent.resource.pack import ResourcePack
 from derisk.agent.util.ext_config import ExtConfigHolder
+from derisk_serve.agent.resource.tool.memory_tool import MemoryToolPack
 from derisk.component import ComponentType, SystemApp
 from derisk.sandbox import AutoSandbox
 from derisk_app.config import SandboxConfigParameters
@@ -690,12 +692,37 @@ class AgentChat(BaseComponent, ABC):
             except Exception as e:
                 logger.warning(f"[AgentChat] Failed to get FileStorageClient: {e}")
 
+            # 场景空间:沙箱工作目录指向空间家目录(pilot/data/workspaces/<id>,
+            # 与数据集目录同源),大厅/任务共享且跨会话持久;非场景对话保持原行为
+            work_dir = sandbox_config.work_dir
+            host_work_dir = None
+            workspace_id = (context.extra or {}).get("workspace_id")
+            if workspace_id:
+                try:
+                    from derisk_serve.workspace.dataset_service import (
+                        workspace_sandbox_root,
+                    )
+
+                    host_work_dir = workspace_sandbox_root(int(workspace_id))
+                    work_dir = host_work_dir
+                    logger.info(
+                        f"[Sandbox] scene workspace {workspace_id} sandbox dir: "
+                        f"{host_work_dir}"
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        f"[Sandbox] resolve workspace sandbox root failed, "
+                        f"fallback to default work_dir: {e}"
+                    )
+                    host_work_dir = None
+
             sandbox_client = await AutoSandbox.create(
                 user_id=context.staff_no or sandbox_config.user_id,
                 agent=sandbox_config.agent_name,
                 type=sandbox_config.type,
                 template=sandbox_config.template_id,
-                work_dir=sandbox_config.work_dir,
+                work_dir=work_dir,
+                host_work_dir=host_work_dir,
                 skill_dir=sandbox_config.skill_dir,
                 file_storage_client=file_storage_client,
                 oss_ak=sandbox_config.oss_ak,
@@ -1920,6 +1947,21 @@ class AgentChat(BaseComponent, ABC):
                         )
 
                         if memory_config and memory_config.memories:
+                            # Honour MemoryParameters long-term memory switches.
+                            # If both use and collection are disabled, skip the
+                            # whole memory bundle so we do not inject memories
+                            # into the prompt or run background hooks.
+                            if (
+                                not memory_config.enable_long_term_use
+                                and not memory_config.enable_collect_long_term
+                            ):
+                                logger.info(
+                                    f"[AgentChat] Memory resource present but both "
+                                    f"enable_long_term_use and enable_collect_long_term "
+                                    f"are disabled for {app.app_code}; skipping bundle."
+                                )
+                                return recipient
+
                             # Memory store factory: prefer knowledge-vault
                             # (each agent gets its own llm-wiki Space as the
                             # 4-tier hermes memory sink). Fall back to
@@ -2140,7 +2182,11 @@ class AgentChat(BaseComponent, ABC):
                                     promotion_engine = MemoryPromotionEngine(
                                         recall_tracker=recall_tracker,
                                     )
-                                    lifecycle_hooks = DefaultLifecycleHooks()
+                                    lifecycle_hooks = DefaultLifecycleHooks(
+                                        memory_store=next(
+                                            iter(memory_stores.values()), None
+                                        )
+                                    )
                                     snapshot_manager = FrozenSnapshotManager()
                                     hybrid_search = HybridSearchEngine()
                                     # 把全部组件注入 manager —— curate_session 通过
@@ -2192,6 +2238,52 @@ class AgentChat(BaseComponent, ABC):
                                     logger.warning(
                                         f"[AgentChat] Memory hook registration failed: {hook_e}"
                                     )
+
+                                # Inject memory tools so the agent can actively
+                                # search/save memories and query/edit the KG.
+                                try:
+                                    if memory_bundle.manager.has_stores():
+                                        memory_tool_pack = MemoryToolPack(
+                                            memory_stores=memory_bundle.manager.memory_stores,
+                                            wing=memory_config.wing
+                                            if memory_config
+                                            else "default",
+                                        )
+                                        await memory_tool_pack.preload_resource()
+
+                                        if recipient.resource is None:
+                                            recipient.resource = ResourcePack(
+                                                [memory_tool_pack],
+                                                name="Resource Pack",
+                                            )
+                                        elif isinstance(recipient.resource, ResourcePack):
+                                            recipient.resource.append(
+                                                memory_tool_pack, overwrite=True
+                                            )
+                                        else:
+                                            # Wrap existing single resource into a pack.
+                                            existing = recipient.resource
+                                            recipient.resource = ResourcePack(
+                                                [existing, memory_tool_pack],
+                                                name="Resource Pack",
+                                            )
+                                        # Re-tidy resource_map so tool lookups see the
+                                        # newly injected MemoryToolPack sub-resources.
+                                        recipient.resource_map = (
+                                            await recipient._tidy_resource(
+                                                recipient.resource
+                                            )
+                                        )
+                                        logger.info(
+                                            f"[AgentChat] Memory tools injected for "
+                                            f"{app.app_code}: "
+                                            f"{len(memory_bundle.manager.memory_stores)} stores"
+                                        )
+                                except Exception as tool_e:
+                                    logger.warning(
+                                        f"[AgentChat] Memory tool injection failed: {tool_e}"
+                                    )
+
                                 logger.info(
                                     f"[AgentChat] Memory bundle created for {app.app_code}: "
                                     f"{len(memory_bundle.manager.memory_stores)} stores"

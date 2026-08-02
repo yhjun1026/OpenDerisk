@@ -11,6 +11,7 @@ export interface OAuthProvider {
 export interface OAuthStatus {
   enabled: boolean;
   providers: OAuthProvider[];
+  sso_auto_login_provider?: string;  // 自动跳转的 provider ID
 }
 
 export interface LocalLoginRequest {

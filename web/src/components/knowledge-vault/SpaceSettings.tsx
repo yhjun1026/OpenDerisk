@@ -4,7 +4,7 @@ import { apiInterceptors } from '@/client/api';
 import { getDerisksList, getModelList } from '@/client/api';
 import { getSpace, patchSpace, setEmbedderIdentity } from '@/client/api/knowledge-vault';
 import type { SpaceInfo } from '@/types/knowledge-vault';
-import { Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, message } from 'antd';
+import { App, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -25,6 +25,7 @@ interface AgentOption {
 
 export default function SpaceSettings({ slug, onSaved }: Props) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [space, setSpace] = useState<SpaceInfo | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);

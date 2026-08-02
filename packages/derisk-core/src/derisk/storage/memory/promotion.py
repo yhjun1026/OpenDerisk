@@ -27,6 +27,7 @@ class PromotionCandidate:
     average_score: float = 0.0
     unique_queries: int = 0
     recall_days: int = 0
+    last_recalled: Optional[datetime] = None
     concept_tags: List[str] = field(default_factory=list)
     promotion_score: float = 0.0
 
@@ -123,6 +124,12 @@ class MemoryPromotionEngine:
 
             candidates = []
             for c in raw_candidates:
+                last_recalled = c.get("last_recalled")
+                if isinstance(last_recalled, str):
+                    try:
+                        last_recalled = datetime.fromisoformat(last_recalled)
+                    except ValueError:
+                        last_recalled = None
                 candidates.append(
                     PromotionCandidate(
                         memory_id=c["memory_id"],
@@ -131,6 +138,7 @@ class MemoryPromotionEngine:
                         average_score=c.get("average_score", 0.0),
                         unique_queries=c.get("unique_queries", 0),
                         recall_days=c.get("recall_days", 0),
+                        last_recalled=last_recalled,
                     )
                 )
 
@@ -212,7 +220,11 @@ class MemoryPromotionEngine:
             diversity = min(1.0, c.unique_queries / 5.0)
 
             # Recency: exponential decay (30 day halflife)
-            recency = 0.5  # Default if no timestamp
+            if c.last_recalled:
+                days_ago = (datetime.now() - c.last_recalled).days
+                recency = math.exp(-math.log(2) / 30 * days_ago)
+            else:
+                recency = 0.0
 
             # Consolidation: span of recall days
             consolidation = min(1.0, c.recall_days / 7.0)

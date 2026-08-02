@@ -52,6 +52,9 @@ class LocalSandboxConfig:
     work_dir: str = DEFAULT_LOCAL_SANDBOX_WORK_DIR
     skill_dir: str = DEFAULT_LOCAL_SANDBOX_SKILL_DIR
     runtime_id: str = "improved_local_runtime"
+    # 宿主机绝对工作目录(场景空间独立沙箱):设置后 session 直接使用该真实
+    # 路径,不再嵌套 /tmp session 目录;跨会话/进程持久。None = 原有嵌套行为。
+    host_work_dir: Optional[str] = None
 
     # Execution settings
     default_timeout: int = 300  # seconds
@@ -87,6 +90,7 @@ class LocalSandboxConfig:
             work_dir=config_dict.get("work_dir", DEFAULT_LOCAL_SANDBOX_WORK_DIR),
             skill_dir=config_dict.get("skill_dir", DEFAULT_LOCAL_SANDBOX_SKILL_DIR),
             runtime_id=config_dict.get("runtime_id", "improved_local_runtime"),
+            host_work_dir=config_dict.get("host_work_dir"),
             default_timeout=config_dict.get("default_timeout", 300),
             max_memory=config_dict.get("max_memory", 256 * 1024 * 1024),
             max_cpus=config_dict.get("max_cpus", 1),
@@ -113,6 +117,7 @@ class LocalSandboxConfig:
             max_cpus=self.max_cpus,
             working_dir=self.work_dir,
             network_disabled=self.network_disabled or not self.allow_network,
+            host_working_dir=self.host_work_dir,
         )
 
 
@@ -208,6 +213,10 @@ class ImprovedLocalSandbox(SandboxBase):
         # Set work_dir if provided and not None (from kwargs)
         if "work_dir" in kwargs and kwargs["work_dir"] is not None:
             kwargs["local_sandbox_config"]["work_dir"] = kwargs["work_dir"]
+
+        # Set host_work_dir (scene-workspace persistent sandbox dir) if provided
+        if "host_work_dir" in kwargs and kwargs["host_work_dir"] is not None:
+            kwargs["local_sandbox_config"]["host_work_dir"] = kwargs["host_work_dir"]
 
         # Set skill_dir if provided and not None (from kwargs)
         if "skill_dir" in kwargs and kwargs["skill_dir"] is not None:

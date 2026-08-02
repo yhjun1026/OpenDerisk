@@ -15,7 +15,7 @@ import {
   ReloadOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Button, Empty, List, Spin, Tag, Tooltip, Upload, message as antMessage, message } from 'antd';
+import { Button, Empty, List, Spin, Tag, Tooltip, Upload, App } from 'antd';
 import TreeView from './TreeView';
 import { useSpace } from './SpaceContext';
 
@@ -47,6 +47,7 @@ export default function FilesTreePanel({
   onVerbatSelect: (verbat: VerbatOut) => void;
 }) {
   const { slug, selectedRaw, openRawFile, refreshKey, refresh } = useSpace();
+  const { message } = App.useApp();
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [verbats, setVerbats] = useState<VerbatOut[]>([]);
   const [loading, setLoading] = useState(false);
@@ -81,7 +82,7 @@ export default function FilesTreePanel({
   }, [loadAll, pollJobs, refreshKey]);
 
   async function handleUpload(file: File) {
-    const hide = antMessage.loading(`上传中: ${file.name}`, 0);
+    const hide = message.loading(`上传中: ${file.name}`, 0);
     try {
       const [, , raw] = await apiInterceptors(uploadFile({ slug, file }));
       if (raw) {

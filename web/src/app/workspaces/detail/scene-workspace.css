@@ -573,6 +573,18 @@
 }
 .ws-rail-tm { color: var(--ws-ink-3); font-family: var(--ws-mono); font-size: 9.5px; flex-shrink: 0; }
 
+/* 会话维度视图:剧本/大厅类型 chip + 当前会话标记 */
+.ws-rail-conv-kind {
+  font-size: 10.5px; font-weight: 600; line-height: 1;
+  padding: 3px 7px; border-radius: 999px; flex-shrink: 0;
+}
+.ws-rail-conv-kind--play { color: var(--ws-accent); background: var(--ws-accent-light); }
+.ws-rail-conv-kind--lobby { color: var(--ws-ink-2); background: var(--ws-bg); border: 1px solid var(--ws-border-subtle); }
+.ws-rail-conv-cur {
+  margin-left: auto; font-size: 10px; font-weight: 600;
+  color: var(--ws-accent); flex-shrink: 0;
+}
+
 /* 时间分段头(随列表滚动,吸顶) */
 .ws-rail-seg {
   position: sticky; top: 0; z-index: 1;

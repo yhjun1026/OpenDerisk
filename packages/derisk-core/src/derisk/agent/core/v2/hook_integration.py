@@ -4,7 +4,7 @@ context 字段对齐 BAIZE：
 - pre/post_tool_use: tool_action.py:1334-1341
 - turn_complete: base_agent.py:1327-1355
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from derisk.agent.core.v2.tool_call_types import V2ToolCall, V2ToolResult
 
@@ -68,10 +68,14 @@ def build_conversation_complete_context(
     agent_id: str,
     user_id: Optional[str],
     total_rounds: int,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     return {
         "conv_id": conv_id,
         "agent_id": agent_id,
         "user_id": user_id,
         "total_rounds": total_rounds,
+        "extra": {
+            "conversation_history": conversation_history or [],
+        },
     }

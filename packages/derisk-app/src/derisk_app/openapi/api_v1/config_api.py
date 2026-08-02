@@ -665,6 +665,58 @@ async def refresh_model_cache():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/media-gen/available")
+async def get_available_media_models():
+    """返回当前已配置且可用的媒体生成模型，供前端「媒体生成」默认模型下拉选择。
+
+    返回结构:
+      {
+        "video": [{"model": "...", "protocol": "...", "label": "..."}, ...],
+        "image": [{"model": "...", "protocol": "...", "label": "..."}, ...],
+        "defaults": {"video": "...", "image": "..."}
+      }
+    """
+    try:
+        from derisk.agent.util.llm.model_config_cache import (
+            ModelConfigCache,
+            IMAGE_PROTOCOLS,
+            VIDEO_PROTOCOLS,
+        )
+        from derisk.agent.util.media_gen.provider_registry import (
+            MediaGenProviderRegistry,
+            PROTOCOL_LABELS,
+        )
+
+        media = ModelConfigCache.get_media_models()
+        video, image = [], []
+        for m in media:
+            # 管理后台下拉展示所有已配置的媒体模型（按协议），不按 key 过滤——
+            # 可用性(key)在工具调用时再校验。这样用户配了协议+模型名即可在选择器看到。
+            entry = {
+                "model": m["model"],
+                "protocol": m["protocol"],
+                "label": PROTOCOL_LABELS.get(m["protocol"], m["protocol"]),
+                "usable": MediaGenProviderRegistry._is_model_usable(m),
+            }
+            if m["protocol"] in VIDEO_PROTOCOLS:
+                video.append(entry)
+            elif m["protocol"] in IMAGE_PROTOCOLS:
+                image.append(entry)
+
+        return JSONResponse(
+            content={
+                "video": sorted(video, key=lambda x: x["model"]),
+                "image": sorted(image, key=lambda x: x["model"]),
+                "defaults": {
+                    "video": MediaGenProviderRegistry.get_default_video_model(),
+                    "image": MediaGenProviderRegistry.get_default_image_model(),
+                },
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/model-cache/models")
 async def get_cached_models(
     user: UserRequest = Depends(require_permission("model", "read")),
@@ -673,7 +725,7 @@ async def get_cached_models(
     try:
         from derisk.agent.util.llm.model_config_cache import ModelConfigCache
 
-        all_models = ModelConfigCache.get_all_models()
+        all_models = ModelConfigCache.get_all_models(include_media_gen=True)
         all_model_keys = ModelConfigCache.get_all_model_keys()
 
         return JSONResponse(
@@ -893,12 +945,16 @@ async def update_oauth2_config(oauth2_data: Dict[str, Any]):
         providers = oauth2_data.get("providers", [])
         admin_users = oauth2_data.get("admin_users", [])
         enabled = oauth2_data.get("enabled", False)
+        sso_auto_login_provider = oauth2_data.get("sso_auto_login_provider")
 
         logger.info(
-            f"Saving OAuth2 config: enabled={enabled}, default_role={default_role}, providers_count={len(providers)}"
+            f"Saving OAuth2 config: enabled={enabled}, default_role={default_role}, providers_count={len(providers)}, sso_auto_login_provider={sso_auto_login_provider}"
         )
         try:
-            db_saved = db_storage.save(enabled, providers, admin_users, default_role)
+            db_saved = db_storage.save(
+                enabled, providers, admin_users, default_role,
+                sso_auto_login_provider=sso_auto_login_provider,
+            )
             if not db_saved:
                 logger.warning("Failed to save OAuth2 config to database")
         except Exception as e:
@@ -1264,6 +1320,19 @@ def _refresh_model_config_cache(config: AppConfig) -> int:
             logger.info(
                 f"ModelConfigCache refreshed with {len(model_configs)} models from imported config"
             )
+            # 同步 media_gen 默认模型到 MediaGenProviderRegistry
+            try:
+                media_gen = getattr(config, "media_gen", None)
+                if media_gen:
+                    from derisk.agent.util.media_gen.provider_registry import (
+                        MediaGenProviderRegistry,
+                    )
+                    MediaGenProviderRegistry.set_default_models(
+                        video_model=media_gen.video_default_model,
+                        image_model=media_gen.image_default_model,
+                    )
+            except Exception as mg_err:
+                logger.warning(f"Failed to sync media_gen defaults: {mg_err}")
             return len(model_configs)
         return 0
     except Exception as e:
@@ -1914,7 +1983,7 @@ async def get_startup_status():
                             config_models.append(f"{provider_name}/{m.name}")
 
         # 检查 ModelConfigCache
-        cached_models = ModelConfigCache.get_all_models()
+        cached_models = ModelConfigCache.get_all_models(include_media_gen=True)
         cached_model_keys = ModelConfigCache.get_all_model_keys()
 
         # 检查同步状态

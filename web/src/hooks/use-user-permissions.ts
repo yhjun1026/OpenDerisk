@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { permissionsService, isNotFound } from '@/services/permissions';
 import { getUserId } from '@/utils/storage';
 import { authService } from '@/services/auth';
-import { message } from 'antd';
 
 export interface UserPermissions {
   roles: string[];

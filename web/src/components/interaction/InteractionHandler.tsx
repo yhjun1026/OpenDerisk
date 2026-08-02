@@ -25,7 +25,7 @@ import {
   Alert,
   Typography,
   Upload,
-  message,
+  App,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -311,6 +311,7 @@ function FileUploadContent({
   onCancel: () => void;
   loading: boolean;
 }) {
+  const { message } = App.useApp();
   const [fileList, setFileList] = useState<string[]>([]);
   const acceptedTypes = request.accepted_file_types?.join(',') ?? '*';
   const multiple = request.allow_multiple_files ?? false;

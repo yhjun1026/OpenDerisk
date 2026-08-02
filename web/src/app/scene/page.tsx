@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Typography, Button, message } from 'antd';
+import { App, Typography, Button } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { SceneList, SceneListRef } from '@/components/scene/SceneList';
 import { SceneEditor } from '@/components/scene/SceneEditor';
@@ -13,6 +13,7 @@ export default function ScenePage() {
   const [mode, setMode] = useState<PageMode>('list');
   const [currentSceneId, setCurrentSceneId] = useState<string | undefined>();
   const sceneListRef = useRef<SceneListRef>(null);
+  const { message } = App.useApp();
 
   const handleCreate = useCallback(() => {
     setMode('create');

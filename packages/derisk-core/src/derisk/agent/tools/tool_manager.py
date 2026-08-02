@@ -137,9 +137,7 @@ class ToolManager:
         "Write",  # 文件写入（沙箱时委托给 create_file）
         "Edit",  # 文件编辑（沙箱时委托给 edit_file）
         "deliver_file",  # 文件交付（标记为交付物并上传到 OSS）
-        "Skill",  # 读取 Skill 内容（默认注入）
-        "skill_exec",  # 执行 Skill 脚本（默认注入）
-        "skill_list",  # 列出可用 Skill（默认注入）
+        "Skill",  # 读取 Skill 内容（核心，不可替代）
     ]
 
     # 沙箱专属工具（仅沙箱环境可用，需手动绑定）
@@ -168,6 +166,8 @@ class ToolManager:
         "get_table_spec",  # 数据库表结构查询
         "execute_sql",  # SQL执行
         "list_tables",  # 数据库表列表
+        "skill_exec",  # 执行 Skill 脚本（可用 Bash 替代）
+        "skill_list",  # 列出可用 Skill（available_skills 已预注入提示词，通常无需主动调用）
     ]
 
     # 多模态生成工具（图片/视频生成，一键绑定）

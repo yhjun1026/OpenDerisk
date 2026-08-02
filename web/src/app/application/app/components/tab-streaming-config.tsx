@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRequest } from 'ahooks';
 import {
+  App,
   Card,
   Form,
   Select,
@@ -14,7 +15,6 @@ import {
   Space,
   Modal,
   Input,
-  message,
   Tooltip,
   Tabs,
   Tag,
@@ -288,6 +288,7 @@ function ParamConfigModal({
 
 export default function TabStreamingConfig() {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const { appInfo } = useContext(AppContext);
   
   const [loading, setLoading] = useState(false);
@@ -426,7 +427,7 @@ export default function TabStreamingConfig() {
 
   // 删除配置
   const handleDeleteConfig = useCallback(async (toolName: string) => {
-    Modal.confirm({
+    modal.confirm({
       title: t('streaming_delete_confirm') || 'Confirm Delete',
       content: t('streaming_delete_content', { tool: toolName }) || `Are you sure you want to delete streaming config for tool "${toolName}"?`,
       okText: t('delete') || 'Delete',

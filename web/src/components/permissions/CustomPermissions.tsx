@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  App,
   Button,
   Card,
   Form,
@@ -14,7 +15,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -183,6 +183,7 @@ interface CustomPermissionsProps {
 
 export default function CustomPermissions({ roles: externalRoles }: CustomPermissionsProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [policies, setPolicies] = useState<CustomPolicy[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);

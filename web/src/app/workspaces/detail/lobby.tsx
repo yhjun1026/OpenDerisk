@@ -3,16 +3,16 @@
 import { Tag } from 'antd';
 import { useRequest } from 'ahooks';
 import {
-  ThunderboltOutlined,
   CloudServerOutlined,
   SendOutlined,
+  DeploymentUnitOutlined,
 } from '@ant-design/icons';
 import {
   apiInterceptors,
   listArtifacts,
   listDeliveries,
 } from '@/client/api';
-import { listInbox, type InboxItem } from '@/client/api/workspace';
+import { listEcpObjects } from '@/client/api/ecp';
 import { GrowthCard } from './growth-card';
 import { SpaceGuideCard } from './space-guide-card';
 import './lobby.css';
@@ -20,7 +20,8 @@ import './lobby.css';
 export interface LobbyProps {
   workspaceId: number;
   workspaceCode: string;
-  onSelectTask: (taskId: number) => void;
+  // 预留钩子:内容区域(大厅)开任务入口,待办卡片移除后待后续接 UI。
+  onSelectTask?: (taskId: number) => void;
   onSelectArtifact?: (artifact: any) => void;
 }
 
@@ -57,15 +58,8 @@ function EmptyState({ title, hint }: { title: string; hint?: string }) {
 export function Lobby({
   workspaceId,
   workspaceCode,
-  onSelectTask,
   onSelectArtifact,
 }: LobbyProps) {
-  const { data: inboxRes } = useRequest(
-    async () => apiInterceptors(listInbox(workspaceId)),
-    { refreshDeps: [workspaceId] },
-  );
-  const inboxItems: InboxItem[] = (Array.isArray(inboxRes?.[1]) ? inboxRes[1] : (inboxRes?.[1]?.data || [])) as InboxItem[];
-
   const { data: deliveriesRes } = useRequest(
     async () => apiInterceptors(listDeliveries({ workspace_id: workspaceId })),
     { refreshDeps: [workspaceId] },
@@ -78,8 +72,24 @@ export function Lobby({
   );
   const artifacts = artifactsRes?.[1];
 
+  // ECP 语义资产:派生 ECP workspace(ecp_<workspace_code>),拉取已确认语义对象
+  const ecpWsId = workspaceCode ? `ecp_${workspaceCode}` : null;
+  const { data: semanticRes } = useRequest(
+    async () => {
+      if (!ecpWsId) return null;
+      const [err, res] = await apiInterceptors(
+        listEcpObjects({ workspace_id: ecpWsId, status: 'confirmed', page_size: 50 }),
+      );
+      if (err) return null;
+      return res;
+    },
+    { ready: !!ecpWsId, refreshDeps: [ecpWsId] },
+  );
+  const semantics = semanticRes?.items ?? [];
+
   const recentDeliveries = (deliveries || []).slice(0, 3);
   const recentArtifacts = (artifacts || []).slice(0, 4);
+  const recentSemantics = semantics.slice(0, 5);
 
   return (
     <div className="ws-lobby">
@@ -88,35 +98,9 @@ export function Lobby({
         <SpaceGuideCard workspaceId={workspaceId} workspaceCode={workspaceCode} />
 
         {/* 空间成长概览(横向紧凑条) */}
-        <GrowthCard workspaceId={workspaceId} />
+        <GrowthCard workspaceId={workspaceId} workspaceCode={workspaceCode} />
 
         <div className="ws-lobby__grid">
-          {/* 我的待办(个人工作台) */}
-          <section className="ws-lobby__section">
-            <SectionHead icon={<ThunderboltOutlined />} title="我的待办" count={inboxItems.length} />
-            <div className="ws-lobby__section-body">
-              {inboxItems.length === 0 && (
-                <EmptyState title="暂无待办" hint="需要你介入的事项会出现在这里" />
-              )}
-              {inboxItems.slice(0, 5).map((item) => (
-                <div
-                  key={item.id}
-                  className="ws-lobby__task-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => item.source_type === 'task' && onSelectTask(Number(item.source_id))}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && item.source_type === 'task') onSelectTask(Number(item.source_id)); }}
-                >
-                  <div className="ws-lobby__task-title">{item.title}</div>
-                  <div className="ws-lobby__task-meta">
-                    <Tag color="blue">{item.source_type}</Tag>
-                    <span>{item.visibility === 'shared' ? '共享' : '个人'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
           {/* 最近产出 */}
           <section className="ws-lobby__section">
             <SectionHead icon={<CloudServerOutlined />} title="最近产出" count={recentArtifacts.length} />
@@ -152,6 +136,30 @@ export function Lobby({
                   <Tag>{d.category}</Tag>
                   <span className="ws-lobby__delivery-channel">{d.channel}</span>
                   <span className="ws-lobby__delivery-status">{d.status}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 语义资产 */}
+          <section className="ws-lobby__section">
+            <SectionHead
+              icon={<DeploymentUnitOutlined />}
+              title="语义资产"
+              count={recentSemantics.length}
+              sub={semantics.length > recentSemantics.length ? `共 ${semantics.length}` : undefined}
+            />
+            <div className="ws-lobby__section-body">
+              {recentSemantics.length === 0 && (
+                <EmptyState
+                  title="暂无已确认语义资产"
+                  hint="在「资产层」生成提案并在「收件箱」确认后,这里会展示语义对象"
+                />
+              )}
+              {recentSemantics.map((s: any) => (
+                <div key={s.id} className="ws-lobby__hosted-card">
+                  <span className="ws-lobby__hosted-title">{s.name || s.id}</span>
+                  <Tag color="blue">{s.obj_type}</Tag>
                 </div>
               ))}
             </div>

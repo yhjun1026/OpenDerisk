@@ -177,6 +177,7 @@ export const WorkspacesZh = {
   'assets.tab_data': '数据资产',
   'assets.tab_delivery': '交付沉淀',
   'assets.tab_capability': '能力',
+  'assets.tab_semantic': '语义资产',
   'assets.title': '空间记忆（资产）',
   'assets.type': '类型',
   'interventions.title': '介入中心',

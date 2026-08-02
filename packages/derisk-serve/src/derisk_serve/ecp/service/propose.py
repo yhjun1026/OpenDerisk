@@ -14,7 +14,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..api.schemas import GenerateProposalsVO
-from ..config import DEFAULT_WORKSPACE_ID, OBJECT_TYPES
+from ..config import DEFAULT_WORKSPACE_ID, OBJECT_TYPES, STATUS_PROPOSED
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class DbSemanticsProposer(SemanticsProposer):
                 continue
             for p in proposals:
                 try:
-                    self._service.propose(
+                    vo = self._service.propose(
                         object_id=p["id"],
                         obj_type=p["obj_type"],
                         payload=p["payload"],
@@ -132,8 +132,10 @@ class DbSemanticsProposer(SemanticsProposer):
                         created_by="llm",
                         source=f"discovery:ds{datasource_id}",
                     )
-                    result.proposals_created += 1
-                    result.proposal_ids.append(p["id"])
+                    # 去重命中(返回已有 confirmed VO)不计为新提案
+                    if vo.status == STATUS_PROPOSED:
+                        result.proposals_created += 1
+                        result.proposal_ids.append(p["id"])
                 except Exception as e:  # noqa: BLE001
                     logger.warning(f"[ECP] proposal write failed {p.get('id')}: {e}")
                     result.errors.append(f"{p.get('id')}: {e}")

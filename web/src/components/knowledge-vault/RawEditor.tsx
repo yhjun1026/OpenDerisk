@@ -10,7 +10,7 @@ import {
 } from '@/client/api/knowledge-vault';
 import type { VerbatFull } from '@/types/knowledge-vault';
 import { DeleteOutlined, EditOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { Button, Empty, Spin, Tag, message } from 'antd';
+import { Button, Empty, Spin, Tag, App } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import MarkdownEditor from './MarkdownEditor';
 import { useSpace } from './SpaceContext';
@@ -29,6 +29,7 @@ function isTextEditable(path: string | undefined | null): boolean {
 
 export default function RawEditor() {
   const { slug, selectedRaw, setSelectedRaw, selectedVerbat, setSelectedVerbat, refresh } = useSpace();
+  const { message } = App.useApp();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

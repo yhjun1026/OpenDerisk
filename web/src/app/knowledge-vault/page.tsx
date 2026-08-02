@@ -13,7 +13,7 @@ import {
   AppstoreOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
-import { Button, Input, Modal, Popconfirm, Select, Spin, message } from 'antd';
+import { Button, Input, Modal, Popconfirm, Select, Spin, App } from 'antd';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import VaultSeal from '@/components/knowledge-vault/VaultSeal';
@@ -29,6 +29,7 @@ export default function KnowledgeVaultHomePage() {
   const [newVisibility, setNewVisibility] = useState<SpaceVisibility>('private');
   const [query, setQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const { message } = App.useApp();
 
   const loadSpaces = useCallback(async () => {
     setLoading(true);

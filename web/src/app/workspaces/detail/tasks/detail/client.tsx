@@ -6,7 +6,7 @@ import {
 } from '@/client/api';
 import {
   Button, Card, Descriptions, Empty, Form, Input, Modal, Spin,
-  Table, Tag, Tabs, message,
+  Table, Tag, Tabs, App,
 } from 'antd';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
@@ -22,6 +22,7 @@ import ChatSession from '@/components/chat/chat-session';
 const { TextArea } = Input;
 
 export default function TaskDetailPage() {
+  const { message } = App.useApp();
   const searchParams = useSearchParams();
   const workspaceCode = searchParams?.get('id') || '';
   const taskId = Number(searchParams?.get('task_id'));

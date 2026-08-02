@@ -2,7 +2,7 @@
 
 import { apiInterceptors } from '@/client/api';
 import { createRawFile } from '@/client/api/knowledge-vault';
-import { Input, Modal, message } from 'antd';
+import { Input, Modal, App } from 'antd';
 import { useState } from 'react';
 
 export default function RawCreateModal({
@@ -16,6 +16,7 @@ export default function RawCreateModal({
   onClose: () => void;
   onCreated?: () => void;
 }) {
+  const { message } = App.useApp();
   const [path, setPath] = useState('');
   const [content, setContent] = useState('# \n\n');
   const [loading, setLoading] = useState(false);

@@ -185,12 +185,15 @@ class Service(BaseService[EcpSemanticObjectEntity, None, None]):
             created_by=created_by,
             source=source,
         )
-        self._oplog_dao.append(
-            "propose",
-            ws,
-            {"id": object_id, "version": vo.version, "type": obj_type,
-             "created_by": created_by, "source": source},
-        )
+        # 去重命中时 create_proposal 返回已有 confirmed VO(status=confirmed),
+        # 不记 propose oplog(实际未产生新提案)。
+        if vo.status == STATUS_PROPOSED:
+            self._oplog_dao.append(
+                "propose",
+                ws,
+                {"id": object_id, "version": vo.version, "type": obj_type,
+                 "created_by": created_by, "source": source},
+            )
         return vo
 
     # ------------------------------------------------------------------ confirm
@@ -695,7 +698,7 @@ class Service(BaseService[EcpSemanticObjectEntity, None, None]):
             await ks.create_space(slug, owner_id=owner_id, space_type="personal")
             created = True
             self._oplog_dao.append("space_create", ws, {"slug": slug})
-        self._asset_dao.register("space", slug, ws)
+        self._asset_dao.register("space", slug, ws, ref_meta={"name": slug})
         return SpaceInfoVO(slug=slug, workspace_id=ws, created=created)
 
     # ------------------------------------------------------ workspace config

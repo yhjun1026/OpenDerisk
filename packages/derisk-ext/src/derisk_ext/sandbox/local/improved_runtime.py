@@ -81,6 +81,12 @@ class ImprovedLocalSandboxSession(SandboxSession):
 
     def _resolve_working_dir(self) -> str:
         """Resolve the working directory to a physical path."""
+        # 宿主机工作目录模式(场景空间独立沙箱):直接使用真实路径,
+        # 不嵌套 session 目录;sandbox-exec 的读写放行即对该路径生效。
+        if getattr(self.config, "host_working_dir", None):
+            target = os.path.abspath(self.config.host_working_dir)
+            os.makedirs(target, exist_ok=True)
+            return target
         base = self.session_dir
         if self.config.working_dir:
             relative = self.config.working_dir.lstrip("/")

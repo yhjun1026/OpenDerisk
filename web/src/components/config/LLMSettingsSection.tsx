@@ -17,7 +17,7 @@ import {
   Switch,
   Tag,
   Typography,
-  message,
+  App,
 } from "antd";
 import {
   DeleteOutlined,
@@ -63,6 +63,12 @@ const BUILTIN_PROTOCOL_OPTIONS = [
   { value: "openai", label: "OpenAI / OpenAI Compatible" },
   { value: "anthropic", label: "Anthropic / Claude" },
   { value: "theta", label: "Theta" },
+  { value: "dashscope_video", label: "百炼视频 (DashScope Video)" },
+  { value: "dashscope_image", label: "百炼图像 (DashScope Image)" },
+  { value: "volcengine_video", label: "火山视频 (Volcano Video)" },
+  { value: "openai_image", label: "OpenAI 图像 (DALL-E)" },
+  { value: "openai_video", label: "OpenAI 视频 (Sora)" },
+  { value: "google_image", label: "Google 图像 (Nano Banana)" },
 ];
 
 const MODEL_TYPE_OPTIONS = [
@@ -149,6 +155,7 @@ function getDefaultCapabilities(modelType: string, isMultimodal?: boolean) {
 }
 
 export default function LLMSettingsSection({ config, onChange }: Props) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [llmKeys, setLLMKeys] = useState<LLMKeyItem[]>([]);
   const [supportedModels, setSupportedModels] = useState<SupportModel[]>([]);
@@ -323,66 +330,81 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
   async function handleSave(values: any) {
     setSaving(true);
     try {
-      const providers = (values.agent_llm?.providers || [])
-        .map((item: any) => {
-          const provider = normalizeProviderName(item?.provider);
-          if (!provider) {
-            return null;
-          }
-          const keyInfo = llmKeyMap[provider];
-          
-          // Ensure only one model is_default per provider
-          const models = (item.models || [])
-            .filter((model: any) => model?.name)
-            .map((model: any, idx: number, arr: any[]) => {
-              const modelType = model.model_type || "llm";
-              const capabilities = model.capabilities?.length
-                ? model.capabilities
-                : getDefaultCapabilities(modelType, model.is_multimodal);
-              return {
-                name: model.name,
-                temperature: model.temperature ?? 0.7,
-                max_new_tokens: model.max_new_tokens ?? 4096,
-                model_type: modelType,
-                capabilities,
-                is_multimodal: model.is_multimodal ?? capabilities.includes("vision"),
-                is_default: arr.length === 1 ? true : (model.is_default ?? false),
-              };
-            });
+      const rawProviderList = values.agent_llm?.providers || [];
+      const providers = [];
+      for (const item of rawProviderList) {
+        const provider = normalizeProviderName(item?.provider);
+        if (!provider) {
+          continue;
+        }
+        const keyInfo = llmKeyMap[provider];
 
-          // If multiple models have is_default=true, only keep the first one
-          const defaultCount = models.filter((m: any) => m.is_default).length;
-          if (defaultCount > 1) {
-            models.forEach((m: any, idx: number) => {
-              m.is_default = idx === 0;
-            });
-          }
+        // Ensure only one model is_default per provider
+        const models = (item.models || [])
+          .filter((model: any) => model?.name)
+          .map((model: any, idx: number, arr: any[]) => {
+            const modelType = model.model_type || "llm";
+            const capabilities = model.capabilities?.length
+              ? model.capabilities
+              : getDefaultCapabilities(modelType, model.is_multimodal);
+            return {
+              name: model.name,
+              temperature: model.temperature ?? 0.7,
+              max_new_tokens: model.max_new_tokens ?? 4096,
+              model_type: modelType,
+              capabilities,
+              is_multimodal: model.is_multimodal ?? capabilities.includes("vision"),
+              is_default: arr.length === 1 ? true : (model.is_default ?? false),
+            };
+          });
 
-          // If no model is_default, set the first one as default
-          if (models.length > 0 && !models.some((m: any) => m.is_default)) {
-            models[0].is_default = true;
-          }
+        // If multiple models have is_default=true, only keep the first one
+        const defaultCount = models.filter((m: any) => m.is_default).length;
+        if (defaultCount > 1) {
+          models.forEach((m: any, idx: number) => {
+            m.is_default = idx === 0;
+          });
+        }
 
-          return {
-            provider,
-            protocol: item.protocol || inferProtocol(provider),
-            api_base: item.api_base || "",
-            api_key_ref: (() => {
-              // 优先使用用户手动输入的值
-              if (item.api_key_ref?.trim()) {
-                return item.api_key_ref.trim();
-              }
-              // 如果已配置密钥，使用密钥引用
-              if (keyInfo?.secret_name) {
-                return buildSecretReference(keyInfo.secret_name);
-              }
-              // 否则生成默认引用格式（用户需要先配置密钥）
-              return buildSecretReference(buildDefaultSecretName(provider));
-            })(),
-            models,
-          };
-        })
-        .filter(Boolean);
+        // If no model is_default, set the first one as default
+        if (models.length > 0 && !models.some((m: any) => m.is_default)) {
+          models[0].is_default = true;
+        }
+
+        // 解析 API Key：支持直接填实际值，或填 ${secrets.xxx} 引用
+        const rawKey = (item.api_key_ref || "").trim();
+        // 原始引用（同步可用，避免依赖异步加载的 llmKeyMap 导致引用断裂）
+        const originalRef =
+          config.agent_llm?.providers?.find(
+            (p) => normalizeProviderName(p.provider) === provider
+          )?.api_key_ref || "";
+        let apiKeyRef = "";
+        if (rawKey && !rawKey.startsWith("${secrets.")) {
+          // 用户直接填了实际 API Key 值，存入 secrets 加密存储
+          await configService.setLLMKey(provider, rawKey);
+          apiKeyRef = keyInfo?.secret_name
+            ? buildSecretReference(keyInfo.secret_name)
+            : originalRef || buildSecretReference(buildDefaultSecretName(provider));
+        } else if (rawKey) {
+          // 用户填的是引用
+          apiKeyRef = rawKey;
+        } else if (originalRef) {
+          // 留空：沿用原始引用（最安全，不依赖异步状态）
+          apiKeyRef = originalRef;
+        } else if (keyInfo?.secret_name) {
+          apiKeyRef = buildSecretReference(keyInfo.secret_name);
+        } else {
+          apiKeyRef = buildSecretReference(buildDefaultSecretName(provider));
+        }
+
+        providers.push({
+          provider,
+          protocol: item.protocol || inferProtocol(provider),
+          api_base: item.api_base || "",
+          api_key_ref: apiKeyRef,
+          models,
+        });
+      }
 
       const nextConfig: AppConfig = {
         ...config,
@@ -395,6 +417,8 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
       };
 
       await configService.importConfig(nextConfig);
+      // 若保存过程中写入了新的 API Key，刷新 key 状态
+      await loadLLMKeys();
       try {
         await configService.refreshModelCache();
         // 刷新后重新加载模型列表
@@ -466,8 +490,7 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
                     fields.length <= 1 ? fields.map((f) => f.key.toString()) : []
                   }
                   className="provider-collapse"
-                >
-                  {fields.map((field) => {
+                  items={fields.map((field) => {
                     const providerName = normalizeProviderName(
                       form.getFieldValue([
                         "agent_llm",
@@ -499,10 +522,9 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
                     );
                     const defaultModelName = defaultModel?.name;
 
-                    return (
-                      <Collapse.Panel
-                        key={field.key}
-                        header={
+                    return {
+                      key: field.key,
+                      label: (
                           <div className="flex items-center justify-between w-full pr-4">
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-gray-800">
@@ -541,8 +563,8 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
                               </Button>
                             </Popconfirm>
                           </div>
-                        }
-                      >
+                        ),
+                      children: (
                         <div className="space-y-3 pt-1">
                           <div className="grid grid-cols-2 gap-4">
                             <Form.Item
@@ -583,22 +605,32 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
 
                           <Form.Item
                             name={[field.name, "api_key_ref"]}
-                            label="API Key 引用"
-                            tooltip="可以手动输入引用格式如 ${secrets.llm_provider_xxx_api_key}，或保存时自动生成"
+                            label="API Key"
+                            tooltip="新 Provider 直接粘贴 API Key 实际值，保存时自动加密存储并转为引用；已配置的显示 ${secrets.xxx} 引用，留空保持不变，粘贴新值可更新"
                           >
-                            <Input placeholder="${secrets.llm_provider_deepseek_api_key}" />
+                            <Input
+                              placeholder={
+                                providerKey?.is_configured
+                                  ? "已配置，留空保持不变；粘贴新值可更新"
+                                  : "直接粘贴 API Key 实际值，保存时自动加密存储"
+                              }
+                            />
                           </Form.Item>
 
-                          {providerKey && providerKey.is_configured && (
+                          {providerKey && providerKey.is_configured ? (
                             <div className="mb-2 flex items-center gap-2">
                               <CheckCircleOutlined className="text-green-500" />
                               <Text type="success">
-                                已配置加密 API Key（
-                                {providerKey.description || providerKey.secret_name}
-                                ）
+                                已配置加密 API Key（{providerKey.description || providerKey.secret_name}）
                               </Text>
                               <Text type="secondary" className="text-xs">
-                                保存时将自动使用此密钥引用
+                                清空输入框后粘贴新值可更新
+                              </Text>
+                            </div>
+                          ) : (
+                            <div className="mb-2 flex items-center gap-2">
+                              <Text type="warning" className="text-xs">
+                                尚未配置 API Key，可直接在上方输入框粘贴实际值
                               </Text>
                             </div>
                           )}
@@ -828,10 +860,10 @@ export default function LLMSettingsSection({ config, onChange }: Props) {
                             )}
                           </Form.List>
                         </div>
-                      </Collapse.Panel>
-                    );
+                      ),
+                    };
                   })}
-                </Collapse>
+                />
               )}
 
               <Button

@@ -560,6 +560,25 @@ def _sync_app_config_to_system_app():
     except Exception as e:
         logger.error(f"Failed to register models to ModelConfigCache: {e}", exc_info=True)
 
+    # Step 7.5: 同步 media_gen 默认模型到 MediaGenProviderRegistry
+    try:
+        media_gen = getattr(cfg, "media_gen", None)
+        if media_gen:
+            from derisk.agent.util.media_gen.provider_registry import (
+                MediaGenProviderRegistry,
+            )
+            MediaGenProviderRegistry.set_default_models(
+                video_model=media_gen.video_default_model,
+                image_model=media_gen.image_default_model,
+            )
+            logger.info(
+                f"[ConfigSync] MediaGen defaults: "
+                f"video={media_gen.video_default_model}, "
+                f"image={media_gen.image_default_model}"
+            )
+    except Exception as e:
+        logger.error(f"Failed to sync media_gen defaults: {e}", exc_info=True)
+
     # Step 8: 同步 default_model
     default_model = getattr(cfg, "default_model", None)
     if default_model:
@@ -574,7 +593,7 @@ def _sync_app_config_to_system_app():
 
     # Step 9: 最终验证
     try:
-        registered_models = ModelConfigCache.get_all_models()
+        registered_models = ModelConfigCache.get_all_models(include_media_gen=True)
         registered_keys = ModelConfigCache.get_all_model_keys()
         if registered_models:
             logger.info(
@@ -645,7 +664,7 @@ def _verify_model_cache_on_startup():
     try:
         from derisk.agent.util.llm.model_config_cache import ModelConfigCache
 
-        models = ModelConfigCache.get_all_models()
+        models = ModelConfigCache.get_all_models(include_media_gen=True)
         model_keys = ModelConfigCache.get_all_model_keys()
 
         if models:

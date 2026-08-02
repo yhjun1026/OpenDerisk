@@ -189,6 +189,26 @@ export interface FeaturePluginCatalogItem {
   settings: Record<string, unknown>;
 }
 
+export interface MediaGenDefaults {
+  video_default_model?: string | null;
+  image_default_model?: string | null;
+}
+
+export interface MediaModelOption {
+  model: string;
+  protocol: string;
+  label: string;
+}
+
+export interface AvailableMediaModels {
+  video: MediaModelOption[];
+  image: MediaModelOption[];
+  defaults: {
+    video?: string | null;
+    image?: string | null;
+  };
+}
+
 export interface AppConfig {
   name: string;
   version: string;
@@ -206,6 +226,7 @@ export interface AppConfig {
   oauth2: OAuth2Config;
   feature_plugins?: Record<string, FeaturePluginEntry>;
   secrets: SecretsConfig;
+  media_gen?: MediaGenDefaults;
   workspace: string;
 }
 
@@ -282,6 +303,11 @@ class ConfigService {
   async refreshModelCache(): Promise<{ success: boolean; models_registered: number }> {
     const response = await axios.post(`${API_BASE}/config/refresh-model-cache`);
     return response.data;
+  }
+
+  async getAvailableMediaModels(): Promise<AvailableMediaModels> {
+    const response = await axios.get(`${API_BASE}/config/media-gen/available`);
+    return response.data.data;
   }
 
   async getCachedModels(): Promise<{ models: string[]; model_keys: string[]; total: number }> {

@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Spin, Typography, message } from 'antd';
+import { Alert, App, Button, Spin, Typography } from 'antd';
 import { apiInterceptors } from '@/client/api';
 import { readSchemaMd, writeSchemaMd } from '@/client/api/knowledge-vault';
 
 const { Title, Paragraph } = Typography;
 
 export default function SchemaEditor({ slug }: { slug: string }) {
+  const { message } = App.useApp();
   const [content, setContent] = useState('');
   const [original, setOriginal] = useState('');
   const [loading, setLoading] = useState(false);

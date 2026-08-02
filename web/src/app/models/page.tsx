@@ -6,17 +6,16 @@ import { ChatContext } from '@/contexts';
 import { IModelData } from '@/types/model';
 import { ReloadOutlined, SearchOutlined, AppstoreOutlined, UnorderedListOutlined, PlusOutlined, DeleteOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { Button, Modal, Tag, message, Pagination, PaginationProps } from 'antd';
+import { App, Button, Modal, Tag, Pagination, PaginationProps } from 'antd';
 import moment from 'moment';
 import { useRouter } from 'next/navigation';
 import { useContext, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import './model-page.css';
 
-const { confirm: modalConfirm } = Modal;
-
 export default function ModelManage() {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const { setModel } = useContext(ChatContext);
   const router = useRouter();
 
@@ -98,7 +97,7 @@ export default function ModelManage() {
   }
 
   const confirmDelete = (item: IModelData) => {
-    modalConfirm({
+    modal.confirm({
       title: t('delete_model'),
       content: t('delete_model_confirm') + item.model_name + '?',
       okText: t('Yes'),
@@ -111,7 +110,7 @@ export default function ModelManage() {
   };
 
   const showConfirm = (title: string, content: string, onOk: () => Promise<void>) => {
-    Modal.confirm({
+    modal.confirm({
       title,
       content,
       onOk: async () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
-import { Table, Button, Modal, message, Tag, Space, Popconfirm, Typography } from 'antd';
+import { App, Table, Button, Tag, Space, Popconfirm, Typography } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
@@ -37,6 +37,7 @@ const PriorityBar: React.FC<{ priority: number }> = ({ priority }) => (
 
 export const SceneList = forwardRef<SceneListRef, SceneListProps>(
   ({ onEdit, onCreate }, ref) => {
+    const { message, modal } = App.useApp();
     const [scenes, setScenes] = useState<SceneDefinition[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -69,7 +70,7 @@ export const SceneList = forwardRef<SceneListRef, SceneListProps>(
     };
 
     const handleView = (scene: SceneDefinition) => {
-      Modal.info({
+      modal.info({
         title: scene.scene_name,
         width: 720,
         content: (

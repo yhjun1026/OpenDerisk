@@ -1,5 +1,5 @@
 import { getUserId } from '@/utils';
-import { message } from 'antd';
+import { getMessage } from '@/utils/antd-instance';
 import { isPlainObject } from 'lodash';
 import axios from './ctx-axios';
 
@@ -38,7 +38,7 @@ export const sendGetRequest = (url: string, qs?: { [key: string]: any }) => {
     })
     .then(res => res)
     .catch(err => {
-      message.error(err);
+      getMessage()?.error(err);
       Promise.reject(err);
     });
 };
@@ -59,7 +59,7 @@ export const sendSpaceGetRequest = (url: string, qs?: { [key: string]: any }) =>
     })
     .then(res => res)
     .catch(err => {
-      message.error(err);
+      getMessage()?.error(err);
       Promise.reject(err);
     });
 };
@@ -73,7 +73,7 @@ export const sendPostRequest = (url: string, body?: any) => {
     })
     .then(res => res)
     .catch(err => {
-      message.error(err);
+      getMessage()?.error(err);
       Promise.reject(err);
     });
 };
@@ -85,7 +85,7 @@ export const sendSpacePostRequest = (url: string, body?: any) => {
     })
     .then(res => res)
     .catch(err => {
-      message.error(err);
+      getMessage()?.error(err);
       Promise.reject(err);
     });
 };
@@ -95,7 +95,7 @@ export const sendSpaceUploadPostRequest = (url: string, body?: any) => {
     .post<null, any>(url, body)
     .then(res => res)
     .catch(err => {
-      message.error(err);
+      getMessage()?.error(err);
       Promise.reject(err);
     });
 };

@@ -3,7 +3,7 @@ import { apiInterceptors, getMCPList, offlineMCP, startMCP, deleteMCP } from '@/
 import { InnerDropdown } from '@/components/blurred-card';
 import { ReloadOutlined, SearchOutlined, AppstoreOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { Pagination, Spin, Button, message, PaginationProps, Popconfirm } from 'antd';
+import { App, Pagination, Spin, Button, PaginationProps, Popconfirm } from 'antd';
 import { useRouter } from 'next/navigation';
 import React, { memo, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,7 @@ type FieldType = {
 
 const McpPage: React.FC = () => {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const [queryParams, setQueryparams] = useState({

@@ -3,7 +3,6 @@ import { apiInterceptors } from '@/client/api';
 import { disableAppMemory, enableAppMemory } from '@/client/api/app';
 import { getWikiTree, listSpaces, listVerbats } from '@/client/api/knowledge-vault';
 import { AppContext } from '@/contexts';
-import { notification } from 'antd';
 import {
   BulbOutlined,
   CaretDownOutlined,
@@ -16,9 +15,9 @@ import {
 } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import {
+  App,
   Button,
   InputNumber,
-  message,
   Select,
   Spin,
   Switch,
@@ -43,6 +42,7 @@ const DEFAULT_CONFIG: MemoryConfig = {
 
 export default function TabMemory() {
   const { t } = useTranslation();
+  const { message, notification } = App.useApp();
   const { appInfo, fetchUpdateApp, refreshAppInfo } = useContext(AppContext);
   const [switching, setSwitching] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);

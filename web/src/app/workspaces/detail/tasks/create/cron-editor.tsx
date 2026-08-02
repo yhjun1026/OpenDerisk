@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { apiInterceptors, validateCron } from '@/client/api';
 import {
-  Card, Input, InputNumber, Radio, Segmented, Spin, Tag, Typography, TimePicker, message,
+  Card, Input, InputNumber, Radio, Segmented, Spin, Tag, Typography, TimePicker, App,
 } from 'antd';
 import {
   CalendarOutlined, ReloadOutlined, CheckOutlined, CodeOutlined,
@@ -145,6 +145,7 @@ function parseExpression(expr: string): ParsedState | null {
 }
 
 export default function CronEditor({ value = '', onChange, tz = 'Asia/Shanghai' }: CronEditorProps) {
+  const { message } = App.useApp();
   const [editorMode, setEditorMode] = useState<EditorMode>('visual');
   const [mode, setMode] = useState<CustomMode>('daily');
   const [hour, setHour] = useState(9);

@@ -96,7 +96,7 @@ class WorkspaceResourceEntity(Model):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     workspace_id = Column(Integer, nullable=False, index=True)
-    type = Column(String(32), nullable=False, comment="data_source/knowledge_space/environment/mcp/skill/llm_model")
+    type = Column(String(32), nullable=False, comment="data_source/knowledge_space/environment/mcp/skill/llm_model/ecp")
     name = Column(String(128), nullable=False)
     category = Column(String(16), nullable=False, default="scenario_bound")
     physical_ref = Column(String(255), nullable=True)

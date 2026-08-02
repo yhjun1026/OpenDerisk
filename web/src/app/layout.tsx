@@ -20,9 +20,19 @@ import "./i18n";
 import "../styles/globals.css";
 import { Suspense } from 'react'
 import { authService } from "@/services/auth";
+import { setMessageInstance } from "@/utils/antd-instance";
 
 // Prevent SSR flash
 const EmptyLayout = ({ children }: { children: React.ReactNode }) => <>{children}</>;
+
+// 把 App.useApp() 的 message 实例挂到全局 holder，供组件外 (axios 拦截器等) 使用
+function StaticInstanceBridge() {
+  const { message } = App.useApp();
+  useEffect(() => {
+    setMessageInstance(message);
+  }, [message]);
+  return null;
+}
 
 // 全局 AntD 主题 —— 与 src/styles/globals.css 设计 token 对齐
 const antdTheme = {
@@ -155,7 +165,7 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
         locale={i18n.language === "en" ? enUS : zhCN}
         theme={{ ...antdTheme, algorithm: undefined }}
       >
-        <App>{children}</App>
+        <App><StaticInstanceBridge />{children}</App>
       </ConfigProvider>
     );
   }
@@ -201,7 +211,7 @@ function LayoutWrapper({ children }: { children: React.ReactNode }) {
         algorithm: mode === "dark" ? theme.darkAlgorithm : undefined,
       }}
     >
-      <App>{renderContent()}</App>
+      <App><StaticInstanceBridge />{renderContent()}</App>
     </ConfigProvider>
   );
 }

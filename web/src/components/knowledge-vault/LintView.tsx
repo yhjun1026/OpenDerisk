@@ -10,7 +10,6 @@ import {
   Spin,
   Tag,
   Tooltip,
-  message,
 } from 'antd';
 import { ReloadOutlined, WarningOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';

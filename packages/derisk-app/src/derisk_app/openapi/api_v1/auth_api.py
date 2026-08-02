@@ -23,6 +23,24 @@ oauth_service = OAuth2Service()
 session_manager = SessionManager()
 
 
+def _get_parent_domain(request: Request) -> Optional[str]:
+    """解析父域名，用于 cookie 共享。
+
+    例如：
+    - a.example.com -> .example.com
+    - localhost -> None (不设置 domain)
+    """
+    host = request.headers.get("host", "").split(":")[0]
+    # localhost / IP 地址不设置 domain
+    if host in ("localhost", "127.0.0.1") or host.startswith("192.168.") or host.startswith("10."):
+        return None
+    # a.example.com -> .example.com
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return "." + ".".join(parts[-2:])
+    return None
+
+
 class LocalLoginRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6, max_length=128)
@@ -162,6 +180,7 @@ async def oauth_status():
         content={
             "enabled": True,
             "providers": available,
+            "sso_auto_login_provider": oauth_config.get("sso_auto_login_provider") if oauth_config else None,
         }
     )
 
@@ -278,6 +297,7 @@ async def oauth_callback(
         secure=request.url.scheme == "https",
         samesite="lax",
         max_age=7 * 24 * 3600,
+        domain=_get_parent_domain(request),
     )
     # Log cookie details for debugging
     host = request.headers.get("host", "")
@@ -386,6 +406,7 @@ async def local_login(request: Request, body: LocalLoginRequest):
         secure=request.url.scheme == "https",
         samesite="lax",
         max_age=7 * 24 * 3600,
+        domain=_get_parent_domain(request),
     )
     # Log cookie details for debugging
     host = request.headers.get("host", "")

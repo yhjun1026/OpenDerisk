@@ -11,7 +11,7 @@ import {
   Input,
   Select,
   Switch,
-  message,
+  App,
   Modal,
   Space,
   Tree,
@@ -102,6 +102,7 @@ export default function SkillDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const skillCode = searchParams.get('code') || '';
+  const { message } = App.useApp();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

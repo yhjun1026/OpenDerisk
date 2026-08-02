@@ -4,7 +4,7 @@ import { getSkillList, createSkill, updateSkill, deleteSkill, createSyncTask, ge
 import { InnerDropdown } from '@/components/blurred-card';
 import { FolderOpenFilled, FolderOpenOutlined, ReloadOutlined, PlusOutlined, GithubOutlined, SyncOutlined, HistoryOutlined, CloudSyncOutlined, CloudOutlined, UploadOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { Form, Pagination, Result, Spin, Tooltip, Button, message, Tag, Input, Modal, Select, Switch, PaginationProps, Progress, Drawer, List, Typography, Space, Upload } from 'antd';
+import { Form, Pagination, Result, Spin, Tooltip, Button, App, Tag, Input, Modal, Select, Switch, PaginationProps, Progress, Drawer, List, Typography, Space, Upload } from 'antd';
 import { useRouter } from 'next/navigation';
 import React, { memo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +18,7 @@ const SkillPage: React.FC = () => {
   const [form] = Form.useForm();
   const [syncForm] = Form.useForm();
   const router = useRouter();
+  const { message } = App.useApp();
 
   const [queryParams, setQueryparams] = useState({
     filter: '',

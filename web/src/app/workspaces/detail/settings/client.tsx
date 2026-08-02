@@ -1,7 +1,7 @@
 'use client';
 
 import { apiInterceptors, getWorkspaceInfo, listMembers, addMember, removeMember, updateMemberRole, updateWorkspace } from '@/client/api';
-import { Button, Card, Descriptions, Empty, Form, Input, Modal, Select, Spin, Table, Tag, message } from 'antd';
+import { App, Button, Card, Descriptions, Empty, Form, Input, Modal, Select, Spin, Table, Tag } from 'antd';
 import { useRequest } from 'ahooks';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { message } = App.useApp();
 
   const { data: ws, loading, refresh } = useRequest(async () => {
     if (!workspaceCode) return null;

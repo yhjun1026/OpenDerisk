@@ -3,7 +3,7 @@
 import { apiInterceptors } from '@/client/api';
 import { listIngestJobs, llmUsageSummary } from '@/client/api/knowledge-vault';
 import type { IngestJob, LlmUsageSummary } from '@/types/knowledge-vault';
-import { Empty, Spin, Tag, Tooltip, message } from 'antd';
+import { App, Empty, Spin, Tag, Tooltip } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
 import { useSpace } from './SpaceContext';
@@ -93,6 +93,7 @@ function getToken(map: Record<string, Record<string, number>> | undefined): Reco
 
 export default function UsageView({ slug }: { slug: string }) {
   const { refreshKey } = useSpace();
+  const { message } = App.useApp();
   const [summary, setSummary] = useState<LlmUsageSummary | null>(null);
   const [jobs, setJobs] = useState<IngestJob[]>([]);
   const [loading, setLoading] = useState(false);

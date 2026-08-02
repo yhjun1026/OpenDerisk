@@ -1,7 +1,7 @@
 -- ============================================================
 -- PostgreSQL DDL Script for Derisk
 -- Version: 0.3.0
--- Generated: 2026-08-01T19:26:32.852225
+-- Generated: 2026-08-02T12:55:29.968105
 -- ============================================================
 
 -- Table: chat_history
@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS "chat_history" (
   PRIMARY KEY ("id"),
   CONSTRAINT "uk_conv_uid" UNIQUE ("conv_uid")
 );
-CREATE INDEX "ix_chat_history_workspace_id" ON "chat_history" ("workspace_id");
 CREATE INDEX "ix_chat_history_sys_code" ON "chat_history" ("sys_code");
+CREATE INDEX "ix_chat_history_workspace_id" ON "chat_history" ("workspace_id");
 CREATE INDEX "ix_chat_history_task_id" ON "chat_history" ("task_id");
 
 -- Table: chat_history_message
@@ -71,8 +71,8 @@ CREATE TABLE IF NOT EXISTS "server_app_artifact_version" (
   "gmt_create" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY ("id")
 );
-CREATE INDEX "ix_server_app_artifact_version_artifact_id" ON "server_app_artifact_version" ("artifact_id");
 CREATE UNIQUE INDEX "uk_artifact_version" ON "server_app_artifact_version" ("artifact_id", "version");
+CREATE INDEX "ix_server_app_artifact_version_artifact_id" ON "server_app_artifact_version" ("artifact_id");
 
 -- Table: derisk_serve_cron_job
 CREATE TABLE IF NOT EXISTS "derisk_serve_cron_job" (
@@ -129,11 +129,11 @@ CREATE TABLE IF NOT EXISTS "derisk_serve_flow" (
   PRIMARY KEY ("id"),
   CONSTRAINT "uk_uid" UNIQUE ("uid")
 );
-CREATE INDEX "ix_derisk_serve_flow_dag_id" ON "derisk_serve_flow" ("dag_id");
-CREATE INDEX "ix_derisk_serve_flow_sys_code" ON "derisk_serve_flow" ("sys_code");
-CREATE INDEX "ix_derisk_serve_flow_name" ON "derisk_serve_flow" ("name");
-CREATE INDEX "ix_derisk_serve_flow_uid" ON "derisk_serve_flow" ("uid");
 CREATE INDEX "ix_derisk_serve_flow_user_name" ON "derisk_serve_flow" ("user_name");
+CREATE INDEX "ix_derisk_serve_flow_dag_id" ON "derisk_serve_flow" ("dag_id");
+CREATE INDEX "ix_derisk_serve_flow_name" ON "derisk_serve_flow" ("name");
+CREATE INDEX "ix_derisk_serve_flow_sys_code" ON "derisk_serve_flow" ("sys_code");
+CREATE INDEX "ix_derisk_serve_flow_uid" ON "derisk_serve_flow" ("uid");
 
 -- Table: derisk_serve_variables
 CREATE TABLE IF NOT EXISTS "derisk_serve_variables" (
@@ -156,10 +156,10 @@ CREATE TABLE IF NOT EXISTS "derisk_serve_variables" (
   "gmt_modified" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY ("id")
 );
-CREATE INDEX "ix_derisk_serve_variables_name" ON "derisk_serve_variables" ("name");
-CREATE INDEX "ix_derisk_serve_variables_user_name" ON "derisk_serve_variables" ("user_name");
 CREATE INDEX "ix_derisk_serve_variables_key_info" ON "derisk_serve_variables" ("key_info");
 CREATE INDEX "ix_derisk_serve_variables_sys_code" ON "derisk_serve_variables" ("sys_code");
+CREATE INDEX "ix_derisk_serve_variables_user_name" ON "derisk_serve_variables" ("user_name");
+CREATE INDEX "ix_derisk_serve_variables_name" ON "derisk_serve_variables" ("name");
 
 -- Table: connect_config
 CREATE TABLE IF NOT EXISTS "connect_config" (
@@ -182,11 +182,11 @@ CREATE TABLE IF NOT EXISTS "connect_config" (
   PRIMARY KEY ("id"),
   CONSTRAINT "uk_db" UNIQUE ("db_name")
 );
+CREATE INDEX "ix_connect_config_user_id" ON "connect_config" ("user_id");
 CREATE INDEX "ix_connect_config_user_name" ON "connect_config" ("user_name");
 CREATE INDEX "idx_q_db_type" ON "connect_config" ("db_type");
-CREATE INDEX "idx_q_owner_workspace" ON "connect_config" ("owner_workspace_id");
 CREATE INDEX "ix_connect_config_sys_code" ON "connect_config" ("sys_code");
-CREATE INDEX "ix_connect_config_user_id" ON "connect_config" ("user_id");
+CREATE INDEX "idx_q_owner_workspace" ON "connect_config" ("owner_workspace_id");
 
 -- Table: db_spec
 CREATE TABLE IF NOT EXISTS "db_spec" (

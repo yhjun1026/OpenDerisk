@@ -177,6 +177,7 @@ export const WorkspacesEn = {
   'assets.tab_data': 'Data Assets',
   'assets.tab_delivery': 'Deliveries',
   'assets.tab_capability': 'Capabilities',
+  'assets.tab_semantic': 'Semantic Assets',
   'assets.title': 'Workspace Memory (Assets)',
   'assets.type': 'Type',
   'interventions.title': 'Intervention Center',

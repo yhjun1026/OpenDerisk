@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 
 export interface UserInputItem {
   content: string;
@@ -22,6 +22,7 @@ export interface ExecutionNodeInfo {
 }
 
 export function useUserInput(sessionId: string | undefined) {
+  const { message } = App.useApp();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [queueState, setQueueState] = useState<UserInputQueueState>({
     hasPendingInput: false,

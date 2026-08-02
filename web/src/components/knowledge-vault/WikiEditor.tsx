@@ -4,7 +4,7 @@ import { apiInterceptors } from '@/client/api';
 import { editDoc, getVerbat, readDoc, rebuildVerbatWiki } from '@/client/api/knowledge-vault';
 import type { DocRead, VerbatFull } from '@/types/knowledge-vault';
 import { FileTextOutlined, SaveOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { Button, Drawer, Empty, Spin, Tag, Tooltip, Typography, message } from 'antd';
+import { App, Button, Drawer, Empty, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import MarkdownEditor from './MarkdownEditor';
 import { useSpace } from './SpaceContext';
@@ -13,6 +13,7 @@ const { Title } = Typography;
 
 export default function WikiEditor() {
   const { slug, selectedDoc, refresh } = useSpace();
+  const { message } = App.useApp();
   const [doc, setDoc] = useState<DocRead | null>(null);
   const [draft, setDraft] = useState('');
   const [dirty, setDirty] = useState(false);

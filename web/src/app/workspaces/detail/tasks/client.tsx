@@ -154,8 +154,7 @@ export default function TaskListPage() {
         <Tabs
           activeKey={activeTab}
           onChange={(key) => {
-            const qs = key === 'triggers' ? `id=${workspaceCode}&tab=triggers` : `id=${workspaceCode}`;
-            window.history.replaceState(null, '', `/workspaces/detail/tasks?${qs}`);
+            window.history.replaceState(null, '', `/workspaces/detail/tasks?id=${workspaceCode}&tab=${key}`);
           }}
           items={[
             {

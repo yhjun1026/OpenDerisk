@@ -6,7 +6,7 @@ import {
   markdownPlugins,
 } from '../../config';
 import { GPTVis } from '@antv/gpt-vis';
-import { Button, Divider, Space, Input, message } from 'antd';
+import { Button, Divider, Space, Input, App } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
 import { ChatContentContext } from '@/contexts';
 
@@ -179,6 +179,7 @@ const buildConfirmResponseDisplayMessage = (
 };
 
 const VisConfirmCard: React.FC<VisConfirmIProps> = ({ data, otherComponents, onConfirm }) => {
+  const { message } = App.useApp();
   const [disabled, setDisabled] = useState<boolean>(!!data.disabled);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState<string>('');

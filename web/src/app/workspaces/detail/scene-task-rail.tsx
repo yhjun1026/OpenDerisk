@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button, Dropdown, Form, Input, Modal, message } from 'antd';
+import { App, Button, Dropdown, Form, Input, Modal } from 'antd';
 import { CheckOutlined, CommentOutlined, LinkOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { apiInterceptors, createAsset, resolveAndExecuteIntervention, abortIntervention, terminateTask, deleteTask, reassignTask } from '@/client/api';
@@ -37,6 +36,20 @@ const INBOX_SOURCE_LABEL: Record<string, string> = {
   ecp_proposal: '提案',
   manual: '手动',
 };
+
+/**
+ * 解析 ECP 提案待办的 source_id -> {workspaceId, objId, version}。
+ *
+ * source_id 由后端 ecp_sync 构造为 `f"{ecp_ws}:{obj.id}@v{version}"`
+ * (见 workspace/inbox/ecp_sync.py:_desired_proposals),已编码派生 ECP
+ * workspace、提案 id 与版本,故场景空间就地确认无需额外传 workspace_code。
+ * 解析失败返回 null(降级为不开抽屉,不阻塞)。
+ */
+export function parseEcpProposalSource(sourceId: string): { workspaceId: string; objId: string; version: number } | null {
+  const m = sourceId.match(/^(.+):(.+)@v(\d+)$/);
+  if (!m) return null;
+  return { workspaceId: m[1], objId: m[2], version: Number(m[3]) };
+}
 
 function triggerLabel(task: any): string {
   return TRIGGER_LABEL[task?.triggered_by] || task?.triggered_by || '手动';
@@ -126,10 +139,18 @@ export interface SceneTaskRailProps {
   activeTaskId?: number | null;
   disabled?: boolean;
   playbooks?: { playbook_id: number; playbook_name: string }[];
-  onPreview: (item: any, kind: 'task' | 'intervention') => void;
+  onPreview: (item: any, kind: 'task' | 'intervention' | 'ecp_proposal') => void;
   onEnterConversation: (taskId: number) => void;
   onReference?: (task: any) => void;
   onRefreshLists?: () => void;
+  /** 收件箱刷新信号:变更时重新拉待办(中间区域确认/否决提案后由 shell bump)。 */
+  inboxTick?: number;
+  /** 会话维度列表(workspace conversations),按会话展示每次对话记录。 */
+  conversations?: any[];
+  /** 当前会话 conv_uid(大厅=workspaceConvUid,任务=taskConvUid),用于列表高亮。 */
+  currentConvUid?: string;
+  /** 点击会话卡片进入对应对话:taskId 非空进任务对话,空进大厅会话(回 dashboard)。 */
+  onOpenConversation?: (convUid: string, taskId: number | null) => void;
 }
 
 export function SceneTaskRail({
@@ -143,8 +164,12 @@ export function SceneTaskRail({
   onEnterConversation,
   onReference,
   onRefreshLists,
+  inboxTick,
+  conversations,
+  currentConvUid,
+  onOpenConversation,
 }: SceneTaskRailProps) {
-  const router = useRouter();
+  const { message, modal } = App.useApp();
   const [view, setView] = useState<'inbox' | 'tasks'>('inbox');
   const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
@@ -162,6 +187,11 @@ export function SceneTaskRail({
 
   useEffect(() => { refreshInbox(); }, [workspaceId]);
 
+  // 中间区域确认/否决 ECP 提案后 shell bump inboxTick -> 重新拉待办。
+  useEffect(() => {
+    if (inboxTick && inboxTick > 0) refreshInbox();
+  }, [inboxTick]);
+
   const handleInboxClick = (item: InboxItem) => {
     if (item.source_type === 'task') {
       onEnterConversation(Number(item.source_id));
@@ -171,8 +201,9 @@ export function SceneTaskRail({
         'intervention',
       );
     } else if (item.source_type === 'ecp_proposal') {
-      // 提案确认在 ECP 模块进行
-      router.push('/ecp');
+      // 在中间内容区域打开提案确认(source_id 已编码 ecp workspace + 提案 id + 版本,
+      // 见 parseEcpProposalSource),与点任务一样走 onPreview -> detailContext。
+      onPreview(item, 'ecp_proposal');
     }
   };
 
@@ -263,11 +294,25 @@ export function SceneTaskRail({
     [interventions, tasks],
   );
 
+  // 大厅会话:conversations 中 task_id 为空的(workspace 级对话)。
+  // 任务≈会话(task 创建即建 conv),不再单列会话栏;这里把大厅会话混排进任务视图,
+  // 按 gmt_modified 倒序与任务统一展示,用类型 chip 区分剧本/大厅。
+  const lobbyConvItems = useMemo(
+    () => (conversations || [])
+      .filter((c) => c.task_id == null)
+      .map((c) => ({
+        kind: 'lobby-conversation' as const,
+        raw: c,
+        updatedAt: c.gmt_modified || c.gmt_created || new Date().toISOString(),
+      })),
+    [conversations],
+  );
+
   const merged = useMemo(
-    () => [...taskItems, ...orphanItems].sort(
+    () => [...taskItems, ...lobbyConvItems, ...orphanItems].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     ),
-    [taskItems, orphanItems],
+    [taskItems, lobbyConvItems, orphanItems],
   );
 
   const counts = useMemo(() => {
@@ -277,10 +322,12 @@ export function SceneTaskRail({
       const tb = statusToTab(it.raw.status);
       if (tb !== 'all') c[tb] += 1;
     });
+    // 大厅会话计入 all(剧本/大厅统一计数,无状态归 all)
+    lobbyConvItems.forEach(() => { c.all += 1; });
     // 孤立介入计入 all + awaiting(仍需人响应)
     orphanItems.forEach(() => { c.all += 1; c.awaiting += 1; });
     return c;
-  }, [taskItems, orphanItems]);
+  }, [taskItems, lobbyConvItems, orphanItems]);
 
   const activeCount = counts.running + counts.awaiting;
 
@@ -289,6 +336,9 @@ export function SceneTaskRail({
     return merged.filter((it) => {
       if (it.kind === 'task') {
         if (tab !== 'all' && statusToTab(it.raw.status) !== tab) return false;
+      } else if (it.kind === 'lobby-conversation') {
+        // 大厅会话只在 all 显示(无运行状态,不归入各状态 tab)
+        if (tab !== 'all') return false;
       } else {
         // 孤立介入只在 all / awaiting 显示
         if (tab !== 'all' && tab !== 'awaiting') return false;
@@ -298,6 +348,11 @@ export function SceneTaskRail({
         const title = it.raw.title || `task_${it.raw.id}`;
         const intQ = it.interventions.map((i: any) => questionToText(i.question)).join(' ');
         return title.toLowerCase().includes(q) || String(it.raw.id).includes(q) || intQ.toLowerCase().includes(q);
+      }
+      if (it.kind === 'lobby-conversation') {
+        const title = it.raw.title || '';
+        return title.toLowerCase().includes(q)
+          || String(it.raw.conv_uid || '').toLowerCase().includes(q);
       }
       const t = questionToText(it.raw.question) || `intervention_${it.raw.id}`;
       return t.toLowerCase().includes(q) || String(it.raw.id).includes(q);
@@ -321,7 +376,7 @@ export function SceneTaskRail({
   }, [filtered, visibleCount]);
 
   const handleTerminate = (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: '终止任务',
       content: '会停止对应 Agent 的运行,任务标记为已关闭。',
       okText: '终止',
@@ -336,7 +391,7 @@ export function SceneTaskRail({
   };
 
   const handleDelete = (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: '删除任务',
       content: '删除后任务记录不可恢复(运行中/待介入的任务需先终止)。',
       okText: '删除',
@@ -565,6 +620,33 @@ export function SceneTaskRail({
                   <span className="ws-rail-src">人工介入</span>
                 </div>
                 {renderInterventionSub(iv)}
+              </div>
+            );
+          }
+          if (it.kind === 'lobby-conversation') {
+            const c = it.raw;
+            const isCurrent = c.conv_uid === currentConvUid;
+            const title = c.title || `会话 ${c.conv_uid?.slice(0, 8)}`;
+            return (
+              <div
+                key={`lobby-${c.conv_uid}`}
+                className={`ws-rail-card${isCurrent ? ' ws-rail-card--active' : ''}`}
+                role={disabled ? undefined : 'button'}
+                tabIndex={disabled ? -1 : 0}
+                aria-disabled={disabled}
+                onClick={() => !disabled && onOpenConversation?.(c.conv_uid, null)}
+                onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onOpenConversation?.(c.conv_uid, null); } }}
+              >
+                <div className="ws-rail-ttl">{title}</div>
+                <div className="ws-rail-meta">
+                  <span className="ws-rail-conv-kind ws-rail-conv-kind--lobby">大厅</span>
+                  {isCurrent && <span className="ws-rail-conv-cur">当前</span>}
+                </div>
+                <div className="ws-rail-foot">
+                  <span className="ws-rail-tm">{dayjs(it.updatedAt).format('MM-DD HH:mm')}</span>
+                  <span className="ws-rail-meta-sep">·</span>
+                  <span className="ws-rail-src">大厅会话</span>
+                </div>
               </div>
             );
           }

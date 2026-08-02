@@ -1,6 +1,6 @@
-### OpenDeRisk
+### OpenDerisk
 
-OpenDeRisk は AI ネイティブリスクインテリジェンスシステムです。アプリケーションシステムのリスクインテリジェントマネージャーとして、24 時間 365 日の包括的で徹底的な保護を提供します。
+OpenDerisk は AI ネイティブな **Multi-Agent 開発・実行フレームワーク** です。連携するエージェントを構築・デバッグ・実行し、一つの Query を成果物まで導き、その達成経路を人間に可視化します。私たちのビジョンは、すべての本番システムに 7×24 時間協働する AI チームメイトを提供し、複雑なタスクを処理してシステムの安定性を守ることです。
 
 <div align="center">
   <p>
@@ -27,39 +27,44 @@ OpenDeRisk は AI ネイティブリスクインテリジェンスシステム�
 [**English**](README.md) | [**简体中文**](README.zh.md) | [**日本語**](README.ja.md) | [**動画チュートリアル**](https://www.youtube.com/watch?v=1qDIu-Jwdf0)
 </div>
 
-### ニュース 
-- [2025/10] 🔥 OpenDerisk V0.2 をリリースしました。[OpenDerisk V0.2 ReleaseNote](./docs/docs/OpenDerisk_v0.2.md) 
+<p align="center">
+  <img src="./assets/platform_hero.jpg" width="100%" />
+</p>
 
+### ニュース 
+- [2026/07] 🔥 ワークスペース中心の実行態と ECP セマンティックレイヤーをリリース；`ReActMasterAgent` 2.3 のレジリエント実行。詳細は [OpenDerisk V0.2 ReleaseNote](./docs/docs/OpenDerisk_v0.2.md)
+- [2025/10] OpenDerisk V0.2 をリリース —— 未来志向の Multi-Agent 開発・実行フレームワーク。
 
 ### 機能特徴
-1. **DeepResearch RCA:** ログ、トレース、コードの詳細な分析により、問題の根本原因を迅速に特定します。
-2. **可視化された証拠チェーン:** 診断プロセスと証拠チェーンを完全に可視化し、診断を明確にして精度を迅速に判断できます。
-3. **マルチエージェント協調:** SRE-Agent、Code-Agent、ReportAgent、Vis-Agent、Data-Agent の協調作業。
-4. **オープンソースアーキテクチャ:** OpenDeRisk は完全にオープンソースのアーキテクチャで構築されており、関連フレームワークとコードをオープンソースプロジェクトですぐに使用できます。
 
-<p align="left">
-  <img src="./assets/features.jpg" width="100%" />
+<p align="center">
+  <img src="./assets/features.svg" width="100%" />
 </p>
+
+1. **Multi-Agent ビルダー** — 三ペインエディタでエージェントを構築：システム/ユーザープロンプト、コンテキストリソース編成、モデルとパラメータ調整、スキル/MCP バインディング、知識、記憶、リアルタイムデバッグプレビュー。
+2. **ワークスペース（シナリオ空間）** — AI ネイティブなホームページ。価値デリバリーを中心に設計し、達成経路（計画 → 実行 → 結果）を表示。タスク、成果物、デリバリー、プレイブック、トリガーを含む。
+3. **ReActMasterAgent** — 長時間タスク推論エンジン：デッドループ検出、コンテキスト圧縮、ツール出力切り詰め、履歴プルーニング、段階的プロンプト管理、ワークログ、レポート生成、カンバンタスク計画。
+4. **ECP セマンティックレイヤー** — 信頼できる text2SQL とデータ分析。AI がセマンティクス（エンティティ/メトリック/リレーション）を提案し、人間が権限ゲートで確認。数値は確認済みメトリックからのみ。
+5. **ナレッジボルト** — 完全な RAG パイプライン。ベクトル（Chroma、Milvus、PGVector 等）、グラフ（Neo4j、TuGraph）、全文検索ストア、S3/OSS ファイルストレージをサポート。
+6. **ツール · スキル · MCP** — 組み込みツール（ファイルシステム、シェル、サンドボックス、スケジュール、Todo）、再利用可能なスキルパック、外部サービス接続用 MCP プロトコル。
+7. **メディア生成** — 画像・動画生成を第一級のエージェントツールとして提供（OpenAI、Wanxiang、Google Banana、Seedance、Sora）。成果物としてワークスペースに配信。
+8. **組み込みシナリオ** — AI-SRE（OpenRCA 根因診断）、DataExpert、フレームグラフアシスタント。すぐに使え、拡張可能。
 
 ### アーキテクチャ
-<p align="left">
-  <img src="./assets/arch_en.jpg" width="100%" />
+
+<p align="center">
+  <img src="./assets/architecture.svg" width="100%" />
 </p>
 
-#### 紹介文書
-このシステムはマルチエージェントアーキテクチャを採用しています。現在、コードは主にハイライトされた部分を実装しています。アラート認識は Microsoft のオープンソース [OpenRCA データセット](https://github.com/microsoft/OpenRCA) に基づいています。データセットのサイズは解压後約 26GB です。このデータセット上で、マルチエージェントの協調により根本原因分析と診断を実現し、Code-Agent が最終分析のために動的にコードを作成します。
+OpenDerisk は 5 つの階層で構成されます：
 
-#### 技術実装
-**データ層:** GitHub から大規模な OpenRCA データセット (20GB) を取得し、ローカルで解压して分析用に処理します。
+- **インタラクション・プロダクト層** — ワークスペース（ホーム）、アプリ/エージェントビルダー、チャット/アシスタント（vis_manus デュアルパネルレイアウト）、シーンプロファイル、組み込みシナリオ。
+- **エージェント実行層** — `ReActMasterAgent` を中核とする、差し替え可能な推論エンジン（ReACT、Summary ベース、RAG 深度検索、コンテキストエンジニアリング）、サブエージェント、レジリエント実行制御。
+- **能力層** — ツール、スキル、MCP、ナレッジボルト、記憶、メディア生成。
+- **データ・統合層** — 15 以上のデータソース、ECP セマンティックレイヤー、チャネル（DingTalk/Feishu）、サンドボックス（ローカル/Docker/ブラウザ）。
+- **基盤層** — モデル管理（LLM/Embedding/Reranker）、ストレージ・ベクトル、権限/RBAC、監査・可観測性。
 
-**ロジック層:** マルチエージェントアーキテクチャで、SRE-Agent、Code-Agent、ReportAgent、Vis-Agent、Data-Agent が協調して詳細な DeepResearch RCA（根本原因分析）を実行します。
-
-**可視化層:** Vis プロトコルを使用して、全体の処理フローと証拠チェーン、およびマルチロールの協調とスイッチングプロセスを動的にレンダリングします。
-
-OpenDeRisk のデジタル従業員（エージェント）
-<p align="left">
-  <img src="./assets/ai-agent.png" width="100%" />
-</p>
+ここでのエージェントの本質は**価値デリバリー**です。一つの Query から成果物へ、人間が検査・信頼できる可視的な達成経路を伴います。
 
 ### インストール（推奨）
 
@@ -71,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/derisk-ai/OpenDerisk/main/install.s
 ```
 
 #### 設定ファイル
-インストール後、デフォルトの設定ファイルは自動的に以下のパスに初期化されます：
+インストール後、デフォルト設定ファイルは自動的に以下のパスに初期化されます：
 `~/.openderisk/configs/derisk-proxy-aliyun.toml`
 
 このファイルを編集し、API キーを設定してください：
@@ -122,15 +127,34 @@ uv sync --all-packages --frozen \
 
 #### サーバーの起動
 
+**🚀 クイックスタート（ゼロ設定、推奨）**
+
+設定ファイルなしで起動：
+
+```bash
+# 方法 1：クイックスタートコマンド
+uv run derisk quickstart
+
+# 方法 2：起動スクリプト
+./start.sh
+
+# 方法 3：ポート指定
+uv run derisk quickstart -p 8888
+```
+
+起動後、http://localhost:7777 にアクセスし、Web UI でモデルと設定を構成します。
+
+詳細は [クイックスタートガイド](QUICKSTART.md) を参照してください。
+
+**📝 設定ファイルで起動**
+
 `derisk-proxy-aliyun.toml` で API_KEY を設定し、実行：
 
-> 注意：デフォルトでは、OpenRCA データセットの Telecom データセットを使用します。リンクまたは以下のコマンドでダウンロードできます：
-> `gdown https://drive.google.com/uc?id=1cyOKpqyAP4fy-QiJ6a_cKuwR7D46zyVe`
-
-ダウンロード後、データセットを `pilot/datasets/` パスに移動します。
-
-起動コマンドを実行：
 ```bash
+# 設定ファイルで起動
+uv run derisk quickstart -c configs/derisk-proxy-aliyun.toml
+
+# または従来の方法
 uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config configs/derisk-proxy-aliyun.toml
 ```
 
@@ -138,35 +162,39 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 
 ブラウザを開いて [`http://localhost:7777`](http://localhost:7777) にアクセス
 
-
 ### 使用方法
-* **AI-SRE (OpenRCA)**
-  - 注意: OpenRCA データセットの [Bank データセット](https://drive.usercontent.google.com/download?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R&export=download&confirm=t&uuid=42621058-41af-45bf-88a6-64c00bfd2f2e) を使用しています
-  - ダウンロード: `gdown https://drive.google.com/uc?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R`
-  - データセットを `${derisk}/pilot/datasets` パスに配置します
-* **フレームグラフアシスタント**
-  - ローカルアプリケーションサービスプロセスのフレームグラフ (Java/Python) をアシスタントにアップロードして分析を行います
-* **DataExpert**
-  - メトリクス、ログ、トレース、または様々な Excel データシートをアップロードして対話型分析を行います
 
-### 高速開発
-* **エージェント開発**
-  - `derisk-ext.agent.agents` 配下の実装ロジックを参照してください
-* **ツール開発**
-  * ローカルツール
-  * MCP (Model Context Protocol)
-* **DeRisk-Skills 開発**
-  - [derisk-skills](https://github.com/derisk-ai/derisk_skills)
+#### 基本モジュール
+【設定管理】メニューの下にあります：
+- **モデル管理** — LLM、Embedding、Reranker モデルの追加/編集/削除（OpenAI、Aliyun、Zhipu、ローカル等）。マルチモデル優先度戦略をサポート。
+- **ナレッジベース** — 組み込み RAG 検索パイプラインによるナレッジ管理。
+- **MCP** — MCP サービスの管理とデバッグ（CRUD + ツールテスト）。
+- **プロンプト** — システム/ユーザープロンプトの統合エディタ。
 
-#### 実行結果
-下图に示すように、複数のエージェントが協調して複雑な運用診断タスクを処理するシナリオを示しています。
+#### エージェントの構築
+【アプリ管理】を開き → エージェントを作成または開く。三ペインエディタで推論エンジン、モデル、スキル/MCP、知識、サブエージェントを構成し、リアルタイムプレビューでデバッグできます。
 
-<p align="left">
-  <img src="./assets/scene_demo.png" width="100%" />
+#### 組み込みシナリオ
+* **AI-SRE（OpenRCA 根因診断）**
+  - 注意：OpenRCA データセットの [Bank データセット](https://drive.usercontent.google.com/download?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R&export=download&confirm=t&uuid=42621058-41af-45bf-88a6-64c00bfd2f2e) を使用
+  - ダウンロード：`gdown https://drive.google.com/uc?id=1enBrdPT3wLG94ITGbSOwUFg9fkLR-16R`
+  - データセットを `${derisk}/pilot/datasets` に解凍
+* **フレームグラフアシスタント** — ローカルプロセスの Java/Python フレームグラフをアップロードして分析
+* **DataExpert** — メトリクス、ログ、トレース、Excel データをアップロードして対話型分析
+
+### 開発
+* **エージェント開発** — `packages/derisk-core/src/derisk/agent/expand/`（例：`react_master_agent`）と `packages/derisk-ext/src/derisk_ext/agent/agents/` を参照
+* **ツール開発** — スキル（`skills/`）と MCP（Model Context Protocol）
+* **DeRisk-Skills 開発** — [derisk-skills](https://github.com/derisk-ai/derisk_skills)
+
+### シナリオデモ
+複数のエージェントが協調して複雑なタスクを処理 —— 一つの Query から成果物へ、達成経路が全程可視化：
+<p align="center">
+  <img src="./assets/scene_demo_new.jpg" width="100%" />
 </p>
 
 ### 引用
-このリポジトリのコードについては、以下の論文で詳細な紹介をしています。もし、あなたの研究に役立ったと思われる場合は、ぜひ引用してください。
+このリポジトリがお役に立ちましたら、ぜひ引用してください：
 ```
 @misc{di2025openderiskindustrialframeworkaidriven,
       title={OpenDerisk: An Industrial Framework for AI-Driven SRE, with Design, Implementation, and Case Studies}, 
@@ -185,7 +213,7 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 - [MetaGPT](https://github.com/FoundationAgents/MetaGPT)
 - [OpenRCA](https://github.com/microsoft/OpenRCA)
 
-OpenDeRisk-AI コミュニティは、AI ネイティブなリスクインテリジェンスシステムの構築に専念しています。🛡️ 私たちのコミュニティがより良いサービスを提供できることを願い、また皆様が私たちに参加してより良い未来を共に創造することを願っています。🤝
+OpenDerisk コミュニティは、AI ネイティブなマルチエージェントシステムの構築に専念しています。🛡️ コミュニティがより良いサービスを提供できることを願い、皆様が参加してより良い未来を共に創造することを願っています。🤝
 
 
 [![Star History Chart](https://api.star-history.com/svg?repos=derisk-ai/OpenDerisk&type=Date)](https://star-history.com/#derisk-ai/OpenDerisk)
@@ -196,5 +224,5 @@ OpenDeRisk-AI コミュニティは、AI ネイティブなリスクインテリ
 DingTalk グループに参加して、他の開発者と経験を共有しましょう！
 
 <div align="center" style="display: flex; gap: 20px;">
-    <img src="assets/derisk-ai.jpg" alt="OpenDeRisk-AI 交流群" width="200" />
+    <img src="assets/derisk-ai.jpg" alt="OpenDerisk Community" width="200" />
 </div>

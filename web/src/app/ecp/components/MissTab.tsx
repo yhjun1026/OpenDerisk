@@ -4,7 +4,7 @@ import { apiInterceptors } from '@/client/api';
 import { EcpMissCluster, getEcpMissReport, learnEcpFromMisses } from '@/client/api/ecp';
 import { PlayCircleOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { Button, message, Table, Tag } from 'antd';
+import { Button, App, Table, Tag } from 'antd';
 import React, { useState } from 'react';
 
 import { Dot, EcpEmpty } from './common';
@@ -16,6 +16,7 @@ import { Dot, EcpEmpty } from './common';
  */
 export default function MissTab({ workspaceId }: { workspaceId: string }) {
   const [learnResult, setLearnResult] = useState<string | null>(null);
+  const { message } = App.useApp();
 
   const { data, loading, refresh } = useRequest(
     async () => {

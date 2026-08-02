@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Avatar, Badge, Button, Input, Modal, Space, Switch, Table, Tag, message } from 'antd';
+import { App, Avatar, Badge, Button, Input, Space, Switch, Table, Tag } from 'antd';
 import { DeleteOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import { usersService, User } from '@/services/users';
 import { authService } from '@/services/auth';
+import { permissionsService, type MyPermissions } from '@/services/permissions';
 import { useRouter } from 'next/navigation';
 
 const { Search } = Input;
 
 export default function UsersPage() {
   const router = useRouter();
+  const { message, modal } = App.useApp();
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -19,7 +21,16 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false);
   const [oauthEnabled, setOauthEnabled] = useState<boolean | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [myRbac, setMyRbac] = useState<MyPermissions | null>(null);
   const checkedRef = useRef(false);
+
+  // admin 判断：兼容 legacy role=admin 和 RBAC 角色/权限
+  const isCurrentUserAdmin = (() => {
+    if (currentUser?.role === 'admin') return true;
+    if (myRbac?.roles?.some((r) => r === 'admin' || r === 'superadmin')) return true;
+    if (myRbac?.permissions && Array.isArray(myRbac.permissions['system']) && myRbac.permissions['system'].includes('admin')) return true;
+    return false;
+  })();
 
   useEffect(() => {
     if (checkedRef.current) return;
@@ -36,6 +47,7 @@ export default function UsersPage() {
     }).catch(() => {
       // Ignore error
     });
+    permissionsService.getMyPermissions().then(setMyRbac).catch(() => setMyRbac(null));
   }, [router]);
 
   useEffect(() => {
@@ -84,7 +96,7 @@ export default function UsersPage() {
       return;
     }
 
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除用户',
       content: `确定要删除用户 "${user.name || user.fullname || user.email || user.id}" 吗？此操作将禁用该用户账号。`,
       okText: '删除',
@@ -185,7 +197,7 @@ export default function UsersPage() {
             {record.role === 'admin' ? '取消管理员' : '设为管理员'}
           </Button>
           {/* Show delete button only for admin users, hide for self */}
-          {currentUser?.role === 'admin' && currentUser?.id !== record.id && (
+          {isCurrentUserAdmin && currentUser?.id !== record.id && (
             <Button
               size="small"
               danger

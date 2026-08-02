@@ -22,6 +22,7 @@ import {
   Segmented,
   Collapse,
   InputNumber,
+  App,
 } from 'antd';
 import {
   SettingOutlined,
@@ -41,6 +42,8 @@ import {
   KeyOutlined,
   LockOutlined,
   DatabaseOutlined,
+  PlusOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
@@ -51,6 +54,7 @@ import {
   ToolInfo,
   FileServiceConfig,
   FileBackendConfig,
+  MediaModelOption,
 } from '@/services/config';
 import AgentAuthorizationConfig from '@/components/config/AgentAuthorizationConfig';
 import ToolManagementPanel from '@/components/config/ToolManagementPanel';
@@ -107,6 +111,7 @@ export default function ConfigPage() {
   const [authorizationConfig, setAuthorizationConfig] = useState<AuthorizationConfig | undefined>(undefined);
   const [toolMetadata, setToolMetadata] = useState<ToolMetadata[]>([]);
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
+  const { modal } = App.useApp();
 
   useEffect(() => {
     loadConfig();
@@ -207,7 +212,7 @@ export default function ConfigPage() {
       if (result.valid) {
         message.success('配置验证通过');
       } else {
-        Modal.warning({
+        modal.warning({
           title: '配置验证警告',
           content: (
             <div>
@@ -410,7 +415,14 @@ function VisualConfig({
               />
             ),
           },
-          
+          {
+            key: 'media-gen',
+            label: <span className="font-semibold"><VideoCameraOutlined /> 媒体生成</span>,
+            children: (
+              <MediaGenConfigSection config={config} onChange={onConfigChange} />
+            ),
+          },
+
           {
             key: 'file-service',
             label: <span className="font-semibold"><FolderOutlined /> 文件服务配置</span>,
@@ -705,6 +717,116 @@ function DefaultModelConfigSection({
   onChange: () => void;
 }) {
   return <LLMSettingsSection config={config} onChange={onChange} />;
+}
+
+function MediaGenConfigSection({
+  config,
+  onChange,
+}: {
+  config: AppConfig;
+  onChange: () => void;
+}) {
+  const [form] = Form.useForm();
+  const [videoModels, setVideoModels] = useState<MediaModelOption[]>([]);
+  const [imageModels, setImageModels] = useState<MediaModelOption[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadAvailable = async () => {
+    setLoading(true);
+    try {
+      const data = await configService.getAvailableMediaModels();
+      setVideoModels(data.video || []);
+      setImageModels(data.image || []);
+      form.setFieldsValue({
+        video_default_model: data.defaults?.video || config.media_gen?.video_default_model || null,
+        image_default_model: data.defaults?.image || config.media_gen?.image_default_model || null,
+      });
+    } catch (error: any) {
+      message.error('加载可用媒体模型失败: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    form.setFieldsValue({
+      video_default_model: config.media_gen?.video_default_model || null,
+      image_default_model: config.media_gen?.image_default_model || null,
+    });
+    loadAvailable();
+  }, [config.media_gen]);
+
+  const handleSave = async (values: any) => {
+    try {
+      const newConfig: AppConfig = {
+        ...config,
+        media_gen: {
+          video_default_model: values.video_default_model || null,
+          image_default_model: values.image_default_model || null,
+        },
+      };
+      await configService.importConfig(newConfig);
+      message.success('媒体生成默认模型已保存');
+      onChange();
+    } catch (error: any) {
+      message.error('保存失败: ' + error.message);
+    }
+  };
+
+  const renderModelOption = (opt: MediaModelOption) => (
+    <Select.Option key={opt.model} value={opt.model}>
+      <Space>
+        <span>{opt.model}</span>
+        <Tag color="blue" style={{ marginLeft: 4 }}>{opt.label}</Tag>
+      </Space>
+    </Select.Option>
+  );
+
+  return (
+    <Form form={form} layout="vertical" onFinish={handleSave}>
+      <Alert
+        type="info"
+        showIcon
+        message="媒体生成默认模型"
+        description="为 Agent 的 generate_image / generate_video 工具指定默认模型。Agent 调用工具时若未显式指定模型，将使用此处的默认值；为空时自动回退到第一个可用的媒体模型。仅显示已在「LLM 配置」中配置且有效的媒体生成模型。"
+        className="mb-4"
+      />
+      <Spin spinning={loading}>
+        <div className="grid grid-cols-2 gap-4">
+          <Form.Item
+            name="video_default_model"
+            label="默认视频生成模型"
+            tooltip="generate_video 工具未指定 model 时使用此项"
+          >
+            <Select
+              placeholder="选择默认视频模型"
+              allowClear
+              notFoundContent="暂无可用视频模型，请先在 LLM 配置中添加 protocol 为 dashscope_video / volcengine_video / openai_video 的模型"
+            >
+              {videoModels.map(renderModelOption)}
+            </Select>
+          </Form.Item>
+          <Form.Item
+            name="image_default_model"
+            label="默认图片生成模型"
+            tooltip="generate_image 工具未指定 model 时使用此项"
+          >
+            <Select
+              placeholder="选择默认图片模型"
+              allowClear
+              notFoundContent="暂无可用图片模型，请先在 LLM 配置中添加 protocol 为 dashscope_image / openai_image / google_image 的模型"
+            >
+              {imageModels.map(renderModelOption)}
+            </Select>
+          </Form.Item>
+        </div>
+      </Spin>
+      <Form.Item>
+        <Button type="primary" htmlType="submit">保存</Button>
+        <Button className="ml-2" onClick={loadAvailable}>刷新可用模型</Button>
+      </Form.Item>
+    </Form>
+  );
 }
 
 function FileServiceConfigSection({
@@ -1143,7 +1265,9 @@ function SecretsConfigSection({
   const [secrets, setSecrets] = useState<Array<{ name: string; description: string; has_value: boolean }>>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingSecret, setEditingSecret] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  const { message } = App.useApp();
 
   useEffect(() => {
     loadSecrets();
@@ -1169,15 +1293,44 @@ function SecretsConfigSection({
     setModalVisible(true);
   };
 
+  const handleAddSecret = () => {
+    setEditingSecret(null);
+    form.resetFields();
+    form.setFieldsValue({
+      name: '',
+      value: '',
+      description: '',
+    });
+    setModalVisible(true);
+  };
+
   const handleSaveSecret = async (values: any) => {
+    if (!editingSecret && secrets.some(s => s.name === values.name)) {
+      message.error('密钥名称已存在,请使用其他名称');
+      return false;
+    }
+    setSaving(true);
     try {
       await configService.setSecret(values.name, values.value, values.description);
       message.success('密钥已保存');
       setModalVisible(false);
       loadSecrets();
       onChange();
+      return true;
     } catch (error: any) {
       message.error('保存失败: ' + error.message);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleModalOk = async () => {
+    try {
+      const values = await form.validateFields();
+      return await handleSaveSecret(values);
+    } catch {
+      return false;
     }
   };
 
@@ -1238,6 +1391,11 @@ function SecretsConfigSection({
         description="密钥值在导出JSON时会被隐藏。请在可视化模式下设置敏感信息，不要在JSON模式下直接编辑密钥值。"
         className="mb-4"
       />
+      <div className="mb-4" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddSecret}>
+          添加密钥
+        </Button>
+      </div>
       <Table
         dataSource={secrets}
         columns={columns}
@@ -1247,10 +1405,11 @@ function SecretsConfigSection({
       />
 
       <Modal
-        title={<span><LockOutlined /> {editingSecret ? '更新密钥' : '设置密钥'}</span>}
+        title={<span><LockOutlined /> {editingSecret ? '更新密钥' : '添加密钥'}</span>}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
-        onOk={() => form.submit()}
+        onOk={handleModalOk}
+        confirmLoading={saving}
       >
         <Alert
           type="warning"
@@ -1258,9 +1417,14 @@ function SecretsConfigSection({
           description="请确保在安全环境下输入密钥值。密钥将被加密存储。"
           className="mb-4"
         />
-        <Form form={form} layout="vertical">
-          <Form.Item name="name" label="密钥名称">
-            <Input disabled />
+        <Form form={form} layout="vertical" onFinish={handleSaveSecret}>
+          <Form.Item
+            name="name"
+            label="密钥名称"
+            rules={[{ required: true, message: '请输入密钥名称' }]}
+            tooltip={editingSecret ? '密钥名称不可修改' : '使用小写字母、数字和下划线,例如 my_service_api_key'}
+          >
+            <Input disabled={!!editingSecret} placeholder="输入密钥名称,例如 my_service_api_key" />
           </Form.Item>
           <Form.Item name="value" label="密钥值" rules={[{ required: true }]}>
             <Input.Password placeholder="输入密钥值" />

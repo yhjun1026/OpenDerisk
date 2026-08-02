@@ -12,7 +12,7 @@ import {
   DesktopOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import { message, Dropdown, Tooltip } from 'antd';
+import { App, Dropdown, Tooltip } from 'antd';
 import copy from 'copy-to-clipboard';
 import React, { useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +30,7 @@ interface ChatHeaderProps {
 }
 
 const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProcessing = false }) => {
+  const { message } = App.useApp();
   const { appInfo, refreshAppInfo, history, setHistory, onNewChat } = useContext(ChatContentContext);
   const { initChatId } = useContext(AppContext);
   const { t } = useTranslation();

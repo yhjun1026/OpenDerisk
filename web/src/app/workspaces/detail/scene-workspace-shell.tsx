@@ -2,10 +2,10 @@
 
 import './scene-workspace.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, message } from 'antd';
+import { App, Button } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { apiInterceptors, createConversation, getTaskInfo, linkConversation, listPlaybooks, setCurrentConversation } from '@/client/api';
+import { apiInterceptors, createConversation, getTaskInfo, linkConversation, listConversations, listPlaybooks, setCurrentConversation } from '@/client/api';
 import type { WorkspaceEvent } from '@/hooks/use-chat';
 import type { AgentStep, DetailContext } from './agent-types';
 import { AgentWorkspace } from './agent-workspace';
@@ -53,11 +53,15 @@ export function SceneWorkspaceShell({
   const [activeTask, setActiveTask] = useState<any>(null);
   const [taskConvUid, setTaskConvUid] = useState<string>('');
   const [switchingTask, setSwitchingTask] = useState(false);
+  const { message } = App.useApp();
   // rail 抽屉(中屏)与单列 tab(小屏)状态
   const [railOpen, setRailOpen] = useState(true);
   const [mobilePane, setMobilePane] = useState<'rail' | 'space' | 'agent'>('space');
   // 隐式上下文:用户点 × 取消带入当前关注的交付物
   const [focusDismissed, setFocusDismissed] = useState(false);
+  // 收件箱刷新信号:中间区域确认/否决 ECP 提案后 bump,通知左侧 rail 重新拉待办。
+  const [inboxTick, setInboxTick] = useState(0);
+  const bumpInbox = () => setInboxTick((t) => t + 1);
   const prevActiveTaskId = useRef<number | null>(null);
   const agentInputRef = useRef<AgentWorkspaceInputHandle>(null);
 
@@ -109,6 +113,18 @@ export function SceneWorkspaceShell({
     return (data || []).map((p: any) => ({ playbook_id: p.id, playbook_name: p.name }));
   }, { refreshDeps: [workspaceId] });
 
+  // 会话维度列表:剧本任务会话 + 大厅会话统一按 conv 维度展示。
+  // refreshDeps 含 workspaceConvUid/taskConvUid:清理(新开会话)/切换会话/进入任务对话后自动刷新,
+  // 新会话按 gmt_modified 倒序自然置顶。
+  const { data: conversations } = useRequest(
+    async () => {
+      if (!workspaceId) return [];
+      const [, data] = await apiInterceptors(listConversations({ workspace_id: workspaceId, limit: 200 }));
+      return data || [];
+    },
+    { refreshDeps: [workspaceId, workspaceConvUid, taskConvUid] },
+  );
+
   useEffect(() => {
     if (activeTaskId === prevActiveTaskId.current) return;
     prevActiveTaskId.current = activeTaskId;
@@ -150,9 +166,11 @@ export function SceneWorkspaceShell({
     return () => clearInterval(timer);
   }, [tasks, onRefreshLists]);
 
-  const handlePreview = (item: any, kind: 'task' | 'intervention') => {
+  const handlePreview = (item: any, kind: 'task' | 'intervention' | 'ecp_proposal') => {
     setPreviewItem(item);
-    setDetailContext(kind === 'task' ? 'task-detail' : 'entity-card');
+    if (kind === 'task') setDetailContext('task-detail');
+    else if (kind === 'ecp_proposal') setDetailContext('ecp-proposal');
+    else setDetailContext('entity-card');
   };
 
   const handleEnterConversation = (taskId: number) => {
@@ -181,6 +199,20 @@ export function SceneWorkspaceShell({
   const handleBackToDashboard = () => {
     setDetailContext('dashboard');
     setPreviewItem(null);
+  };
+
+  // 从「会话」视图进入对应对话:剧本任务会话(有 task_id)进任务对话,
+  // 大厅会话(无 task_id)切回 workspace 级会话并回到 dashboard。
+  const handleOpenConversation = async (convUid: string, taskId: number | null) => {
+    if (taskId) {
+      handleEnterConversation(taskId);
+      return;
+    }
+    await apiInterceptors(setCurrentConversation(workspaceId, convUid));
+    setActiveTaskId(null);
+    setDetailContext('dashboard');
+    setPreviewItem(null);
+    onConvChanged?.(convUid, null);
   };
 
   const handleStepClick = (step: AgentStep) => {
@@ -281,6 +313,7 @@ export function SceneWorkspaceShell({
           disabled={switchingTask}
           playbooks={playbooks}
           onRefreshLists={onRefreshLists}
+          inboxTick={inboxTick}
           onPreview={(item, kind) => {
             handlePreview(item, kind);
             setMobilePane('space');
@@ -291,6 +324,13 @@ export function SceneWorkspaceShell({
             setMobilePane('agent');
           }}
           onReference={handleReference}
+          conversations={conversations || []}
+          currentConvUid={rightConvUid}
+          onOpenConversation={(convUid, taskId) => {
+            handleOpenConversation(convUid, taskId);
+            setMobilePane(taskId ? 'agent' : 'space');
+            if (window.matchMedia('(max-width: 1279px)').matches) setRailOpen(false);
+          }}
         />
       </div>
       <div className="ws-scene-shell__space">
@@ -302,6 +342,7 @@ export function SceneWorkspaceShell({
           workspaceCode={workspace?.workspace_code}
           playbooks={playbooks}
           onBack={handleBackToDashboard}
+          onProposalResolved={bumpInbox}
           onSelectTask={(taskId) => {
             const task = tasks.find((t) => t.id === taskId);
             if (task) handlePreview(task, 'task');

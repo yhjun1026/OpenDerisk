@@ -21,6 +21,7 @@ interface VisualEditorProps {
   onMetaTaskTypeChange?: (taskType: string) => void;
   invalidJson?: boolean;
   invalidJsonMessage?: string;
+  workspaceId?: number;
 }
 
 const SCENARIO_OPTIONS = [
@@ -49,6 +50,7 @@ export default function VisualEditor({
   onMetaTaskTypeChange,
   invalidJson,
   invalidJsonMessage,
+  workspaceId,
 }: VisualEditorProps) {
   const { t } = useTranslation();
 
@@ -100,6 +102,7 @@ export default function VisualEditor({
               context: { ...declaration.context, resources },
             })
           }
+          workspaceId={workspaceId}
         />
       ),
     },

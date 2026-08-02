@@ -114,6 +114,13 @@ export interface UserPermissionsResponse {
   }>;
 }
 
+export interface MyPermissions {
+  user_id: number;
+  roles: string[];
+  /** permissions map: { resource_type: [action, ...] } or null when RBAC plugin is off */
+  permissions: Record<string, string[]> | null;
+}
+
 export interface UserDetail extends UserInfo {
   direct_roles: Role[];
   group_roles: Role[];
@@ -138,6 +145,24 @@ function isNotFound(err: unknown): boolean {
 }
 
 class PermissionsService {
+  // ========== Current User ==========
+  /** Fetch current user's RBAC roles and permissions via /permissions/me.
+   *  Returns null when the RBAC plugin is off or the user is not authenticated. */
+  async getMyPermissions(): Promise<MyPermissions | null> {
+    try {
+      const res = await axios.get(`${API_BASE}/permissions/me`);
+      const data = res.data?.data;
+      if (!data) return null;
+      return {
+        user_id: data.user_id,
+        roles: data.roles ?? [],
+        permissions: data.permissions ?? null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   // ========== Role Management ==========
   async listRoles(): Promise<Role[]> {
     try {

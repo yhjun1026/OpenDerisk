@@ -13,7 +13,7 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Divider, Form, Input, message, Select, Switch, Tag, Tooltip } from 'antd';
+import { Alert, Button, Divider, Form, Input, App, Select, Switch, Tag, Tooltip } from 'antd';
 import React, { useCallback, useEffect, useState } from 'react';
 
 interface OAuth2ConfigSectionProps {
@@ -85,6 +85,7 @@ interface ProviderCardProps {
 }
 
 function ProviderCard({ name, restField, canRemove, isEditing, onEdit, onDone, onRemove, form }: ProviderCardProps) {
+  const { message } = App.useApp();
   // Read current field values for the read-only view
   const providerType: string = Form.useWatch(['providers', name, 'provider_type'], form) || 'github';
   const clientId: string = Form.useWatch(['providers', name, 'client_id'], form) || '';
@@ -339,6 +340,7 @@ function ProviderCard({ name, restField, canRemove, isEditing, onEdit, onDone, o
 }
 
 export default function OAuth2ConfigSection({ onChange }: OAuth2ConfigSectionProps) {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   /** Set of Form.List indices currently in edit mode */

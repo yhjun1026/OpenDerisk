@@ -1092,7 +1092,7 @@ class ResourceInjector:
             lines.append("以下技能存储在沙箱环境中，路径为沙箱内的绝对路径。")
             lines.append(f"技能目录：{sandbox_skill_dir}")
             lines.append(
-                "使用方式：使用 `skill_load` 工具加载技能，或使用 `view` 工具读取技能目录中的 SKILL.md 文件。"
+                "使用方式：使用 `Skill` 工具加载技能（读取 SKILL.md 内容），或使用 `view` 工具读取技能目录中的 SKILL.md 文件。"
             )
             lines.append("")
 
@@ -1113,7 +1113,7 @@ class ResourceInjector:
 
         lines.append("</available_skills>")
         lines.append("")
-        lines.append("**使用方式：** 使用 `skill_load` 工具加载技能。")
+        lines.append("**使用方式：** 使用 `Skill` 工具加载技能（读取 SKILL.md 内容）。")
 
         return "\n".join(lines)
 

@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
+  App,
   Card,
   Form,
   Select,
@@ -19,7 +20,6 @@ import {
   Space,
   Modal,
   Input,
-  message,
   Tooltip,
   Tabs,
   Tag,
@@ -284,6 +284,7 @@ export const StreamingConfigEditor: React.FC<StreamingConfigEditorProps> = ({
   appCode,
   onConfigChange,
 }) => {
+  const { message, modal } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [availableTools, setAvailableTools] = useState<AvailableTool[]>([]);
   const [configs, setConfigs] = useState<ToolConfig[]>([]);
@@ -375,7 +376,7 @@ export const StreamingConfigEditor: React.FC<StreamingConfigEditorProps> = ({
   };
 
   const handleDeleteConfig = async (toolName: string) => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认删除',
       content: `确定要删除工具 "${toolName}" 的流式配置吗？`,
       onOk: async () => {

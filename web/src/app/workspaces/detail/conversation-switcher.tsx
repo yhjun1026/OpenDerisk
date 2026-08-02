@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Dropdown, Button, Modal, Input, message } from 'antd';
+import { App, Dropdown, Button, Modal, Input } from 'antd';
 import { useRequest } from 'ahooks';
 import {
   apiInterceptors,
@@ -26,6 +26,7 @@ export function ConversationSwitcher({
 }: ConversationSwitcherProps) {
   const [renameTarget, setRenameTarget] = useState<{ convUid: string; title: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const { message } = App.useApp();
 
   const { data: listRes, refresh } = useRequest(
     async () => apiInterceptors(listConversations({ workspace_id: workspaceId })),

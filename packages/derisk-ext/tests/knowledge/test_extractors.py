@@ -31,7 +31,7 @@ def _ensure_builtins_registered():
 def test_registry_has_builtins():
     reg = get_extractor_registry()
     names = {e.name for e in reg.list_all()}
-    assert {"text", "pdf", "docx", "pptx", "image", "audio"}.issubset(names)
+    assert {"text", "pdf", "docx", "pptx", "image", "audio", "video"}.issubset(names)
 
 
 def test_registry_get_by_mime():
@@ -145,3 +145,123 @@ def test_register_builtin_is_idempotent():
     register_builtin_extractors()
     count_after = len(reg.list_all())
     assert count_before == count_after
+
+
+# ---------------------------------------------------------------------------
+# VideoExtractor: native direct + frame-pipeline fallback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_video_extractor_native_strategy(tmp_path: Path):
+    """Native video models (gemini/qwen-vl) receive the file via videos kwarg."""
+    ext = get_extractor_registry().get("video/mp4")
+    assert ext is not None and ext.name == "video"
+
+    f = tmp_path / "clip.mp4"
+    f.write_bytes(b"\x00" * 1024)  # small fake file, content never read by fake caller
+
+    captured: dict = {}
+
+    async def fake_caller(model, prompt, images=None, videos=None):
+        captured["videos"] = videos or []
+        captured["images"] = images or []
+        return "一段产品介绍视频,演示了上传流程。"
+
+    specs = await ext.extract(f, "video/mp4", model="gemini-2.5-pro", model_caller=fake_caller)
+    assert len(specs) == 1
+    assert specs[0].meta["strategy"] == "native"
+    assert "上传流程" in specs[0].content
+    assert captured["videos"] == [f]
+    assert captured["images"] == []
+
+
+@pytest.mark.asyncio
+async def test_video_extractor_falls_back_to_frames(tmp_path: Path, monkeypatch):
+    """Non-native model (or native failure) → ffmpeg frame pipeline via image channel."""
+    from derisk_ext.knowledge.extractors.builtin import VideoExtractor
+
+    ext = get_extractor_registry().get("video/mp4")
+    f = tmp_path / "clip.mp4"
+    f.write_bytes(b"\x00" * 1024)
+
+    # 假帧文件:管线只把路径交给 model_caller,不读内容
+    frames = []
+    for i in range(3):
+        fp = tmp_path / f"frame_{i:03d}.jpg"
+        fp.write_bytes(b"\xff\xd8\xff" + b"\x00" * 16)
+        frames.append(fp)
+
+    async def fake_frames(self, path, out_dir):
+        return frames
+
+    async def fake_audio(self, path, out_dir):
+        return None
+
+    monkeypatch.setattr(VideoExtractor, "_extract_frames", fake_frames)
+    monkeypatch.setattr(VideoExtractor, "_extract_audio", fake_audio)
+    monkeypatch.setattr(builtin_mod.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+
+    captured: dict = {}
+
+    async def fake_caller(model, prompt, images=None, videos=None):
+        captured["images"] = images or []
+        captured["videos"] = videos or []
+        return "帧序列描述了会议投屏内容。"
+
+    # gpt-4o 不命中原生模式 → 直接走抽帧
+    specs = await ext.extract(f, "video/mp4", model="gpt-4o", model_caller=fake_caller)
+    assert len(specs) == 1
+    assert specs[0].meta["strategy"] == "frames"
+    assert specs[0].meta["frames"] == 3
+    assert captured["images"] == frames
+    assert captured["videos"] == []
+
+
+@pytest.mark.asyncio
+async def test_video_extractor_native_failure_falls_back(tmp_path: Path, monkeypatch):
+    """Native-capable model that errors must degrade to the frame pipeline."""
+    from derisk_ext.knowledge.extractors.builtin import VideoExtractor
+
+    ext = get_extractor_registry().get("video/mp4")
+    f = tmp_path / "clip.mp4"
+    f.write_bytes(b"\x00" * 1024)
+
+    frame = tmp_path / "frame_001.jpg"
+    frame.write_bytes(b"\xff\xd8\xff" + b"\x00" * 16)
+
+    async def fake_frames(self, path, out_dir):
+        return [frame]
+
+    async def fake_audio(self, path, out_dir):
+        return None
+
+    monkeypatch.setattr(VideoExtractor, "_extract_frames", fake_frames)
+    monkeypatch.setattr(VideoExtractor, "_extract_audio", fake_audio)
+    monkeypatch.setattr(builtin_mod.shutil, "which", lambda name: "/usr/bin/ffmpeg")
+
+    calls: list = []
+
+    async def flaky_caller(model, prompt, images=None, videos=None):
+        calls.append({"images": images or [], "videos": videos or []})
+        if videos:
+            raise RuntimeError("provider rejected video_url")
+        return "抽帧后的画面描述。"
+
+    specs = await ext.extract(f, "video/mp4", model="qwen2.5-vl-72b", model_caller=flaky_caller)
+    assert len(specs) == 1
+    assert specs[0].meta["strategy"] == "frames"
+    # 先尝试 native(videos),失败后走 images
+    assert calls[0]["videos"] == [f]
+    assert calls[1]["images"] == [frame]
+
+
+@pytest.mark.asyncio
+async def test_video_extractor_requires_model(tmp_path: Path):
+    """No model/model_caller → clear error (unlike image, video has no text fallback)."""
+    ext = get_extractor_registry().get("video/mp4")
+    f = tmp_path / "clip.mp4"
+    f.write_bytes(b"\x00" * 64)
+
+    with pytest.raises(RuntimeError, match="multimodal model"):
+        await ext.extract(f, "video/mp4", model=None, model_caller=None)

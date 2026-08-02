@@ -2,7 +2,7 @@
 
 import React, { FC, useMemo } from 'react';
 import { CopyOutlined } from '@ant-design/icons';
-import { Tooltip, message } from 'antd';
+import { Tooltip, App } from 'antd';
 import { GPTVisLite } from '@antv/gpt-vis';
 import { markdownComponents } from '../../../config';
 import type { ManusExecutionOutput, ManusStepStatus } from '@/types/manus';
@@ -26,6 +26,7 @@ const TerminalRenderer: FC<IProps> = ({
   status,
   title = 'Terminal',
 }) => {
+  const { message } = App.useApp();
   const outputText = useMemo(() => {
     return outputs
       .filter((o) => o.output_type === 'text' || o.output_type === 'error')

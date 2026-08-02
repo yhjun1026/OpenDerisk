@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+  <!-- Gyra Logo: 三同心圆 + 三缺口错位 = LLM/Agent/Biz 三层循环 -->
+  <!-- 配色: 午夜蓝 #0B1F3A / 香槟金 #C9A961 / 暖象牙白 #F8F4ED -->
+
+  <!-- 背景 -->
+  <rect width="1000" height="1000" fill="#F8F4ED"/>
+
+  <!-- 外圈 (Biz Loop): 最粗, 缺口在顶部 270°, 跨度 24° -->
+  <!-- 起点 258° -> 终点 282°, 顺时针大弧 -->
+  <path d="M 420.99 128.30 A 380 380 0 1 1 579.01 128.30"
+        fill="none" stroke="#0B1F3A" stroke-width="26" stroke-linecap="round"/>
+
+  <!-- 中圈 (Agent Loop): 中等, 缺口在左下 210°, 跨度 24° -->
+  <!-- 起点 198° -> 终点 222°, 顺时针大弧 -->
+  <path d="M 252.72 419.65 A 260 260 0 1 1 306.78 326.03"
+        fill="none" stroke="#0B1F3A" stroke-width="19" stroke-linecap="round"/>
+
+  <!-- 内圈 (LLM Loop): 最细, 缺口在右下 330°, 跨度 24° -->
+  <!-- 起点 318° -> 终点 342°, 顺时针大弧 -->
+  <path d="M 611.47 399.63 A 150 150 0 1 1 642.66 453.65"
+        fill="none" stroke="#0B1F3A" stroke-width="13" stroke-linecap="round"/>
+
+  <!-- 香槟金领先边: 外圈缺口后的旋转领先点 (282° -> 300°) -->
+  <path d="M 579.01 128.30 A 380 380 0 0 1 690 170.91"
+        fill="none" stroke="#C9A961" stroke-width="26" stroke-linecap="round"/>
+</svg>

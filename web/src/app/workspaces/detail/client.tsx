@@ -18,7 +18,6 @@ import {
   AppstoreOutlined,
   HomeOutlined,
   DatabaseOutlined,
-  DeploymentUnitOutlined,
 } from '@ant-design/icons';
 import { SceneWorkspaceShell } from './scene-workspace-shell';
 import { ChatContext } from '@/contexts';
@@ -168,16 +167,13 @@ export default function WorkspaceDetailPage() {
               <HomeOutlined />{t('workspaces.lobby') || '工作台'}
             </Link>
             <Link href={`/workspaces/detail/tasks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('tasks')}`}>
-              <ScheduleOutlined />{t('workspaces.tasks') || '任务'}
+              <ScheduleOutlined />{t('workspaces.subscriptions') || '订阅'}
             </Link>
             <Link href={`/workspaces/detail/playbooks?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('playbooks')}`}>
               <BookOutlined />{t('workspaces.playbooks') || '剧本'}
             </Link>
             <Link href={`/workspaces/detail/assets?id=${workspaceCode}&tab=data`} className={`ws-console-nav-link${navActive('assets')}`}>
               <DatabaseOutlined />{t('workspaces.assets') || '资产'}
-            </Link>
-            <Link href={`/ecp?workspace=${encodeURIComponent(`ecp_${workspaceCode}`)}`} className="ws-console-nav-link">
-              <DeploymentUnitOutlined />{t('workspaces.semantic_assets') || '语义资产'}
             </Link>
             <Link href={`/workspaces/detail/settings?id=${workspaceCode}`} className={`ws-console-nav-link${navActive('settings')}`}>
               <SettingOutlined />{t('workspaces.settings') || '设置'}

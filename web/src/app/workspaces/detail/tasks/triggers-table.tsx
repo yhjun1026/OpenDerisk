@@ -3,8 +3,8 @@
 import {
   apiInterceptors, listTriggers, deleteTrigger, fireTrigger,
 } from '@/client/api';
-import { Button, Modal, Spin, message } from 'antd';
-import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { App, Button, Spin } from 'antd';
+import { ThunderboltOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +37,7 @@ const TYPE_VARIANT: Record<string, string> = {
  */
 export default function TriggersTable({ workspaceId, workspaceCode }: { workspaceId: number; workspaceCode: string }) {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
 
   const { data: triggers, loading, refresh } = useRequest(async () => {
     const [err, res] = await apiInterceptors(listTriggers({ workspace_id: workspaceId, limit: 200 }));
@@ -55,7 +56,7 @@ export default function TriggersTable({ workspaceId, workspaceCode }: { workspac
   };
 
   const handleDelete = (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: t('triggers.delete_confirm') || 'Delete trigger source?',
       okText: t('delete') || 'Delete',
       okButtonProps: { danger: true },
@@ -143,11 +144,6 @@ export default function TriggersTable({ workspaceId, workspaceCode }: { workspac
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Link href={`/workspaces/detail/tasks/create?id=${workspaceCode}&type=timer`}>
-          <Button type="primary" ghost icon={<PlusOutlined />}>{t('triggers.create') || 'New Trigger'}</Button>
-        </Link>
-      </div>
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><Spin /></div>
       ) : (

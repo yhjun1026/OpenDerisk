@@ -1,7 +1,7 @@
 import { addMCP, updateMCP, apiInterceptors } from '@/client/api';
 import { PlusOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
-import { Button, Col, Form, Input, Modal, Row, Select, message } from 'antd';
+import { App, Button, Col, Form, Input, Modal, Row, Select } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import CustomUpload from './CustomUpload';
@@ -30,6 +30,7 @@ type FieldType = {
 const CreatMcpModel: React.FC<CreatMcpModelProps> = (props: CreatMcpModelProps) => {
   const { onSuccess, formData } = props;
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [mcpType, setMcpType] = useState<string>('http');

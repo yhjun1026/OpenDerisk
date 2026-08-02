@@ -18,7 +18,7 @@ import {
   Tag,
   Transfer,
   Typography,
-  message,
+  App,
   Spin,
   Tooltip,
 } from 'antd';
@@ -274,6 +274,7 @@ const getActionOptions = (resourceType: string, t: (key: string) => string) => {
 
 export default function RoleManagement({ roles: externalRoles, onRolesChange }: RoleManagementProps) {
   const { t, i18n } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [roles, setRoles] = useState<RoleWithPermissions[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
@@ -683,6 +684,7 @@ function PermissionPanel({
   readonly = false,
 }: PermissionPanelProps) {
   const { t, i18n } = useTranslation();
+  const { message } = App.useApp();
   const [permissions, setPermissions] = useState<Permission[]>(role.permissions ?? []);
   const [loading, setLoading] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);

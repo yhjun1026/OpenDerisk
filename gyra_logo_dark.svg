@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000">
+  <!-- Gyra Logo · 暗色反转 (产品 UI / 暗色模式) -->
+  <rect width="1000" height="1000" fill="#1A1A1A"/>
+  <path d="M 420.99 128.30 A 380 380 0 1 1 579.01 128.30"
+        fill="none" stroke="#F5F1EA" stroke-width="26" stroke-linecap="round"/>
+  <path d="M 252.72 419.65 A 260 260 0 1 1 306.78 326.03"
+        fill="none" stroke="#F5F1EA" stroke-width="19" stroke-linecap="round"/>
+  <path d="M 611.47 399.63 A 150 150 0 1 1 642.66 453.65"
+        fill="none" stroke="#F5F1EA" stroke-width="13" stroke-linecap="round"/>
+  <path d="M 579.01 128.30 A 380 380 0 0 1 690 170.91"
+        fill="none" stroke="#C9A961" stroke-width="26" stroke-linecap="round"/>
+</svg>

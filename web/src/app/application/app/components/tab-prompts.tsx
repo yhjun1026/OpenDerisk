@@ -4,7 +4,7 @@ import { AppContext } from '@/contexts';
 import { getAgentDefaultPrompt } from '@/client/api/app';
 import { ThunderboltOutlined, UserOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useDebounceFn, useRequest } from 'ahooks';
-import { Tabs, Button, message } from 'antd';
+import { Tabs, Button, App } from 'antd';
 import { debounce } from 'lodash';
 import { useContext, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 export default function TabPrompts() {
   const { t } = useTranslation();
   const { appInfo, fetchUpdateApp } = useContext(AppContext);
+  const { message } = App.useApp();
   const { system_prompt_template = '', user_prompt_template = '' } = appInfo || {};
   const [localSystemPrompt, setLocalSystemPrompt] = useState('');
   const [localUserPrompt, setLocalUserPrompt] = useState('');

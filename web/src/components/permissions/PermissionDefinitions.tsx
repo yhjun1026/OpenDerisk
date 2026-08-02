@@ -14,7 +14,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -89,6 +89,7 @@ interface PermissionDefinitionsProps {
 
 export default function PermissionDefinitions({ roles: externalRoles }: PermissionDefinitionsProps) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [definitions, setDefinitions] = useState<PermissionDefinition[]>([]);
   const [createOpen, setCreateOpen] = useState(false);

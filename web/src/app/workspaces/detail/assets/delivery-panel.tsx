@@ -8,7 +8,7 @@ import {
   sendDelivery,
 } from '@/client/api';
 import {
-  Button, Empty, Modal, Descriptions, Spin, Tag, message,
+  App, Button, Empty, Modal, Descriptions, Spin, Tag,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -87,6 +87,7 @@ export function DeliveryPanel({ workspaceId }: { workspaceId: number }) {
   const [kindFilter, setKindFilter] = useState<'all' | FeedKind>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [activeArtifact, setActiveArtifact] = useState<any | null>(null);
+  const { message } = App.useApp();
 
   const { data: artifacts, loading: l1 } = useRequest(async () => {
     const [err, res] = await apiInterceptors(listArtifacts({ workspace_id: workspaceId, limit: 200 }));

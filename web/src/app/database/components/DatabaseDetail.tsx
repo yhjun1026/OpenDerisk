@@ -105,7 +105,7 @@ export default function DatabaseDetail({
   datasource,
   onRefresh,
 }: DatabaseDetailProps) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const datasourceId = String(datasource.id);
   const [tableDetailDrawerOpen, setTableDetailDrawerOpen] = useState(false);
   const [selectedTableName, setSelectedTableName] = useState<string>('');
@@ -511,7 +511,7 @@ export default function DatabaseDetail({
 
   // Regenerate masking rules across the whole database (full-library detect).
   const confirmRegenerateAll = useCallback(() => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Regenerate Masking (All Tables)',
       content:
         '将对全库所有已学习表重新自动检测敏感字段。被检测到的列(含已手动配置的列)会被覆盖为自动结果(source=auto),不可撤销;未被识别的列不受影响。确认继续?',
@@ -826,7 +826,7 @@ export default function DatabaseDetail({
                 icon={<StopOutlined />}
                 loading={cancelLoading}
                 onClick={() => {
-                  Modal.confirm({
+                  modal.confirm({
                     title: 'Cancel Learning Task',
                     content: 'Are you sure you want to cancel the running learning task? Tables already processed will be kept.',
                     okText: 'Cancel Task',
@@ -843,7 +843,7 @@ export default function DatabaseDetail({
                 icon={<PauseOutlined />}
                 loading={pauseLoading}
                 onClick={() => {
-                  Modal.confirm({
+                  modal.confirm({
                     title: 'Pause Learning Task',
                     content: 'The task will be paused. You can resume it later.',
                     okText: 'Pause',
@@ -860,7 +860,7 @@ export default function DatabaseDetail({
                 icon={<PlayCircleOutlined />}
                 loading={resumeLoading}
                 onClick={() => {
-                  Modal.confirm({
+                  modal.confirm({
                     title: 'Resume Learning Task',
                     content: 'Resume the paused learning task.',
                     okText: 'Resume',

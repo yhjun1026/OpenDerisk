@@ -414,6 +414,19 @@ class RagConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
 
 
+class MediaGenDefaults(BaseModel):
+    """媒体生成（图片/视频）默认模型配置。
+
+    只存模型名（不含 provider）：工具按模型名反查 protocol/provider，
+    用户无需感知 provider。为空时工具回退到第一个可用模型。
+    """
+
+    # 默认视频生成模型名，如 "happyhorse-1.1-t2v"
+    video_default_model: Optional[str] = Field(default=None)
+    # 默认图片生成模型名，如 "wan2.6-t2i"
+    image_default_model: Optional[str] = Field(default=None)
+
+
 class AppConfig(BaseModel):
     name: str = "OpenDeRisk"
     version: str = "0.1.0"
@@ -441,6 +454,9 @@ class AppConfig(BaseModel):
     secrets: SecretsConfig = Field(default_factory=_get_default_secrets_config)
 
     rag: RagConfig = Field(default_factory=RagConfig)
+
+    # 媒体生成（图片/视频）默认模型配置
+    media_gen: MediaGenDefaults = Field(default_factory=MediaGenDefaults)
 
     workspace: str = Field(
         default_factory=lambda: str(get_derisk_home() / "workspace")

@@ -1,4 +1,3 @@
-import { notification } from 'antd';
 import { AxiosError } from 'axios';
 import { ApiResponse, FailedTuple, ResponseType, SuccessTuple } from '../';
 import type { NotificationInstance } from 'antd/es/notification/interface';

@@ -17,24 +17,21 @@ API documentation:
 import base64
 import io
 import logging
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from derisk.agent.util.media_gen.base import MediaGenProvider, MediaGenResult
 from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegistry
 
 logger = logging.getLogger(__name__)
 
-# Supported models
-_GOOGLE_IMAGE_MODELS = [
-    "gemini-2.5-flash-image-preview",  # Nano Banana (main model)
-    "gemini-2.5-flash-image",          # Alias without -preview suffix
-]
+# Model names are free-form (protocol-based routing); passed through to the
+# Gemini API.
 
 # Google's default endpoint
 _DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com"
 
 
-@MediaGenProviderRegistry.register(name="google", env_key="GOOGLE_API_KEY")
+@MediaGenProviderRegistry.register(protocol="google_image", env_key="GOOGLE_API_KEY")
 class GoogleBananaProvider(MediaGenProvider):
     """Google Gemini 2.5 Flash Image (Nano Banana) generation provider.
 
@@ -42,10 +39,11 @@ class GoogleBananaProvider(MediaGenProvider):
     - Text-to-image generation
     - Image editing with reference images (via image_url parameter)
     - Multilingual prompts
+    Model name is free-form (passed through to the Gemini API).
     """
 
     def supported_image_models(self) -> List[str]:
-        return sorted(_GOOGLE_IMAGE_MODELS)
+        return []
 
     def supported_video_models(self) -> List[str]:
         return []
@@ -68,14 +66,6 @@ class GoogleBananaProvider(MediaGenProvider):
                 - n: Number of images (Gemini generates 1 per call).
                 - seed: Not supported by Gemini API.
         """
-        # Normalize model name
-        if model not in _GOOGLE_IMAGE_MODELS:
-            logger.warning(
-                f"[GoogleBananaProvider] Unknown model '{model}', "
-                f"falling back to 'gemini-2.5-flash-image-preview'"
-            )
-            model = "gemini-2.5-flash-image-preview"
-
         image_url = kwargs.get("image_url")
 
         try:

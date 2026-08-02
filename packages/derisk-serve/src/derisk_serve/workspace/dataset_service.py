@@ -36,7 +36,23 @@ __all__ = [
     "sanitize_asset_name",
     "DEFAULT_SANDBOX_ROOT",
     "SANDBOX_SUBDIRS",
+    "workspace_sandbox_root",
 ]
+
+
+def workspace_sandbox_root(workspace_id: int) -> str:
+    """场景空间沙箱根目录(绝对路径,含 files/db/runtime 子目录)。
+
+    与数据集目录同源(DEFAULT_SANDBOX_ROOT / DERISK_WORKSPACE_SANDBOX_ROOT),
+    供 agent 沙箱的 host_work_dir 使用:大厅/任务模式共享此持久目录,
+    agent 可直接读写 files/ 中的上传数据集。沙箱侧要求绝对路径
+    (macOS sandbox-exec profile 只放行绝对路径)。
+    """
+    root = os.environ.get("DERISK_WORKSPACE_SANDBOX_ROOT", DEFAULT_SANDBOX_ROOT)
+    root = os.path.abspath(os.path.join(root, str(workspace_id)))
+    for sub in SANDBOX_SUBDIRS:
+        os.makedirs(os.path.join(root, sub), exist_ok=True)
+    return root
 
 
 class WorkspaceDatasetService:

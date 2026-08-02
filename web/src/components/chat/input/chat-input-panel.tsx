@@ -1,6 +1,6 @@
 import { ChatContentContext } from "@/contexts";
 import { LoadingOutlined } from '@ant-design/icons';
-import { Button, Input, message } from 'antd';
+import { Button, Input, App } from 'antd';
 import classNames from 'classnames';
 import { useSearchParams } from 'next/navigation';
 import React, { memo, useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
@@ -21,6 +21,7 @@ interface QueuedMessage {
 
 const ChatInputPanel: React.FC<{ ctrl: AbortController }> = ({ ctrl }) => {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const {
     scrollRef,
     replyLoading,

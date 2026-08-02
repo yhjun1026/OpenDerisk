@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Card, Button, Upload, Slider, Space, Typography, Tag, Progress, Alert, Badge, Row, Col, Modal, message } from 'antd';
+import { Card, Button, Upload, Slider, Space, Typography, Tag, Progress, Alert, Badge, Row, Col, Modal, App } from 'antd';
 import { UploadOutlined, PlayCircleOutlined, PauseCircleOutlined, ReloadOutlined, FileTextOutlined, BugOutlined, StepForwardOutlined, StepBackwardOutlined, EyeOutlined, CopyOutlined } from '@ant-design/icons';
 import { GPTVis } from '@antv/gpt-vis';
 import { markdownComponents, markdownPlugins, preprocessLaTeX } from '@/components/chat/chat-content-components/config';
@@ -29,6 +29,7 @@ interface ParsedVisData {
 }
 
 export default function ChunkReplay() {
+  const { message } = App.useApp();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [chunks, setChunks] = useState<ChunkData[]>([]);
   const [error, setError] = useState<string>('');

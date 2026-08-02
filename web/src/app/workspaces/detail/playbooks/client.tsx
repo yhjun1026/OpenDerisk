@@ -62,7 +62,7 @@ export default function PlaybookListPage() {
   const workspaceCode = searchParams?.get('id') || '';
   const router = useRouter();
   const { t } = useTranslation();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [createOpen, setCreateOpen] = useState(false);
   const [dsl, setDsl] = useState(DEFAULT_DSL);
   const [createTab, setCreateTab] = useState('visual');
@@ -130,7 +130,7 @@ export default function PlaybookListPage() {
   };
 
   const handleDelete = async (id: number) => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Delete playbook?',
       onOk: async () => {
         const [err] = await apiInterceptors(deletePlaybook(id));

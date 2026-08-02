@@ -25,7 +25,7 @@ import {
   LeftOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-import { Tooltip, Dropdown, message, Modal } from 'antd';
+import { Tooltip, Dropdown, App, Modal } from 'antd';
 import type { MenuProps } from 'antd';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -746,6 +746,7 @@ const VisManusRightPanel: FC<IProps> = ({ data }) => {
     steps_map,
   } = data;
 
+  const { message } = App.useApp();
   const [activeTab, setActiveTab] = useState<ActiveTab>('execution');
   const [inputCollapsed, setInputCollapsed] = useState(false);
   const [exporting, setExporting] = useState(false);

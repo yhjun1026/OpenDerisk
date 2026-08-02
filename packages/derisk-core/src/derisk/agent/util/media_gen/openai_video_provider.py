@@ -14,15 +14,15 @@ from derisk.agent.util.media_gen.provider_registry import MediaGenProviderRegist
 logger = logging.getLogger(__name__)
 
 
-@MediaGenProviderRegistry.register(name="openai_video", env_key="OPENAI_API_KEY")
+@MediaGenProviderRegistry.register(protocol="openai_video", env_key="OPENAI_API_KEY")
 class OpenAIVideoProvider(MediaGenProvider):
-    """OpenAI Sora video generation provider."""
+    """OpenAI Sora video generation provider. Model name is free-form."""
 
     def supported_image_models(self) -> List[str]:
         return []
 
     def supported_video_models(self) -> List[str]:
-        return ["sora"]
+        return []
 
     async def generate_image(
         self,

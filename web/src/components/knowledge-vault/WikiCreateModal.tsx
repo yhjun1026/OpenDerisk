@@ -2,7 +2,7 @@
 
 import { apiInterceptors } from '@/client/api';
 import { createDoc } from '@/client/api/knowledge-vault';
-import { Input, Modal, message } from 'antd';
+import { App, Input, Modal } from 'antd';
 import { useState } from 'react';
 
 const DEFAULT_NEW_BODY = `---\ntype: concept\ntitle: \ncreated: 2026-06-23\nupdated: 2026-06-23\n---
@@ -22,6 +22,7 @@ export default function WikiCreateModal({
   onClose: () => void;
   onCreated?: () => void;
 }) {
+  const { message } = App.useApp();
   const [path, setPath] = useState('');
   const [body, setBody] = useState(DEFAULT_NEW_BODY);
   const [loading, setLoading] = useState(false);

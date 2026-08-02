@@ -7,7 +7,7 @@ import {
   InputNumber,
   Button,
   Select,
-  message,
+  App,
   Switch,
   Tooltip,
   Empty,
@@ -49,6 +49,7 @@ type SectionKey = typeof SECTIONS[number]['key'];
 
 export const SceneEditor: React.FC<SceneEditorProps> = ({ sceneId, onSave, onCancel }) => {
   const [form] = Form.useForm();
+  const { message } = App.useApp();
   const [mdContent, setMdContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

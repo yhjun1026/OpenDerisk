@@ -26,4 +26,5 @@ export type DetailContext =
   | 'task-detail'
   | 'file-preview'
   | 'tool-result'
-  | 'entity-card';
+  | 'entity-card'
+  | 'ecp-proposal';

@@ -49,6 +49,11 @@ class OAuth2ConfigEntity(Model):
         default="viewer",
         comment="Default RBAC role for new OAuth2 users",
     )
+    sso_auto_login_provider = Column(
+        String(64),
+        nullable=True,
+        comment="Provider ID for automatic SSO login redirect",
+    )
     gmt_create = Column(DateTime, nullable=True)
     gmt_modify = Column(DateTime, nullable=True)
 
@@ -61,6 +66,7 @@ class OAuth2ConfigEntity(Model):
             "providers_json": self.providers_json,
             "admin_users_json": self.admin_users_json,
             "default_role": self.default_role or "viewer",
+            "sso_auto_login_provider": self.sso_auto_login_provider,
         }
 
 
@@ -124,6 +130,7 @@ class OAuth2ConfigDao(BaseDao[OAuth2ConfigEntity, Any, Any]):
         admin_users: List[str],
         default_role: str = "viewer",
         config_key: str = "global",
+        sso_auto_login_provider: Optional[str] = None,
     ) -> OAuth2ConfigEntity:
         """Save or update OAuth2 config (stored in plain text, mask on display)."""
         from datetime import datetime
@@ -152,6 +159,7 @@ class OAuth2ConfigDao(BaseDao[OAuth2ConfigEntity, Any, Any]):
                 entity.providers_json = providers_json
                 entity.admin_users_json = admin_users_json
                 entity.default_role = default_role
+                entity.sso_auto_login_provider = sso_auto_login_provider
                 entity.gmt_modify = datetime.utcnow()
             else:
                 entity = OAuth2ConfigEntity(
@@ -160,6 +168,7 @@ class OAuth2ConfigDao(BaseDao[OAuth2ConfigEntity, Any, Any]):
                     providers_json=providers_json,
                     admin_users_json=admin_users_json,
                     default_role=default_role,
+                    sso_auto_login_provider=sso_auto_login_provider,
                     gmt_create=datetime.utcnow(),
                     gmt_modify=datetime.utcnow(),
                 )
@@ -214,6 +223,7 @@ class OAuth2ConfigDao(BaseDao[OAuth2ConfigEntity, Any, Any]):
             admin_users_json = entity.admin_users_json or "[]"
             providers_json = entity.providers_json or "[]"
             default_role = entity.default_role or "viewer"
+            sso_auto_login_provider = entity.sso_auto_login_provider
 
         try:
             admin_users = json.loads(admin_users_json) if admin_users_json else []
@@ -234,6 +244,7 @@ class OAuth2ConfigDao(BaseDao[OAuth2ConfigEntity, Any, Any]):
             "providers": providers,
             "admin_users": admin_users,
             "default_role": default_role,
+            "sso_auto_login_provider": sso_auto_login_provider,
         }
 
     def get_config_with_secrets(
@@ -269,11 +280,13 @@ class OAuth2DbStorage:
         providers: List[Dict],
         admin_users: List[str],
         default_role: str = "viewer",
+        sso_auto_login_provider: Optional[str] = None,
     ) -> bool:
         """Save OAuth2 config to database."""
         try:
             self.dao.save_or_update(
-                enabled, providers, admin_users, default_role, "global"
+                enabled, providers, admin_users, default_role, "global",
+                sso_auto_login_provider=sso_auto_login_provider,
             )
             return True
         except Exception as e:

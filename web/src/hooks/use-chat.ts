@@ -3,7 +3,7 @@ import i18n from '@/app/i18n';
 import { getUserId } from '@/utils';
 import { HEADER_USER_ID_KEY } from '@/utils/constants/index';
 import { EventStreamContentType, fetchEventSource } from '@microsoft/fetch-event-source';
-import { message } from 'antd';
+import { App } from 'antd';
 import { useCallback, useState } from 'react';
 import { VisParser } from '@/utils/parse-vis';
 
@@ -58,6 +58,7 @@ export function parseChunkData(
 }
 
 const useChat = ({ queryAgentURL = '/api/v1/chat/completions', app_code }: Props) => {
+  const { message } = App.useApp();
   const [ctrl, setCtrl] = useState<AbortController>({} as AbortController);
   const [usageMetrics, setUsageMetrics] = useState<{
     total: number;

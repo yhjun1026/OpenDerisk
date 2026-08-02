@@ -1,4 +1,4 @@
-import { statusToTab, statusLabel } from '../scene-task-rail';
+import { statusToTab, statusLabel, parseEcpProposalSource } from '../scene-task-rail';
 
 describe('statusToTab', () => {
   it('maps running variants to running tab', () => {
@@ -29,5 +29,33 @@ describe('statusLabel', () => {
     expect(statusLabel('awaiting_human')).toBe('待你介入');
     expect(statusLabel('delivered')).toBe('已交付');
     expect(statusLabel('failed')).toBe('失败');
+  });
+});
+
+describe('parseEcpProposalSource', () => {
+  // source_id 由后端 ecp_sync 构造为 f"{ecp_ws}:{obj.id}@v{version}"。
+  // 场景空间就地确认依赖此解析拿到派生 ECP workspace + 提案 id + 版本,
+  // 不再跳转全局 ECP 模块、不选错空间、能定位到具体提案。
+  it('parses derived ecp workspace / obj id / version', () => {
+    expect(parseEcpProposalSource('ecp_ws_abc123:metric_revenue@v3')).toEqual({
+      workspaceId: 'ecp_ws_abc123',
+      objId: 'metric_revenue',
+      version: 3,
+    });
+  });
+
+  it('handles workspace codes with underscores and multi-digit versions', () => {
+    expect(parseEcpProposalSource('ecp_ws_a1b2c3d4:entity_customer@v12')).toEqual({
+      workspaceId: 'ecp_ws_a1b2c3d4',
+      objId: 'entity_customer',
+      version: 12,
+    });
+  });
+
+  it('returns null for malformed source_id (no jump to wrong space)', () => {
+    expect(parseEcpProposalSource('not-a-valid-source')).toBeNull();
+    expect(parseEcpProposalSource('ecp_ws:obj')).toBeNull();
+    expect(parseEcpProposalSource('ecp_ws:obj@v')).toBeNull();
+    expect(parseEcpProposalSource('')).toBeNull();
   });
 });

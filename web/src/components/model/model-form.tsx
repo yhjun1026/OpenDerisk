@@ -2,7 +2,7 @@ import { apiInterceptors, createModel, getSupportModels } from "@/client/api";
 import { renderModelIcon } from "@/components/chat/header/model-selector";
 import { ConfigurableParams } from "@/types/common";
 import { StartModelParams, SupportModel } from "@/types/model";
-import { AutoComplete, Button, Form, Select, Tooltip, message } from "antd";
+import { App, AutoComplete, Button, Form, Select, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
@@ -22,6 +22,7 @@ function ModelForm({
   onSuccess: () => void;
 }) {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [_, setModels] = useState<Array<SupportModel> | null>([]);
   const [selectedWorkerType, setSelectedWorkerType] = useState<string>();
   const [selectedProvider, setSelectedProvider] = useState<string>();

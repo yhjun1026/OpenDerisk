@@ -4,6 +4,7 @@ import { apiInterceptors, getWorkspaceInfo } from '@/client/api';
 import { Button, Card, Empty, Spin, Tabs } from 'antd';
 import {
   DatabaseOutlined,
+  DeploymentUnitOutlined,
   SendOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
@@ -14,8 +15,9 @@ import { useTranslation } from 'react-i18next';
 import { DataAssetsTab } from './data-assets-tab';
 import { DeliveryPanel } from './delivery-panel';
 import { CapabilityTab } from './capability-tab';
+import { EcpConsole } from '@/app/ecp/components/ecp-console';
 
-const TAB_KEYS = ['data', 'delivery', 'capability'] as const;
+const TAB_KEYS = ['data', 'delivery', 'capability', 'semantic'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 /** 资产页:数据资产(能碰什么) / 交付沉淀(干出了什么) / 能力(会干什么)。 */
@@ -86,6 +88,18 @@ export default function AssetsPage() {
         </span>
       ),
       children: <CapabilityTab workspaceId={ws.id} />,
+    },
+    {
+      key: 'semantic',
+      label: (
+        <span>
+          <DeploymentUnitOutlined style={{ marginRight: 6 }} />
+          {t('assets.tab_semantic') || '语义资产'}
+        </span>
+      ),
+      // 直接复用 ECP 控制台内容组件(无 hero/空间选择器/全局外壳),
+      // 语义空间固定为本空间派生的 ecp_<code>
+      children: <EcpConsole workspaceId={`ecp_${workspaceCode}`} />,
     },
   ];
 

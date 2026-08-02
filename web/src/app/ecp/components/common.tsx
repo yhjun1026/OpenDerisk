@@ -106,15 +106,7 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-export function ObjectDetailDrawer({
-  obj,
-  open,
-  onClose,
-}: {
-  obj: EcpSemanticObject | null;
-  open: boolean;
-  onClose: () => void;
-}) {
+export function ObjectDetailContent({ obj }: { obj: EcpSemanticObject | null }) {
   const { data: versions } = useRequest(
     async () => {
       if (!obj) return [];
@@ -123,24 +115,12 @@ export function ObjectDetailDrawer({
       );
       return err ? [] : res ?? [];
     },
-    { refreshDeps: [obj?.id, open], ready: open && !!obj },
+    { refreshDeps: [obj?.id], ready: !!obj },
   );
 
   if (!obj) return null;
   return (
-    <Drawer
-      className="ecp-drawer"
-      title={
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          <TypeChip type={obj.obj_type} />
-          <span style={{ fontWeight: 650 }}>{obj.id}</span>
-          <span style={{ color: 'var(--ink-400)', fontSize: 12 }}>v{obj.version}</span>
-        </span>
-      }
-      width={640}
-      open={open}
-      onClose={onClose}
-    >
+    <>
       <div className="ecp-drawer__section">
         <div className="ecp-drawer__section-title">基本信息</div>
         <KV k="状态" v={<StatusTag status={obj.status} />} />
@@ -206,6 +186,38 @@ export function ObjectDetailDrawer({
           ]}
         />
       </div>
+    </>
+  );
+}
+
+export function ObjectDetailDrawer({
+  obj,
+  open,
+  onClose,
+  footer,
+}: {
+  obj: EcpSemanticObject | null;
+  open: boolean;
+  onClose: () => void;
+  footer?: React.ReactNode;
+}) {
+  if (!obj) return null;
+  return (
+    <Drawer
+      className="ecp-drawer"
+      title={
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <TypeChip type={obj.obj_type} />
+          <span style={{ fontWeight: 650 }}>{obj.id}</span>
+          <span style={{ color: 'var(--ink-400)', fontSize: 12 }}>v{obj.version}</span>
+        </span>
+      }
+      width={640}
+      open={open}
+      onClose={onClose}
+      footer={footer}
+    >
+      <ObjectDetailContent obj={obj} />
     </Drawer>
   );
 }
