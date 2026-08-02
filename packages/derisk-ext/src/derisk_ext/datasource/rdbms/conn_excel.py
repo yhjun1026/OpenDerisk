@@ -31,6 +31,22 @@ class DuckDbNativeReflection:
     connector types working without touching DuckDbConnector itself.
     """
 
+    def _sync_tables_from_db(self) -> List[str]:
+        """Get table names via DuckDB's information_schema instead of pg_catalog.
+
+        Called during __init__ to populate _all_tables. The base class
+        implementation uses SQLAlchemy's inspector, which emits pg_catalog
+        queries that DuckDB 1.2.x cannot handle.
+        """
+        with self.session_scope() as session:
+            result = session.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'main' AND table_type = 'BASE TABLE'"
+                )
+            ).fetchall()
+        return [row[0] for row in result]
+
     def get_columns(self, table_name: str) -> List[Dict]:
         """Get columns via PRAGMA table_info."""
         with self.session_scope() as session:
