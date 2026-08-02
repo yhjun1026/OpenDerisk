@@ -50,6 +50,15 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProces
     setIconError(false);
   }, [icon]);
 
+  const isDefaultAvatar = useMemo(() => {
+    return (
+      !icon ||
+      icon === 'smart-plugin' ||
+      icon === '/agents/default_avatar.png' ||
+      icon === '/agents/chat_avatar_default.png'
+    );
+  }, [icon]);
+
   const isCollected = useMemo(() => {
     return appInfo?.is_collected === 'true';
   }, [appInfo]);
@@ -136,7 +145,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProces
       {/* App icon — no extra bg, just the image/icon directly */}
       <div className="relative flex-shrink-0 mr-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden">
-          {icon && icon !== 'smart-plugin' && !iconError ? (
+          {!isDefaultAvatar && !iconError ? (
             <img
               src={icon}
               alt={appInfo?.app_name}

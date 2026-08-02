@@ -4,7 +4,7 @@ import { AppContext } from '@/contexts';
 import { CheckCircleOutlined, ExclamationCircleFilled, CloudUploadOutlined, DownOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { App, Dropdown, Modal, Button, Tag } from 'antd';
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import { SmartPluginIcon } from '@/components/icons/smart-plugin-icon';
@@ -43,6 +43,21 @@ export default function AgentHeader({ activeTab, onTabChange }: AgentHeaderProps
     versionData,
     queryAppInfo,
   } = useContext(AppContext);
+  const [iconError, setIconError] = useState(false);
+
+  useEffect(() => {
+    setIconError(false);
+  }, [appInfo?.icon]);
+
+  const isDefaultAvatar = useMemo(() => {
+    const icon = appInfo?.icon;
+    return (
+      !icon ||
+      icon === 'smart-plugin' ||
+      icon === '/agents/default_avatar.png' ||
+      icon === '/agents/chat_avatar_default.png'
+    );
+  }, [appInfo?.icon]);
 
   const { runAsync: fetchPublishApp, loading: fetchPublishAppLoading } = useRequest(
     async (params: any) => await publishAppNew(params),
@@ -99,13 +114,14 @@ export default function AgentHeader({ activeTab, onTabChange }: AgentHeaderProps
       <div className="flex items-center justify-between px-5 py-3 gap-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="w-10 h-10 rounded-xl overflow-hidden ring-2 ring-white shadow-lg shadow-gray-200/50 flex-shrink-0 bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center">
-            {appInfo?.icon && appInfo.icon !== 'smart-plugin' ? (
+            {!isDefaultAvatar && !iconError ? (
               <Image
                 src={appInfo.icon}
                 alt="Agent Icon"
                 width={40}
                 height={40}
                 className="object-cover w-full h-full"
+                onError={() => setIconError(true)}
               />
             ) : (
               <SmartPluginIcon size={36} />

@@ -14,12 +14,6 @@ interface AgentAvatarProps {
   className?: string;
 }
 
-/** Legacy default images that should be treated as "no custom icon". */
-const DEFAULT_AVATAR_PATHS = new Set([
-  '/agents/default_avatar.png',
-  '/agents/chat_avatar_default.png',
-]);
-
 const AVATAR_COLORS = [
   '#4f46e5',
   '#00b96b',
@@ -79,8 +73,7 @@ export const AgentAvatar: React.FC<AgentAvatarProps> = ({
   }, [icon]);
 
   const rawIcon = icon?.trim();
-  const isDefaultOrEmpty =
-    !rawIcon || rawIcon === 'smart-plugin' || DEFAULT_AVATAR_PATHS.has(rawIcon);
+  const isDefaultOrEmpty = !rawIcon || rawIcon === 'smart-plugin';
 
   const displayName = name || '';
   const initial = useMemo(() => getInitial(displayName), [displayName]);
