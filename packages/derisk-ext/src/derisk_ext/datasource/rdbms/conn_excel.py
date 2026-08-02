@@ -10,7 +10,7 @@ re-uploading a file, and deletion cascades to the backing file.
 from dataclasses import dataclass
 from typing import Dict, List, Type
 
-from sqlalchemy import text
+from sqlalchemy import MetaData, text
 
 from derisk.core.awel.flow import (
     TAGS_ORDER_HIGH,
@@ -22,6 +22,20 @@ from derisk.util.i18n_utils import _
 from .conn_duckdb import DuckDbConnector, DuckDbConnectorParameters
 
 
+class _NoReflectMetaData(MetaData):
+    """MetaData that skips reflection.
+
+    ``RDBMSConnector.__init__`` calls ``MetaData.reflect()``, which triggers
+    pg_catalog queries incompatible with DuckDB 1.2.x (e.g. pg_collation).
+    Making ``reflect()`` a no-op lets initialization succeed; table-structure
+    queries go through the DuckDB-native overrides below instead.
+    """
+
+    def reflect(self, *args, **kwargs):  # noqa: D401
+        """No-op: skip pg_catalog-based reflection."""
+        pass
+
+
 class DuckDbNativeReflection:
     """Reflection via DuckDB-native PRAGMA instead of the SQLAlchemy inspector.
 
@@ -31,12 +45,21 @@ class DuckDbNativeReflection:
     connector types working without touching DuckDbConnector itself.
     """
 
-    def _sync_tables_from_db(self) -> List[str]:
+    def __init__(self, engine, *args, **kwargs):
+        # Inject a no-reflect MetaData so RDBMSConnector.__init__ does not
+        # trigger MetaData.reflect() (which emits pg_catalog queries that
+        # DuckDB 1.2.x cannot handle).
+        if "metadata" not in kwargs:
+            kwargs["metadata"] = _NoReflectMetaData()
+        super().__init__(engine, *args, **kwargs)
+
+    def _sync_tables_from_db(self) -> set:
         """Get table names via DuckDB's information_schema instead of pg_catalog.
 
         Called during __init__ to populate _all_tables. The base class
         implementation uses SQLAlchemy's inspector, which emits pg_catalog
-        queries that DuckDB 1.2.x cannot handle.
+        queries that DuckDB 1.2.x cannot handle. Returns a set because
+        get_usable_table_names() does set subtraction against _ignore_tables.
         """
         with self.session_scope() as session:
             result = session.execute(
@@ -45,7 +68,7 @@ class DuckDbNativeReflection:
                     "WHERE table_schema = 'main' AND table_type = 'BASE TABLE'"
                 )
             ).fetchall()
-        return [row[0] for row in result]
+        return {row[0] for row in result}
 
     def get_columns(self, table_name: str) -> List[Dict]:
         """Get columns via PRAGMA table_info."""

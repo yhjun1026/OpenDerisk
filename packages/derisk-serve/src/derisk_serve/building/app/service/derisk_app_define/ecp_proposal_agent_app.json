@@ -1,0 +1,28 @@
+[
+  {
+    "app_code": "ecp-proposal-agent",
+    "app_name": "ECP 语义提案 Agent",
+    "app_describe": "ECP 企业语义资产分析师。探索数据源表结构,多轮分析生成 entity/metric/dimension/relation 语义资产提案,提案进入确认收件箱待人工确认。批处理任务,无用户交互。",
+    "language": "zh",
+    "icon": "/agents/default_avatar.png",
+    "team_mode": "auto_plan",
+    "agent": "EcpProposalAgent",
+    "team_context": {
+      "teamleader": "EcpProposalAgent",
+      "can_ask_user": false,
+      "use_sandbox": false
+    },
+    "llm_config": {
+      "llm_strategy": "priority",
+      "llm_strategy_value": []
+    },
+    "layout": {
+      "chat_layout": {
+        "name": "vis_manus",
+        "incremental": true,
+        "reuse_name": "vis_manus"
+      }
+    },
+    "published": true
+  }
+]
