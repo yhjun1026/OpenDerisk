@@ -104,6 +104,20 @@ _RESOURCE_TYPE_ALIASES: Dict[str, str] = {
 CFG = Config()
 
 
+def _get_web_config(app_config: Any) -> Any:
+    """获取 web 配置，兼容两种 config 结构。
+
+    - ApplicationConfig (derisk_app): ``app_config.service.web``
+    - AppConfig (derisk_core): ``app_config.web``
+    """
+    if app_config is None:
+        return None
+    service = getattr(app_config, "service", None)
+    if service is not None:
+        return getattr(service, "web", None)
+    return getattr(app_config, "web", None)
+
+
 def get_app_service() -> AppService:
     return AppService.get_instance(CFG.SYSTEM_APP)
 
@@ -1110,7 +1124,7 @@ class AgentChat(BaseComponent, ABC):
 
         ########################################################
         app_config = self.system_app.config.configs.get("app_config")
-        web_config = app_config.service.web
+        web_config = _get_web_config(app_config)
 
         app_service = get_app_service()
         gpt_app: GptsApp = await app_service.app_detail(
@@ -3300,7 +3314,7 @@ class AgentChat(BaseComponent, ABC):
             user_code = ext_info.get("user_code", None)
             if user_code:
                 app_config = self.system_app.config.configs.get("app_config")
-                web_config = app_config.service.web
+                web_config = _get_web_config(app_config)
                 user_proxy.profile.avatar = (
                     f"{web_config.web_url}/user/avatar?loginName={user_code}"
                 )
@@ -3601,9 +3615,8 @@ class AgentChat(BaseComponent, ABC):
             )
 
             app_config = self.system_app.config.configs.get("app_config")
-            web_config = app_config.service.web
+            web_config = _get_web_config(app_config)
             vis_manager = get_vis_manager()
-
             vis_convert: VisProtocolConverter = vis_manager.get_by_name(
                 current_vis_render
             )(derisk_url=web_config.web_url)
@@ -3651,7 +3664,7 @@ class AgentChat(BaseComponent, ABC):
 
             current_vis_render = gpts_conversation.vis_render or "nex_vis_window"
             app_config = self.system_app.config.configs.get("app_config")
-            web_config = app_config.service.web
+            web_config = _get_web_config(app_config)
             vis_manager = get_vis_manager()
             vis_convert = vis_manager.get_by_name(current_vis_render)(
                 derisk_url=web_config.web_url

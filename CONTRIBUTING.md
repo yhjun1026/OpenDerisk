@@ -33,7 +33,6 @@ cd OpenDerisk
 ```
 # it will take some minutes
 uv sync --all-packages --frozen \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \

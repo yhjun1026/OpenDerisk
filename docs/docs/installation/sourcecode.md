@@ -82,7 +82,6 @@ uv --version
 ```bash
 # Use uv to install dependencies needed for OpenAI proxy
 uv sync --all-packages \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \
@@ -130,7 +129,6 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 ```bash
 # Use uv to install dependencies needed for OpenAI proxy
 uv sync --all-packages \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \
@@ -171,7 +169,6 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 # Use uv to install dependencies needed for GLM4
 # Install core dependencies and select desired extensions
 uv sync --all-packages \
---extra "base" \
 --extra "cuda121" \
 --extra "hf" \
 --extra "rag" \

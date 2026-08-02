@@ -31,6 +31,9 @@ dependencies = [
     "greenlet>=3.1.1",
     "orjson>=3.11.4",
     "json_repair>=0.58.4",
+    # click is a hard runtime dependency: the `derisk` console script entry
+    # point (derisk.cli.cli_scripts:main) imports click at module top-level.
+    "click",
 ]
 
 [project.urls]
@@ -47,7 +50,6 @@ client = [
 ]
 cli = [
     "prettytable",
-    "click",
     "psutil==5.9.4",
     "colorama==0.4.6",
     "tomlkit",

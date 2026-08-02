@@ -126,7 +126,6 @@ print_step "Running uv sync..."
 
 if command -v uv &> /dev/null; then
     if uv sync --all-packages \
-        --extra "base" \
         --extra "proxy_openai" \
         --extra "rag" \
         --extra "storage_chromadb" \

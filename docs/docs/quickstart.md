@@ -74,7 +74,6 @@ uv --version
 If you are in the China region, you can add --index-url=https://pypi.tuna.tsinghua.edu.cn/simple at the end of the command.Like this:
 ```bash
 uv sync --all-packages \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \
@@ -99,7 +98,6 @@ This tutorial assumes that you can establish network communication with the depe
 ```bash
 # Use uv to install dependencies needed for OpenAI proxy
 uv sync --all-packages \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \
@@ -138,7 +136,6 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 ```bash
 # Use uv to install dependencies needed for DeepSeek proxy
 uv sync --all-packages \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \
@@ -151,7 +148,6 @@ To run DeRisk with DeepSeek proxy, you must provide the DeepSeek API key in the 
 And you can specify your embedding model in the `configs/derisk-proxy-deepseek.toml` configuration file, the default embedding model is `BAAI/bge-large-zh-v1.5`. If you want to use other embedding models, you can modify the `configs/derisk-proxy-deepseek.toml` configuration file and specify the `name` and `provider` of the embedding model in the `[[models.embeddings]]` section. The provider can be `hf`.Finally, you need to append `--extra "hf"` at the end of the dependency installation command. Here's the updated command:
 ```bash
 uv sync --all-packages \
---extra "base" \
 --extra "proxy_openai" \
 --extra "rag" \
 --extra "storage_chromadb" \
@@ -197,7 +193,6 @@ uv run python packages/derisk-app/src/derisk_app/derisk_server.py --config confi
 # Use uv to install dependencies needed for GLM4
 # Install core dependencies and select desired extensions
 uv sync --all-packages \
---extra "base" \
 --extra "cuda121" \
 --extra "hf" \
 --extra "rag" \
@@ -241,7 +236,6 @@ uv run derisk start webserver --config configs/derisk-local-glm.toml
 # Use uv to install dependencies needed for vllm
 # Install core dependencies and select desired extensions
 uv sync --all-packages \
---extra "base" \
 --extra "hf" \
 --extra "cuda121" \
 --extra "vllm" \

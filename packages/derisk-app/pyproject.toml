@@ -11,7 +11,13 @@ requires-python = ">= 3.10"
 
 dependencies = [
 #    "derisk-acc-auto",
-    "derisk",
+    # derisk-app is the runnable webserver application; it requires the full
+    # runtime stack (fastapi/uvicorn/jinja2/psutil/agent/framework/code) to
+    # start. These were previously gated behind the optional `base` extra,
+    # which caused `derisk quickstart` to crash with ModuleNotFoundError when
+    # installed without extras. Fold them into hard dependencies so a bare
+    # `uv sync --all-packages --frozen` produces a working server.
+    "derisk[client,cli,agent,simple_framework,framework,code]",
     "derisk-ext",
     "derisk-serve",
     "derisk-client",
@@ -40,9 +46,6 @@ observability = [
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp",
-]
-base = [
-    "derisk[client,cli,agent,simple_framework,framework,code]"
 ]
 derisks = [
     # For build derisks apps, we will be removed in the future.

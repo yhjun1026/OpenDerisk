@@ -118,7 +118,6 @@ cd OpenDerisk
 
 # 使用 uv 安装依赖
 uv sync --all-packages --frozen \
-    --extra "base" \
     --extra "proxy_openai" \
     --extra "rag" \
     --extra "storage_chromadb" \

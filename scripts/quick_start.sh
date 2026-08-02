@@ -141,7 +141,6 @@ install_deps() {
     log "Installing dependencies..."
 
     uv sync --all-packages --frozen \
-        --extra "base" \
         --extra "proxy_openai" \
         --extra "rag" \
         --extra "storage_chromadb" \

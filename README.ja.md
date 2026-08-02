@@ -112,7 +112,6 @@ cd OpenDerisk
 
 # uv で依存関係をインストール
 uv sync --all-packages --frozen \
-    --extra "base" \
     --extra "proxy_openai" \
     --extra "rag" \
     --extra "storage_chromadb" \

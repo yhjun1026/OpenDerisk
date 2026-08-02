@@ -4,7 +4,7 @@
     "app_name": "Main Agent",
     "app_describe": "全局通用Agent，能够完成任何用户需求目标。提供智能对话、任务规划、工具调用、问题解决等能力，适用于各类通用场景和任务需求。",
     "language": "zh",
-    "icon": "/agents/agent_main.png",
+    "icon": "/agents/default_avatar.png",
     "team_mode": "auto_plan",
     "agent": "BAIZE",
     "team_context": {

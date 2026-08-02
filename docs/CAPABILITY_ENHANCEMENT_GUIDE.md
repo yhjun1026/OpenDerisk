@@ -456,7 +456,7 @@ ConfigLoader.generate_default("derisk.json")
 
 ```bash
 # 基础安装
-uv sync --extra "base"
+uv sync --all-packages
 
 # 网络请求支持
 uv sync --extra "proxy_openai"

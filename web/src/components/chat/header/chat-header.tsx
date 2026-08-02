@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons';
 import { App, Dropdown, Tooltip } from 'antd';
 import copy from 'copy-to-clipboard';
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRequest } from 'ahooks';
 import AppDefaultIcon from '../../icons/app-default-icon';
@@ -44,6 +44,11 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProces
   const icon = useMemo(() => {
     return appInfo?.icon || '';
   }, [appInfo]);
+
+  const [iconError, setIconError] = useState(false);
+  useEffect(() => {
+    setIconError(false);
+  }, [icon]);
 
   const isCollected = useMemo(() => {
     return appInfo?.is_collected === 'true';
@@ -131,10 +136,20 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ isScrollToTop = false, isProces
       {/* App icon — no extra bg, just the image/icon directly */}
       <div className="relative flex-shrink-0 mr-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden">
-          {icon && icon !== 'smart-plugin' ? (
-            <img src={icon} alt={appInfo?.app_name} className="w-9 h-9 object-cover rounded-xl" />
-          ) : icon === 'smart-plugin' ? (
-            <img src="/icons/colorful-plugin.png" alt={appInfo?.app_name} className="w-9 h-9 object-cover rounded-xl" />
+          {icon && icon !== 'smart-plugin' && !iconError ? (
+            <img
+              src={icon}
+              alt={appInfo?.app_name}
+              className="w-9 h-9 object-cover rounded-xl"
+              onError={() => setIconError(true)}
+            />
+          ) : icon === 'smart-plugin' && !iconError ? (
+            <img
+              src="/icons/colorful-plugin.png"
+              alt={appInfo?.app_name}
+              className="w-9 h-9 object-cover rounded-xl"
+              onError={() => setIconError(true)}
+            />
           ) : (
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
               <AppDefaultIcon scene={appScene} width={18} height={18} />
