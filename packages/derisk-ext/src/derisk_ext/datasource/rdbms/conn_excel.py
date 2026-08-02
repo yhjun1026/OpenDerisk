@@ -59,6 +59,27 @@ class DuckDbNativeReflection:
         """File datasets carry no secondary indexes."""
         return []
 
+    def get_foreign_keys(self, table_name: str) -> List[Dict]:
+        """File datasets carry no foreign keys."""
+        return []
+
+    def get_table_comment(self, table_name: str) -> Dict:
+        """File datasets carry no table comments."""
+        return {"text": ""}
+
+    def get_show_create_table(self, table_name: str) -> str:
+        """Get CREATE TABLE statement via DuckDB's SHOW CREATE TABLE."""
+        try:
+            with self.session_scope() as session:
+                result = session.execute(
+                    text(f'SHOW CREATE TABLE "{table_name}"')
+                ).fetchone()
+                if result:
+                    return result[0]
+        except Exception:
+            pass
+        return ""
+
     def quote_identifier(self, identifier: str) -> str:
         """DuckDB quotes identifiers with double quotes, not backticks."""
         return f'"{identifier}"'

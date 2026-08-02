@@ -183,14 +183,6 @@ except ImportError as e:
     logging.warning(f"Integrating derisk webserver command line tool failed: {e}")
 
 try:
-    from derisk_app.knowledge._cli.knowledge_cli import knowledge_cli_group
-
-    add_command_alias(knowledge_cli_group, name="knowledge", parent_group=cli)
-except ImportError as e:
-    logging.warning(f"Integrating derisk knowledge command line tool failed: {e}")
-
-
-try:
     from derisk.util.tracer.tracer_cli import trace_cli_group
 
     add_command_alias(trace_cli_group, name="trace", parent_group=cli)
